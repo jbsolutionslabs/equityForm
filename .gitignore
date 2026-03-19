@@ -8,6 +8,9 @@ build/
 .env
 .env.*
 
+# Ignore the nested equityForm git repo directory (it appears to be a sub-repo)
+equityForm/
+
 # Logs
 *.log
 npm-debug.log*
