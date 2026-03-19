@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useAppStore } from '../../state/store'
+import { useAppStore, OaStatus } from '../../state/store'
 
 const schema = z.object({
   entityName:              z.string().min(1, 'Entity name is required'),
@@ -31,13 +31,16 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>
 
 export const DealSetup: React.FC = () => {
-  const navigate   = useNavigate()
-  const setDeal    = useAppStore((s) => s.setDeal)
-  const formSPV    = useAppStore((s) => s.formSPV)
-  const dealData   = useAppStore((s) => s.data.deal)
-  const spvFormed  = useAppStore((s) => s.data.spv?.formed)
+  const navigate      = useNavigate()
+  const setDeal       = useAppStore((s) => s.setDeal)
+  const formSPV       = useAppStore((s) => s.formSPV)
+  const resetOaStatus = useAppStore((s) => s.resetOaStatus)
+  const dealData      = useAppStore((s) => s.data.deal)
+  const spvFormed     = useAppStore((s) => s.data.spv?.formed)
+  const oaStatus: OaStatus = useAppStore((s) => s.data.operatingAgreement?.status ?? 'not_generated')
 
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
+  const [pendingVals, setPendingVals] = useState<FormValues | null>(null)
 
   const notify = (msg: string, type: 'success' | 'error' = 'success') => {
     setNotification({ msg, type })
@@ -52,8 +55,7 @@ export const DealSetup: React.FC = () => {
 
   const { formState: { errors } } = form
 
-  const saveProgress = () => {
-    const vals = form.getValues()
+  const doSave = (vals: FormValues) => {
     // Attempt to parse city/state/zip from address if not already present
     if (!vals.propertyCity || !vals.propertyState || !vals.propertyZip) {
       const last = (vals.propertyAddress || '').split(',').map((p: string) => p.trim()).slice(-1)[0] || ''
@@ -66,6 +68,25 @@ export const DealSetup: React.FC = () => {
     }
     setDeal(vals)
     notify('Deal saved. You\'re ready to continue.')
+  }
+
+  const saveProgress = () => {
+    const vals = form.getValues()
+    // If OA has been generated or signed, warn before overwriting
+    if (oaStatus !== 'not_generated') {
+      setPendingVals(vals)
+      return
+    }
+    doSave(vals)
+  }
+
+  const confirmChangeAndRegenerate = () => {
+    if (pendingVals) {
+      doSave(pendingVals)
+      resetOaStatus()
+      notify('Deal saved. Operating Agreement has been reset — please regenerate and re-sign.')
+    }
+    setPendingVals(null)
   }
 
   const onFormSPV = () => {
@@ -436,6 +457,32 @@ export const DealSetup: React.FC = () => {
       </div>
 
       <HelpCard text="Our team can help you verify entity details, registered agent options, and property legal descriptions. Don't hesitate to reach out." />
+
+      {/* Change warning modal */}
+      {pendingVals && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="change-warn-title">
+          <div className="modal">
+            <div className="modal-header">
+              <h2 id="change-warn-title" className="modal-title">Operating Agreement Already Generated</h2>
+            </div>
+            <div className="modal-body">
+              <p style={{ margin: 0, color: 'var(--color-slate-600)' }}>
+                The Operating Agreement has already been {oaStatus === 'signed' ? 'signed' : 'generated'}.
+                Saving these changes will <strong>reset the OA</strong> and require you to regenerate
+                and re-collect the GP signature.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-primary" onClick={confirmChangeAndRegenerate}>
+                Save &amp; Regenerate OA
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={() => setPendingVals(null)}>
+                Cancel Change
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

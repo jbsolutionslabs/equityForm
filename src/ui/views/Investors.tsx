@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useAppStore, Investor } from '../../state/store'
+import { useAppStore, Investor, canSendSubAgreements } from '../../state/store'
 import { v4 as uuidv4 } from 'uuid'
 import { generateSubscriptionAgreementText } from '../../utils/pdfTemplate'
 import { generatePlaceholders } from '../../utils/placeholders'
@@ -56,10 +56,9 @@ export const Investors: React.FC = () => {
   const sendSubscriptionForSignature    = useAppStore((s) => s.sendSubscriptionForSignature)
   const markSubscriptionSigned          = useAppStore((s) => s.markSubscriptionSigned)
   const recordWirePayment               = useAppStore((s) => s.recordWirePayment)
-  const spvFormed  = useAppStore((s) => s.data.spv?.formed)
-  const oaSigned   = useAppStore((s) => s.data.operatingAgreement?.gpSigned)
-  const subscriptions = useAppStore((s) => s.data.subscriptions)
-  const offering   = useAppStore((s) => s.data.offering)
+  const appData    = useAppStore((s) => s.data)
+  const subscriptions = appData.subscriptions
+  const offering   = appData.offering
 
   const form = useForm({ resolver: zodResolver(schema), defaultValues: { investors: data }, mode: 'onBlur' })
   const { fields, append, remove } = useFieldArray({ control: form.control, name: 'investors' })
@@ -137,7 +136,7 @@ export const Investors: React.FC = () => {
     }
   }
 
-  const canGenerateSub = !!(spvFormed && oaSigned)
+  const canGenerateSub = canSendSubAgreements(appData)
 
   return (
     <div className="page-enter">
@@ -152,8 +151,8 @@ export const Investors: React.FC = () => {
         <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
           <CompletionBadge />
           {!canGenerateSub && (
-            <span className="status-badge status-badge--pending" style={{ fontSize: 12 }}>
-              Subscriptions locked — complete Step 1 &amp; Review first
+            <span className="gate-message" style={{ fontSize: 13 }}>
+              Subscription agreements locked — Operating Agreement must be GP-signed first (Stage 3)
             </span>
           )}
         </div>
@@ -440,7 +439,7 @@ export const Investors: React.FC = () => {
                       type="button"
                       className="btn btn-primary btn-sm"
                       disabled={!canGenerateSub}
-                      title={!canGenerateSub ? 'Complete SPV formation and GP signing first' : undefined}
+                      title={!canGenerateSub ? 'Operating Agreement must be GP-signed (Stage 3) before generating subscription agreements' : undefined}
                       onClick={() => {
                         generateSubscriptionForInvestor(f.id)
                         notify(`Subscription generated for ${name}.`)
@@ -452,6 +451,7 @@ export const Investors: React.FC = () => {
                       type="button"
                       className="btn btn-secondary btn-sm"
                       disabled={!canGenerateSub}
+                      title={!canGenerateSub ? 'Operating Agreement must be GP-signed (Stage 3) before sending subscription agreements' : undefined}
                       onClick={() => {
                         sendSubscriptionForSignature(f.id)
                         notify(`Subscription sent for e-signature for ${name}.`)

@@ -1,4 +1,4 @@
-import { AppData } from '../state/store'
+import { AppData, SpvFormation } from '../state/store'
 import { v4 as uuidv4 } from 'uuid'
 
 export const seed: AppData = {
@@ -57,12 +57,20 @@ export const seed: AppData = {
     registeredAgentName: 'Registered Agent Co',
     registeredAgentAddress: '251 Little St, Wilmington, DE',
   },
+  spvFormation: {
+    llcFiled:        { complete: true, completedAt: '2026-03-01', certificateNumber: 'DE-7891234', dateFiled: '2026-03-01' },
+    einObtained:     { complete: true, completedAt: '2026-03-01', ein: '12-3456789' },
+    registeredAgent: { complete: true, completedAt: '2026-03-01', agentName: 'Registered Agent Co', agentAddress: '251 Little St, Wilmington, DE' },
+  } as SpvFormation,
   operatingAgreement: {
+    status: 'signed' as const,
     generated: true,
     generatedAt: '2026-03-02T12:00:00Z',
     gpSigned: true,
     gpSignerName: 'Alice Manager',
     gpSignedAt: '2026-03-03T09:00:00Z',
+    signedAt: '2026-03-03T09:00:00Z',
+    docusignEnvelopeId: 'DS_OA_DEMO_001',
   },
   subscriptions: [],
   investors: [

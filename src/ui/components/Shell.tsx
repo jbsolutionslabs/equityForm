@@ -1,57 +1,76 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { useAppStore } from '../../state/store'
+import { useAppStore, isSpvFormed, canSendSubAgreements } from '../../state/store'
 
-type StepConfig = {
-  to: string
-  step: number
-  title: string
+type StageConfig = {
+  to:       string
+  step:     number
+  title:    string
   subtitle: string
-  enabled: boolean
-  done: boolean
+  done:     (data: ReturnType<typeof useAppStore.getState>['data']) => boolean
 }
 
-export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
-  const loc = useLocation()
-  const data = useAppStore((s) => s.data)
+const STAGES: StageConfig[] = [
+  {
+    to:       '/deal',
+    step:     1,
+    title:    'Questionnaire',
+    subtitle: 'Entity, property & economics',
+    done:     (d) => !!(d.deal.entityName && d.offering.offeringExemption),
+  },
+  {
+    to:       '/spv',
+    step:     2,
+    title:    'SPV Formation',
+    subtitle: 'LLC filing, EIN & agent',
+    done:     (d) => isSpvFormed(d),
+  },
+  {
+    to:       '/oa',
+    step:     3,
+    title:    'Operating Agreement',
+    subtitle: 'Generate, review & sign',
+    done:     (d) => d.operatingAgreement?.status === 'signed',
+  },
+  {
+    to:       '/investors',
+    step:     4,
+    title:    'Investor Intake',
+    subtitle: 'Add investors & sub agreements',
+    done:     (d) => d.investors.length > 0 && d.subscriptions.some((s) => s.status !== 'pending'),
+  },
+  {
+    to:       '/signatures',
+    step:     5,
+    title:    'E-Signatures',
+    subtitle: 'Send & track investor signing',
+    done:     (d) =>
+      d.subscriptions.length > 0 &&
+      d.subscriptions.every((s) => s.status === 'signed' || s.status === 'paid'),
+  },
+  {
+    to:       '/wires',
+    step:     6,
+    title:    'Wire Tracking',
+    subtitle: 'Confirm capital received',
+    done:     (d) =>
+      d.subscriptions.length > 0 &&
+      d.subscriptions.every((s) => s.status === 'paid'),
+  },
+  {
+    to:       '/captable',
+    step:     7,
+    title:    'Cap Table Lock',
+    subtitle: 'Finalize & lock',
+    done:     (d) => !!d.deal.capTableLockedAt,
+  },
+]
 
-  const steps: StepConfig[] = [
-    {
-      to: '/deal',
-      step: 1,
-      title: 'Deal Basics',
-      subtitle: 'Entity, property & agent',
-      enabled: true,
-      done: !!data.deal.entityName,
-    },
-    {
-      to: '/offering',
-      step: 2,
-      title: 'Economics & Structure',
-      subtitle: 'Returns, promote & exemption',
-      enabled: !!data.deal.entityName,
-      done: !!data.offering.offeringExemption,
-    },
-    {
-      to: '/investors',
-      step: 3,
-      title: 'Investor Details',
-      subtitle: 'Add investors & subscriptions',
-      enabled: !!data.spv?.formed && !!data.operatingAgreement?.gpSigned,
-      done: data.investors.length > 0,
-    },
-    {
-      to: '/review',
-      step: 4,
-      title: 'Review & Close',
-      subtitle: 'Finalize & lock cap table',
-      enabled:
-        !!data.operatingAgreement?.generated ||
-        data.subscriptions.some((s) => s.status === 'paid') ||
-        !!data.deal.capTableLockedAt,
-      done: !!data.deal.capTableLockedAt,
-    },
-  ]
+export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
+  const loc   = useLocation()
+  const data  = useAppStore((s) => s.data)
+  const reset = useAppStore((s) => s.reset)
+  const [confirmReset, setConfirmReset] = useState(false)
 
   return (
     <div className="app-root">
@@ -62,33 +81,29 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
             <div className="sidebar-logo-icon" aria-hidden="true">E</div>
             <span className="sidebar-app-name">EquityForm</span>
           </div>
-          <p className="sidebar-tagline">Guided deal intake for legal &amp; cap table setup</p>
+          <p className="sidebar-tagline">Guided deal intake — 7-stage legal flow</p>
         </div>
 
-        <nav className="sidebar-nav" aria-label="Steps">
-          {steps.map((s) => {
+        <nav className="sidebar-nav" aria-label="Stages">
+          {STAGES.map((s) => {
             const active  = loc.pathname === s.to
-            const locked  = !s.enabled
-            const isDone  = s.done && !active
-
+            const isDone  = s.done(data) && !active
             const indicatorClass = isDone
               ? 'sidebar-step-indicator--done'
               : active
               ? 'sidebar-step-indicator--active'
-              : locked
-              ? 'sidebar-step-indicator--locked'
               : 'sidebar-step-indicator--accessible'
 
-            const stepClass = [
-              'sidebar-step',
-              active ? 'sidebar-step--active' : '',
-              locked ? 'sidebar-step--locked' : '',
-            ]
-              .filter(Boolean)
-              .join(' ')
-
-            const inner = (
-              <>
+            return (
+              <Link
+                key={s.to}
+                to={s.to}
+                className={[
+                  'sidebar-step',
+                  active ? 'sidebar-step--active' : '',
+                ].filter(Boolean).join(' ')}
+                aria-current={active ? 'step' : undefined}
+              >
                 <div
                   className={`sidebar-step-indicator ${indicatorClass}`}
                   aria-hidden="true"
@@ -99,30 +114,6 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
                   <span className="sidebar-step-title">{s.title}</span>
                   <span className="sidebar-step-subtitle">{s.subtitle}</span>
                 </div>
-              </>
-            )
-
-            if (locked) {
-              return (
-                <div
-                  key={s.to}
-                  className={stepClass}
-                  aria-disabled="true"
-                  title={`Complete previous steps to unlock: ${s.title}`}
-                >
-                  {inner}
-                </div>
-              )
-            }
-
-            return (
-              <Link
-                key={s.to}
-                to={s.to}
-                className={stepClass}
-                aria-current={active ? 'step' : undefined}
-              >
-                {inner}
               </Link>
             )
           })}
@@ -133,6 +124,35 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
             <span className="sidebar-help-icon" aria-hidden="true">?</span>
             Need help?
           </a>
+          {confirmReset ? (
+            <div className="sidebar-reset-confirm">
+              <span className="sidebar-reset-confirm-label">Clear all data?</span>
+              <div className="sidebar-reset-confirm-actions">
+                <button
+                  type="button"
+                  className="sidebar-reset-btn sidebar-reset-btn--danger"
+                  onClick={() => { reset(); setConfirmReset(false) }}
+                >
+                  Yes, reset
+                </button>
+                <button
+                  type="button"
+                  className="sidebar-reset-btn sidebar-reset-btn--cancel"
+                  onClick={() => setConfirmReset(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="sidebar-reset-trigger"
+              onClick={() => setConfirmReset(true)}
+            >
+              Reset demo data
+            </button>
+          )}
         </div>
       </aside>
 

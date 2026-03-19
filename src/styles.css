@@ -240,6 +240,48 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 700;
 }
 
+/* Reset demo button */
+.sidebar-reset-trigger {
+  display: block;
+  margin-top: 10px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 11.5px;
+  color: rgba(255,255,255,0.22);
+  cursor: pointer;
+  transition: color 0.15s;
+  text-align: left;
+}
+.sidebar-reset-trigger:hover { color: rgba(255,100,100,0.65); }
+
+.sidebar-reset-confirm {
+  margin-top: 10px;
+}
+.sidebar-reset-confirm-label {
+  display: block;
+  font-size: 11.5px;
+  color: rgba(255,180,180,0.8);
+  margin-bottom: 6px;
+}
+.sidebar-reset-confirm-actions {
+  display: flex;
+  gap: 6px;
+}
+.sidebar-reset-btn {
+  border: none;
+  border-radius: 5px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.sidebar-reset-btn--danger  { background: rgba(220,38,38,0.75); color: #fff; }
+.sidebar-reset-btn--danger:hover  { opacity: 0.85; }
+.sidebar-reset-btn--cancel  { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); }
+.sidebar-reset-btn--cancel:hover  { background: rgba(255,255,255,0.18); }
+
 /* ─── Main Content ───────────────────────────────────────────────────────── */
 .main-content {
   flex: 1;
@@ -1200,4 +1242,667 @@ pre {
   font-size: 14px;
   line-height: 1.6;
   margin-bottom: 20px;
+}
+
+/* ─── Flow-specific additions (appended) ────────────────────────────────── */
+
+/* Modal overlay */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15,31,61,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+
+.modal {
+  background: var(--color-white);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.18);
+  padding: 32px;
+  max-width: 480px;
+  width: 100%;
+}
+
+.modal-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 20px;
+  color: var(--color-navy-900);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal-body {
+  font-size: 14px;
+  color: var(--color-slate-600);
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+/* OA 3-sub-step navigator */
+.oa-nav {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-200);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 4px;
+  margin-bottom: 20px;
+  width: fit-content;
+}
+
+.oa-nav-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: 7px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-slate-400);
+  cursor: default;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.oa-nav-step--active {
+  background: var(--color-accent);
+  color: var(--color-white);
+}
+
+.oa-nav-step--done {
+  color: var(--color-success);
+}
+
+.oa-nav-step--clickable {
+  cursor: pointer;
+}
+
+.oa-nav-step--clickable:hover {
+  background: var(--color-slate-100);
+  color: var(--color-navy-900);
+}
+
+.oa-nav-arrow {
+  color: var(--color-slate-200);
+  font-size: 16px;
+  padding: 0 2px;
+}
+
+/* SPV Formation checklist */
+.spv-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.spv-item {
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-200);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.spv-item--complete {
+  border-color: rgba(22,163,74,0.35);
+}
+
+.spv-item-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+}
+
+.spv-item-check {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--color-slate-200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.spv-item-check--done {
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: white;
+}
+
+.spv-item-title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-navy-900);
+}
+
+.spv-item-subtitle {
+  font-size: 13px;
+  color: var(--color-slate-600);
+  margin-top: 2px;
+}
+
+.spv-item-timestamp {
+  font-size: 12px;
+  color: var(--color-success);
+  font-style: italic;
+}
+
+.spv-item-form {
+  padding: 16px 20px 20px;
+  border-top: 1px solid var(--color-slate-200);
+  background: var(--color-slate-50);
+}
+
+/* Document viewer with ToC rail */
+.doc-viewer-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.doc-toc {
+  width: 200px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 20px;
+}
+
+.doc-toc-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-slate-400);
+  margin-bottom: 10px;
+}
+
+.doc-toc-link {
+  display: block;
+  font-size: 12.5px;
+  color: var(--color-slate-600);
+  padding: 4px 8px;
+  border-radius: 5px;
+  text-decoration: none;
+  line-height: 1.4;
+  margin-bottom: 2px;
+  transition: background 0.12s, color 0.12s;
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+
+.doc-toc-link:hover {
+  background: var(--color-accent-light);
+  color: var(--color-accent);
+}
+
+.doc-viewer-body {
+  flex: 1;
+  min-width: 0;
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-200);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.doc-viewer-header {
+  background: var(--color-slate-50);
+  border-bottom: 1px solid var(--color-slate-200);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.doc-viewer-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-slate-600);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.doc-viewer-content {
+  padding: 32px 36px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 13.5px;
+  line-height: 1.85;
+  color: #1a1a1a;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+/* Acknowledgment checklist */
+.ack-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  background: var(--color-slate-50);
+  border: 1px solid var(--color-slate-200);
+  border-radius: 8px;
+  margin-top: 20px;
+}
+
+.ack-checklist-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-navy-900);
+  margin-bottom: 4px;
+}
+
+.ack-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.ack-item input[type="checkbox"] {
+  margin-top: 3px;
+  accent-color: var(--color-accent);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ack-item label {
+  font-size: 13.5px;
+  color: var(--color-navy-900);
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+/* DocuSign awaiting state */
+.docusign-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 40px 32px;
+}
+
+.docusign-state-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.docusign-state-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 22px;
+  color: var(--color-navy-900);
+  margin-bottom: 8px;
+}
+
+.docusign-state-body {
+  font-size: 14px;
+  color: var(--color-slate-600);
+  line-height: 1.6;
+  max-width: 400px;
+  margin-bottom: 24px;
+}
+
+/* Two-panel layout */
+.two-panel {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.two-panel-main { flex: 1; min-width: 0; }
+.two-panel-side { width: 300px; flex-shrink: 0; }
+
+/* E-Signature & Wire table status icons */
+.sig-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.sig-status--pending  { color: var(--color-warning); }
+.sig-status--signed   { color: var(--color-success); }
+.sig-status--paid     { color: var(--color-success); }
+.sig-status--none     { color: var(--color-slate-400); }
+.sig-status--declined { color: var(--color-error); }
+
+/* Capital summary card */
+.capital-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.capital-stat {
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-200);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 20px 24px;
+}
+
+.capital-stat-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-slate-600);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.capital-stat-value {
+  font-family: 'DM Serif Display', serif;
+  font-size: 24px;
+  color: var(--color-navy-900);
+}
+
+.capital-stat-sub {
+  font-size: 12px;
+  color: var(--color-slate-600);
+  margin-top: 2px;
+}
+
+/* Cap table final */
+.captable-locked-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 10px 18px;
+  border-radius: 999px;
+}
+
+/* Wire instructions card */
+.wire-card {
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-200);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.wire-card-header {
+  background: var(--color-slate-50);
+  border-bottom: 1px solid var(--color-slate-200);
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.wire-card-body {
+  padding: 20px 24px;
+}
+
+.wire-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-slate-100);
+  font-size: 14px;
+}
+
+.wire-row:last-child { border-bottom: none; }
+.wire-key { font-weight: 600; color: var(--color-slate-600); }
+.wire-val { color: var(--color-navy-900); font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+
+/* Stage gate message */
+.gate-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--color-warning-light);
+  border: 1px solid rgba(217,119,6,0.2);
+  border-left: 3px solid var(--color-warning);
+  border-radius: 8px;
+  font-size: 13.5px;
+  color: #78350f;
+  margin-bottom: 16px;
+}
+
+.gate-message a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  margin-left: 4px;
+}
+
+/* ── Aliases & additions for new views ───────────────────────────────────── */
+
+/* two-panel-aside = alias for two-panel-side */
+.two-panel-aside { width: 320px; flex-shrink: 0; }
+
+/* SPV Formation: item-info wrapper */
+.spv-item-info { flex: 1; min-width: 0; }
+
+/* SPV Formation: done state alias */
+.spv-item--done { border-color: rgba(22,163,74,0.35); }
+
+/* SPV Formation: progress footer */
+.spv-progress-footer {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--color-slate-600);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Info tile — used in SpvFormation right panel */
+.info-tile {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid var(--color-slate-200);
+  border-radius: 8px;
+  background: var(--color-slate-50);
+}
+.info-tile-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.info-tile-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-navy-900);
+  margin-bottom: 2px;
+}
+.info-tile-desc {
+  font-size: 12px;
+  color: var(--color-slate-600);
+  line-height: 1.5;
+}
+
+/* OA sub-step navigator: indicator + label */
+.oa-nav-step-indicator {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.oa-nav-step--active .oa-nav-step-indicator {
+  background: rgba(255,255,255,0.25);
+  border-color: rgba(255,255,255,0.6);
+}
+.oa-nav-step--done .oa-nav-step-indicator {
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: #fff;
+}
+.oa-nav-step-label {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+/* Document ToC link — button variant */
+.doc-toc-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  color: var(--color-slate-600);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  margin-bottom: 2px;
+}
+.doc-toc-item:hover {
+  background: var(--color-slate-100);
+  color: var(--color-navy-900);
+}
+
+/* DocuSign state variants */
+.docusign-state {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 24px;
+  border-radius: 12px;
+  border: 1px solid var(--color-slate-200);
+}
+.docusign-state--signed {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+.docusign-state--pending {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+.docusign-state-icon {
+  font-size: 32px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.docusign-state-icon--pending { font-size: 28px; }
+.docusign-state-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 18px;
+  color: var(--color-navy-900);
+  margin-bottom: 6px;
+}
+.docusign-state-meta {
+  font-size: 13px;
+  color: var(--color-slate-600);
+  line-height: 1.6;
+}
+
+/* Review summary grid (OA generate step) */
+.review-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.review-summary-item {
+  background: var(--color-slate-50);
+  border: 1px solid var(--color-slate-200);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.review-summary-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-slate-500);
+  margin-bottom: 4px;
+}
+.review-summary-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-navy-900);
+}
+
+/* Capital summary: color variants */
+.capital-stat--positive .capital-stat-value { color: var(--color-success); }
+.capital-stat--warning  .capital-stat-value { color: var(--color-warning); }
+
+/* Wire row label/value (alias for wire-key/wire-val) */
+.wire-row-label {
+  font-weight: 600;
+  color: var(--color-slate-600);
+  font-size: 14px;
+}
+.wire-row-value {
+  color: var(--color-navy-900);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+/* Capital summary: auto-fit for 4-column layouts */
+.capital-summary {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+/* captable-locked-badge: block-level display */
+.captable-locked-badge {
+  display: flex;
+  width: fit-content;
+  margin-bottom: 20px;
+}
+
+/* data-table tfoot */
+.data-table tfoot td {
+  border-top: 2px solid var(--color-slate-300);
+  font-size: 14px;
+}
+
+@media (max-width: 900px) {
+  .two-panel { flex-direction: column; }
+  .two-panel-side, .two-panel-aside { width: 100%; }
+  .capital-summary { grid-template-columns: 1fr 1fr; }
+  .doc-viewer-layout { flex-direction: column; }
+  .doc-toc { width: 100%; position: static; }
 }
