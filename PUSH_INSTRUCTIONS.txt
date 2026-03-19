@@ -1,0 +1,6 @@
+# Commands to create GitHub repo and push
+# 1) Create repo on GitHub: https://github.com/new (name: equityForm)
+# 2) Add remote and push:
+#    git remote add origin https://github.com/<your-username>/equityForm.git
+#    git branch -M main
+#    git push -u origin main
