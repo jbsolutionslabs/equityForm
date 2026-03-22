@@ -387,7 +387,7 @@ export const OperatingAgreement: React.FC = () => {
         </div>
       )}
 
-      <HelpCard text="Questions about the Operating Agreement terms or DocuSign integration? Our legal team reviews every agreement — reach out anytime." />
+      <HelpCard text="Questions about this step? Reach out anytime." />
     </div>
   )
 }
