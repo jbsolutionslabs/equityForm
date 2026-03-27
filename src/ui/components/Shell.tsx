@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAppStore, isSpvFormed, canSendSubAgreements } from '../../state/store'
 
 type StageConfig = {
@@ -66,11 +66,27 @@ const STAGES: StageConfig[] = [
   },
 ]
 
+const LEGAL_ROUTES  = STAGES.map((s) => s.to)
+const isLegalRoute  = (path: string) => LEGAL_ROUTES.includes(path) || path === '/'
+const isAcctRoute   = (path: string) => path.startsWith('/accounting')
+
 export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
-  const loc   = useLocation()
-  const data  = useAppStore((s) => s.data)
-  const reset = useAppStore((s) => s.reset)
+  const loc      = useLocation()
+  const navigate = useNavigate()
+  const data     = useAppStore((s) => s.data)
+  const reset    = useAppStore((s) => s.reset)
   const [confirmReset, setConfirmReset] = useState(false)
+
+  // Derive open module from current route — route is the source of truth
+  const openModule: 'legal' | 'accounting' = isAcctRoute(loc.pathname) ? 'accounting' : 'legal'
+
+  const handleModuleClick = (module: 'legal' | 'accounting') => {
+    if (module === openModule) return   // already open, do nothing
+    navigate(module === 'accounting' ? '/accounting' : '/deal')
+  }
+
+  // Legal completion summary for the module header badge
+  const legalDoneCount = STAGES.filter((s) => s.done(data)).length
 
   return (
     <div className="app-root">
@@ -84,39 +100,113 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
           <p className="sidebar-tagline">Guided deal setup</p>
         </div>
 
-        <nav className="sidebar-nav" aria-label="Stages">
-          {STAGES.map((s) => {
-            const active  = loc.pathname === s.to
-            const isDone  = s.done(data) && !active
-            const indicatorClass = isDone
-              ? 'sidebar-step-indicator--done'
-              : active
-              ? 'sidebar-step-indicator--active'
-              : 'sidebar-step-indicator--accessible'
+        <nav className="sidebar-nav" aria-label="Modules">
 
-            return (
+          {/* ══ Legal module ══ */}
+          <button
+            type="button"
+            className={[
+              'sidebar-module-header',
+              openModule === 'legal' ? 'sidebar-module-header--open' : '',
+            ].filter(Boolean).join(' ')}
+            onClick={() => handleModuleClick('legal')}
+            aria-expanded={openModule === 'legal'}
+          >
+            <div className="sidebar-module-icon" aria-hidden="true">⚖</div>
+            <div className="sidebar-module-text">
+              <span className="sidebar-module-title">Legal</span>
+              <span className="sidebar-module-subtitle">Deal setup &amp; formation</span>
+            </div>
+            <div className="sidebar-module-meta">
+              {legalDoneCount > 0 && (
+                <span className="sidebar-module-count">{legalDoneCount}/7</span>
+              )}
+              <span className="sidebar-module-chevron" aria-hidden="true">
+                {openModule === 'legal' ? '▾' : '▸'}
+              </span>
+            </div>
+          </button>
+
+          {openModule === 'legal' && (
+            <div className="sidebar-module-steps" aria-label="Legal steps">
+              {STAGES.map((s) => {
+                const active  = loc.pathname === s.to
+                const isDone  = s.done(data) && !active
+                const indicatorClass = isDone
+                  ? 'sidebar-step-indicator--done'
+                  : active
+                  ? 'sidebar-step-indicator--active'
+                  : 'sidebar-step-indicator--accessible'
+
+                return (
+                  <Link
+                    key={s.to}
+                    to={s.to}
+                    className={[
+                      'sidebar-step',
+                      active ? 'sidebar-step--active' : '',
+                    ].filter(Boolean).join(' ')}
+                    aria-current={active ? 'step' : undefined}
+                  >
+                    <div className={`sidebar-step-indicator ${indicatorClass}`} aria-hidden="true">
+                      {isDone ? '✓' : s.step}
+                    </div>
+                    <div className="sidebar-step-text">
+                      <span className="sidebar-step-title">{s.title}</span>
+                      <span className="sidebar-step-subtitle">{s.subtitle}</span>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+
+          {/* ══ Accounting module ══ */}
+          <button
+            type="button"
+            className={[
+              'sidebar-module-header',
+              openModule === 'accounting' ? 'sidebar-module-header--open' : '',
+            ].filter(Boolean).join(' ')}
+            onClick={() => handleModuleClick('accounting')}
+            aria-expanded={openModule === 'accounting'}
+          >
+            <div className="sidebar-module-icon" aria-hidden="true">$</div>
+            <div className="sidebar-module-text">
+              <span className="sidebar-module-title">Accounting</span>
+              <span className="sidebar-module-subtitle">Monthly financials &amp; statements</span>
+            </div>
+            <div className="sidebar-module-meta">
+              <span className="sidebar-module-chevron" aria-hidden="true">
+                {openModule === 'accounting' ? '▾' : '▸'}
+              </span>
+            </div>
+          </button>
+
+          {openModule === 'accounting' && (
+            <div className="sidebar-module-steps" aria-label="Accounting steps">
               <Link
-                key={s.to}
-                to={s.to}
+                to="/accounting"
                 className={[
                   'sidebar-step',
-                  active ? 'sidebar-step--active' : '',
+                  loc.pathname.startsWith('/accounting') ? 'sidebar-step--active' : '',
                 ].filter(Boolean).join(' ')}
-                aria-current={active ? 'step' : undefined}
+                aria-current={loc.pathname.startsWith('/accounting') ? 'step' : undefined}
               >
                 <div
-                  className={`sidebar-step-indicator ${indicatorClass}`}
+                  className={`sidebar-step-indicator ${loc.pathname.startsWith('/accounting') ? 'sidebar-step-indicator--active' : 'sidebar-step-indicator--accessible'}`}
                   aria-hidden="true"
                 >
-                  {isDone ? '✓' : s.step}
+                  1
                 </div>
                 <div className="sidebar-step-text">
-                  <span className="sidebar-step-title">{s.title}</span>
-                  <span className="sidebar-step-subtitle">{s.subtitle}</span>
+                  <span className="sidebar-step-title">Properties</span>
+                  <span className="sidebar-step-subtitle">P&amp;L entry &amp; statements</span>
                 </div>
               </Link>
-            )
-          })}
+            </div>
+          )}
+
         </nav>
 
         <div className="sidebar-footer">
