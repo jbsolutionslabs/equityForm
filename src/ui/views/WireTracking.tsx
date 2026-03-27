@@ -105,7 +105,7 @@ export const WireTracking: React.FC = () => {
       <div className="capital-summary" style={{ marginBottom: 24 }}>
         <div className="capital-stat">
           <div className="capital-stat-value">${totalCommitted.toLocaleString()}</div>
-          <div className="capital-stat-label">Total committed</div>
+          <div className="capital-stat-label">Target Amount</div>
         </div>
         <div className="capital-stat capital-stat--positive">
           <div className="capital-stat-value">${totalReceived.toLocaleString()}</div>
@@ -113,7 +113,7 @@ export const WireTracking: React.FC = () => {
         </div>
         <div className="capital-stat capital-stat--warning">
           <div className="capital-stat-value">${totalAwaiting.toLocaleString()}</div>
-          <div className="capital-stat-label">Awaiting</div>
+          <div className="capital-stat-label">Remaining Balance</div>
         </div>
         <div className="capital-stat">
           <div className="capital-stat-value">
