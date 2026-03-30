@@ -1979,8 +1979,20 @@ pre {
 
 /* data-table tfoot */
 .data-table tfoot td {
+  padding: 12px; /* match tbody cells */
   border-top: 2px solid var(--color-slate-300);
   font-size: 14px;
+  vertical-align: middle;
+}
+.data-table tfoot td:first-child {
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.data-table tfoot td:nth-child(3),
+.data-table tfoot td:nth-child(4),
+.data-table tfoot td:nth-child(5) {
+  text-align: right;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
