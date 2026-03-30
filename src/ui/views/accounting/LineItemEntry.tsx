@@ -21,6 +21,9 @@ import type {
   WorkingCapitalAdjustments,
   DistributionEntry,
 } from '../../../state/accountingTypes'
+import { SpreadsheetImportModal } from '../../components/SpreadsheetImportModal'
+import type { MultiMonthImportResult } from '../../../server/types/importTypes'
+import { applyImportedValues, type EntryDraft } from './applyImportedValues'
 
 type Props = {
   property: AccountingProperty
@@ -102,6 +105,7 @@ export const LineItemEntry: React.FC<Props> = ({
   const [tab, setTab] = useState<Tab>('pnl')
   const [saving, setSaving] = useState(false)
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
+  const [showImportModal, setShowImportModal] = useState(false)
 
   // Build initial state from existing entry or defaults
   const buildInitial = (): Omit<MonthlyEntry, 'id' | 'createdAt' | 'updatedAt'> => {
@@ -157,6 +161,39 @@ export const LineItemEntry: React.FC<Props> = ({
   const patchDist = (key: keyof DistributionEntry, val: number | boolean | string) =>
     setEntry((e) => ({ ...e, distributions: { ...e.distributions, [key]: val } }))
 
+  const applyImportResults = (result: MultiMonthImportResult) => {
+    const months = Object.keys(result.months)
+
+    if (!months.length) {
+      notify('No imported months were available to apply.', 'error')
+      return
+    }
+
+    let updatedCurrent: EntryDraft | null = null
+
+    months.forEach((monthKey) => {
+      const existing = getEntry(property.id, monthKey)
+      const baseEntry: EntryDraft = existing
+        ? (() => {
+          const { createdAt, updatedAt, ...rest } = existing
+          return { ...rest }
+        })()
+        : buildDefaultEntry(property, monthKey)
+
+      const updated = applyImportedValues(baseEntry, property, result.months[monthKey])
+      if (monthKey === period) {
+        updatedCurrent = updated
+      }
+      upsertEntry(updated)
+    })
+
+    if (updatedCurrent) {
+      setEntry(updatedCurrent)
+    }
+
+    notify(`Imported values applied to ${months.length} month${months.length > 1 ? 's' : ''}.`)
+  }
+
   const handleSave = () => {
     setSaving(true)
     try {
@@ -204,6 +241,13 @@ export const LineItemEntry: React.FC<Props> = ({
           Enter {mf ? 'multifamily (NMHC/NAA)' : 'hotel (USALI 11th Ed.)'} P&L line items.
           Below-the-line items are auto-calculated from property setup — override if needed.
         </p>
+        {!readOnly && (
+          <div style={{ marginTop: 16 }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setShowImportModal(true)}>
+              Import from Spreadsheet
+            </button>
+          </div>
+        )}
       </div>
 
       {notification && (
@@ -569,6 +613,16 @@ export const LineItemEntry: React.FC<Props> = ({
           </div>
         )}
       </div>
+
+      {!readOnly && (
+        <SpreadsheetImportModal
+          open={showImportModal}
+          assetClass={property.assetClass}
+          period={period}
+          onClose={() => setShowImportModal(false)}
+          onApply={applyImportResults}
+        />
+      )}
     </div>
   )
 }
