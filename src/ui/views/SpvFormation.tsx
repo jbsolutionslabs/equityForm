@@ -145,7 +145,7 @@ export const SpvFormation: React.FC = () => {
               <div className="spv-item-form">
                 <div className="form-row">
                   <div className="field-group">
-                    <label className="field-label" htmlFor="llc-cert">Certificate / filing number</label>
+                    <label className="field-label" htmlFor="llc-cert">Certificate / Filing Number</label>
                     <input
                       id="llc-cert"
                       className="field-input"
@@ -155,7 +155,7 @@ export const SpvFormation: React.FC = () => {
                     />
                   </div>
                   <div className="field-group">
-                    <label className="field-label" htmlFor="llc-date">Date filed</label>
+                    <label className="field-label" htmlFor="llc-date">Date Filed</label>
                     <input
                       id="llc-date"
                       type="date"
@@ -248,7 +248,7 @@ export const SpvFormation: React.FC = () => {
             {items.registeredAgent.open && !spvFormation.registeredAgent.complete && (
               <div className="spv-item-form">
                 <div className="field-group">
-                  <label className="field-label" htmlFor="agent-name">Registered agent name</label>
+                  <label className="field-label" htmlFor="agent-name">Registered Agent Name</label>
                   <input
                     id="agent-name"
                     className="field-input"
@@ -258,7 +258,7 @@ export const SpvFormation: React.FC = () => {
                   />
                 </div>
                 <div className="field-group">
-                  <label className="field-label" htmlFor="agent-address">Registered agent address</label>
+                  <label className="field-label" htmlFor="agent-address">Registered Agent Address</label>
                   <input
                     id="agent-address"
                     className="field-input"
@@ -288,7 +288,7 @@ export const SpvFormation: React.FC = () => {
         {/* ── Right: Info panel ── */}
         <div className="two-panel-aside">
           <div className="card">
-            <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: 16 }}>Keep working while you wait</h3>
+            <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: 16 }}>Keep Working While You Wait</h3>
             <p style={{ fontSize: 14, color: 'var(--color-slate-600)', marginBottom: 16 }}>
               Government processing can take days. You don't have to stop — come back to mark
               each task complete as you receive confirmations.
@@ -319,7 +319,7 @@ export const SpvFormation: React.FC = () => {
           </div>
 
           <div className="card" style={{ marginTop: 16 }}>
-            <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: 16 }}>What's next?</h3>
+            <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: 16 }}>What's Next?</h3>
             <p style={{ fontSize: 14, color: 'var(--color-slate-600)' }}>
               Once all 3 tasks are complete, proceed to Stage 3 to generate and sign the
               Operating Agreement with your GP.

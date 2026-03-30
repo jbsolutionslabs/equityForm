@@ -340,12 +340,12 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
           </div>
         </div>
 
-        <div className="property-setup-divider">Financial details</div>
+        <div className="property-setup-divider">Financial Details</div>
 
         {/* ── Core 4 fields ── */}
         <div className="property-setup-grid">
           <div className="field-group">
-            <label className="field-label">Purchase price</label>
+            <label className="field-label">Purchase Price</label>
             <div className="input-with-adornment">
               <span className="field-adornment">$</span>
               <CurrencyInput
@@ -357,7 +357,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
           </div>
 
           <div className="field-group">
-            <label className="field-label">Mortgage balance at closing</label>
+            <label className="field-label">Mortgage Balance At Closing</label>
             <div className="input-with-adornment">
               <span className="field-adornment">$</span>
               <CurrencyInput
@@ -369,7 +369,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
           </div>
 
           <div className="field-group">
-            <label className="field-label">Initial equity contributed</label>
+            <label className="field-label">Initial Equity Contributed</label>
             <div className="input-with-adornment">
               <span className="field-adornment">$</span>
               <CurrencyInput
@@ -381,7 +381,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
           </div>
 
           <div className="field-group">
-            <label className="field-label">Acquisition date *</label>
+            <label className="field-label">Acquisition Date *</label>
             <input
               type="date"
               className={`field-input ${errors.acquisitionDate ? 'field-input--error' : ''}`}
@@ -392,12 +392,12 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
           </div>
         </div>
 
-        <div className="property-setup-divider">LP distribution</div>
+        <div className="property-setup-divider">LP Distribution</div>
 
         {/* ── LP pref fields ── */}
         <div className="property-setup-grid">
           <div className="field-group">
-            <label className="field-label">LP equity invested *</label>
+            <label className="field-label">LP Equity Invested *</label>
             <div className="input-with-adornment">
               <span className="field-adornment">$</span>
               <CurrencyInput
@@ -410,7 +410,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
           </div>
 
           <div className="field-group">
-            <label className="field-label">Annual LP preferred return</label>
+            <label className="field-label">Annual LP Preferred Return</label>
             <div className="input-with-adornment">
               <input
                 type="number"
@@ -448,10 +448,10 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
         {showAdvanced && (
           <div className="advanced-section">
 
-            <div className="property-setup-divider">Property details</div>
+            <div className="property-setup-divider">Property Details</div>
             <div className="property-setup-grid">
               <div className="field-group">
-                <label className="field-label">Street address</label>
+                <label className="field-label">Street Address</label>
                 <input type="text" className="field-input" value={adv.address} onChange={(e) => patchAdv('address', e.target.value)} />
               </div>
               <div className="field-group">
@@ -469,11 +469,11 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                 <input type="text" className="field-input" placeholder="XX-XXXXXXX" value={adv.ein} onChange={(e) => patchAdv('ein', e.target.value)} />
               </div>
               <div className="field-group">
-                <label className="field-label">Tax year</label>
+                <label className="field-label">Tax Year</label>
                 <input type="number" className="field-input" value={adv.taxYear} onChange={(e) => patchAdv('taxYear', parseInt(e.target.value) || new Date().getFullYear())} />
               </div>
               <div className="field-group">
-                <label className="field-label">Accounting method</label>
+                <label className="field-label">Accounting Method</label>
                 <div className="toggle-group">
                   {(['Accrual', 'Cash'] as const).map((m) => (
                     <button key={m} type="button"
@@ -484,10 +484,10 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
               </div>
             </div>
 
-            <div className="property-setup-divider">Debt structure</div>
+            <div className="property-setup-divider">Debt Structure</div>
             <div className="property-setup-grid">
               <div className="field-group">
-                <label className="field-label">Annual interest rate</label>
+                <label className="field-label">Annual Interest Rate</label>
                 <div className="input-with-adornment">
                   <input type="number" className="field-input" step={0.125} value={adv.annualInterestRate * 100 || ''} onChange={(e) => patchAdv('annualInterestRate', (parseFloat(e.target.value) || 0) / 100)} />
                   <span className="field-adornment">%</span>
@@ -501,14 +501,14 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                 </div>
               </div>
               <div className="field-group">
-                <label className="field-label">Loan term (maturity)</label>
+                <label className="field-label">Loan Term (Maturity)</label>
                 <div className="input-with-adornment">
                   <input type="number" className="field-input" value={adv.loanTermYears || ''} onChange={(e) => patchAdv('loanTermYears', parseFloat(e.target.value) || 5)} />
                   <span className="field-adornment">yrs</span>
                 </div>
               </div>
               <div className="field-group">
-                <label className="field-label">First payment month</label>
+                <label className="field-label">First Payment Month</label>
                 <input type="month" className="field-input" value={adv.loanStartDate} onChange={(e) => patchAdv('loanStartDate', e.target.value)} />
               </div>
             </div>
@@ -516,7 +516,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
             <div className="property-setup-divider">Depreciation</div>
             <div className="property-setup-grid">
               <div className="field-group">
-                <label className="field-label">Depreciable building basis</label>
+                <label className="field-label">Depreciable Building Basis</label>
                 <div className="input-with-adornment">
                   <span className="field-adornment">$</span>
                   <CurrencyInput className="field-input" value={adv.depreciableBuilding} onChange={(v) => patchAdv('depreciableBuilding', v)} />
@@ -524,7 +524,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                 <div className="field-hint">Leave 0 to auto-derive as 85% of purchase price</div>
               </div>
               <div className="field-group">
-                <label className="field-label">Useful life</label>
+                <label className="field-label">Useful Life</label>
                 <div className="input-with-adornment">
                   <input type="number" className="field-input" step={0.5} value={adv.depreciationLifeYears || ''} onChange={(e) => patchAdv('depreciationLifeYears', parseFloat(e.target.value) || 27.5)} />
                   <span className="field-adornment">yrs</span>
@@ -532,7 +532,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                 <div className="field-hint">27.5 residential / 39 commercial</div>
               </div>
               <div className="field-group">
-                <label className="field-label">Accumulated depreciation (BOY)</label>
+                <label className="field-label">Accumulated Depreciation (BOY)</label>
                 <div className="input-with-adornment">
                   <span className="field-adornment">$</span>
                   <CurrencyInput className="field-input" value={adv.accumulatedDepreciationBOY} onChange={(v) => patchAdv('accumulatedDepreciationBOY', v)} />
@@ -540,7 +540,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                 <div className="field-hint">0 if starting from acquisition year</div>
               </div>
               <div className="field-group">
-                <label className="field-label">Deferred financing costs</label>
+                <label className="field-label">Deferred Financing Costs</label>
                 <div className="input-with-adornment">
                   <span className="field-adornment">$</span>
                   <CurrencyInput className="field-input" value={adv.deferredFinancingCosts} onChange={(v) => patchAdv('deferredFinancingCosts', v)} />
@@ -548,24 +548,24 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
               </div>
             </div>
 
-            <div className="property-setup-divider">GP waterfall</div>
+            <div className="property-setup-divider">GP Waterfall</div>
             <div className="property-setup-grid">
               <div className="field-group">
-                <label className="field-label">GP co-invest equity</label>
+                <label className="field-label">GP Co-Invest Equity</label>
                 <div className="input-with-adornment">
                   <span className="field-adornment">$</span>
                   <CurrencyInput className="field-input" value={adv.gpEquity} onChange={(v) => patchAdv('gpEquity', v)} />
                 </div>
               </div>
               <div className="field-group">
-                <label className="field-label">GP ownership %</label>
+                <label className="field-label">GP Ownership %</label>
                 <div className="input-with-adornment">
                   <input type="number" className="field-input" step={0.1} value={(adv.gpOwnershipPct * 100) || ''} onChange={(e) => patchAdv('gpOwnershipPct', (parseFloat(e.target.value) || 0) / 100)} />
                   <span className="field-adornment">%</span>
                 </div>
               </div>
               <div className="field-group">
-                <label className="field-label">GP promote %</label>
+                <label className="field-label">GP Promote %</label>
                 <div className="input-with-adornment">
                   <input type="number" className="field-input" step={1} value={(adv.gpPromotePct * 100) || ''} onChange={(e) => patchAdv('gpPromotePct', (parseFloat(e.target.value) || 0) / 100)} />
                   <span className="field-adornment">%</span>
@@ -603,17 +603,17 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
               ))}
             </div>
 
-            <div className="property-setup-divider">Monthly defaults</div>
+            <div className="property-setup-divider">Monthly Defaults</div>
             <div className="property-setup-grid">
               <div className="field-group">
-                <label className="field-label">Default monthly CapEx</label>
+                <label className="field-label">Default Monthly CapEx</label>
                 <div className="input-with-adornment">
                   <span className="field-adornment">$</span>
                   <CurrencyInput className="field-input" value={adv.monthlyCapExDefault} onChange={(v) => patchAdv('monthlyCapExDefault', v)} />
                 </div>
               </div>
               <div className="field-group">
-                <label className="field-label">Default replacement reserve</label>
+                <label className="field-label">Default Replacement Reserve</label>
                 <div className="input-with-adornment">
                   <span className="field-adornment">$</span>
                   <CurrencyInput className="field-input" value={adv.monthlyReserveDefault} onChange={(v) => patchAdv('monthlyReserveDefault', v)} />

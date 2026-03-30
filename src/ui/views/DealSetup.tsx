@@ -144,7 +144,7 @@ export const DealSetup: React.FC = () => {
           {/* ── Step 1: Entity identity ── */}
           <Step>
             <div className="form-section">
-              <div className="form-section-title">Name your entity.</div>
+              <div className="form-section-title">Name Your Entity.</div>
               <p className="form-section-desc">
                 This is the legal name of the LLC that will hold the investment. It will appear on all
                 operating documents, investor agreements, and tax filings.
@@ -197,7 +197,7 @@ export const DealSetup: React.FC = () => {
 
               <div className="field-group">
                 <div className="field-label-row">
-                  <label className="field-label" htmlFor="effectiveDate">Effective date</label>
+                  <label className="field-label" htmlFor="effectiveDate">Effective Date</label>
                 </div>
                 <FieldHelp text="The date the LLC agreement becomes effective. Leave blank to use today's date." />
                 <input
@@ -214,7 +214,7 @@ export const DealSetup: React.FC = () => {
           {/* ── Step 2: Formation & registration ── */}
           <Step>
             <div className="form-section">
-              <div className="form-section-title">Where is this entity registered?</div>
+              <div className="form-section-title">Where Is This Entity Registered?</div>
               <p className="form-section-desc">
                 Most SPVs are formed in Delaware for its flexible management structure and
                 well-developed case law. Consult your attorney if you're considering another state.
@@ -230,7 +230,7 @@ export const DealSetup: React.FC = () => {
               </div>
 
               <div className="field-group">
-                <label className="field-label" htmlFor="formationState">Formation state</label>
+                <label className="field-label" htmlFor="formationState">Formation State</label>
                 <FieldHelp text="The state where your LLC is legally formed. Delaware is the most common choice for investment SPVs." />
                 <input
                   id="formationState"
@@ -241,7 +241,7 @@ export const DealSetup: React.FC = () => {
               </div>
 
               <div className="field-group">
-                <label className="field-label" htmlFor="registeredAgentName">Registered agent name</label>
+                <label className="field-label" htmlFor="registeredAgentName">Registered Agent Name</label>
                 <FieldHelp text="The registered agent receives legal and government notices on behalf of your LLC. Required in all states." />
                 <input
                   id="registeredAgentName"
@@ -252,7 +252,7 @@ export const DealSetup: React.FC = () => {
               </div>
 
               <div className="field-group">
-                <label className="field-label" htmlFor="registeredAgentAddress">Registered agent address</label>
+                <label className="field-label" htmlFor="registeredAgentAddress">Registered Agent Address</label>
                 <FieldHelp text="The official address where the registered agent can receive service of process." />
                 <input
                   id="registeredAgentAddress"
@@ -263,7 +263,7 @@ export const DealSetup: React.FC = () => {
               </div>
 
               <div className="field-group">
-                <label className="field-label" htmlFor="principalAddress">Principal office address</label>
+                <label className="field-label" htmlFor="principalAddress">Principal Office Address</label>
                 <FieldHelp text="The main business address of the LLC — typically where the GP manages the deal." />
                 <input
                   id="principalAddress"
@@ -278,14 +278,14 @@ export const DealSetup: React.FC = () => {
           {/* ── Step 3: Property details ── */}
           <Step>
             <div className="form-section">
-              <div className="form-section-title">Tell us about the property.</div>
+              <div className="form-section-title">Tell Us About The Property.</div>
               <p className="form-section-desc">
                 The investment property details will appear in the Operating Agreement, subscription
                 agreements, and cap table documents.
               </p>
 
               <div className="field-group">
-                <label className="field-label" htmlFor="propertyAddress">Property street address</label>
+                <label className="field-label" htmlFor="propertyAddress">Property Street Address</label>
                 <FieldHelp text="The street address of the investment property as it appears in legal records." />
                 <input
                   id="propertyAddress"
@@ -328,7 +328,7 @@ export const DealSetup: React.FC = () => {
 
               <div className="field-group">
                 <div className="field-label-row">
-                  <label className="field-label" htmlFor="propertyLegalDescription">Legal description</label>
+                  <label className="field-label" htmlFor="propertyLegalDescription">Legal Description</label>
                   <Tooltip
                     title="Property legal description"
                     content="The formal legal description from the county records or title report. You can find this on the deed or title commitment. It may be long — that's expected."
@@ -345,7 +345,7 @@ export const DealSetup: React.FC = () => {
               </div>
 
               <div className="field-group">
-                <label className="field-label" htmlFor="dealPurpose">Deal purpose</label>
+                <label className="field-label" htmlFor="dealPurpose">Deal Purpose</label>
                 <FieldHelp text="A short description of the investment strategy — e.g. 'Acquire and renovate a 12-unit multifamily property in San Francisco, CA for long-term hold.'" />
                 <textarea
                   id="dealPurpose"
@@ -361,7 +361,7 @@ export const DealSetup: React.FC = () => {
           {/* ── Step 4: Managing partner / GP ── */}
           <Step>
             <div className="form-section">
-              <div className="form-section-title">Who manages this deal?</div>
+              <div className="form-section-title">Who Manages This Deal?</div>
               <p className="form-section-desc">
                 The General Partner (GP) is the managing entity responsible for the investment.
                 Their details will appear throughout all legal documents.
@@ -369,7 +369,7 @@ export const DealSetup: React.FC = () => {
 
               <div className="form-row">
                 <div className="field-group">
-                  <label className="field-label" htmlFor="gpEntityName">GP entity legal name</label>
+                  <label className="field-label" htmlFor="gpEntityName">GP Entity Legal Name</label>
                   <FieldHelp text="The LLC or company that acts as managing member." />
                   <input
                     id="gpEntityName"
@@ -379,7 +379,7 @@ export const DealSetup: React.FC = () => {
                   />
                 </div>
                 <div className="field-group">
-                  <label className="field-label" htmlFor="gpEntityState">GP entity state</label>
+                  <label className="field-label" htmlFor="gpEntityState">GP Entity State</label>
                   <input
                     id="gpEntityState"
                     className="field-input"
@@ -391,7 +391,7 @@ export const DealSetup: React.FC = () => {
 
               <div className="form-row">
                 <div className="field-group">
-                  <label className="field-label" htmlFor="gpSignerName">GP signer name</label>
+                  <label className="field-label" htmlFor="gpSignerName">GP Signer Name</label>
                   <FieldHelp text="The individual authorised to sign on behalf of the GP entity." />
                   <input
                     id="gpSignerName"
@@ -401,7 +401,7 @@ export const DealSetup: React.FC = () => {
                   />
                 </div>
                 <div className="field-group">
-                  <label className="field-label" htmlFor="gpSignerTitle">GP signer title</label>
+                  <label className="field-label" htmlFor="gpSignerTitle">GP Signer Title</label>
                   <input
                     id="gpSignerTitle"
                     className="field-input"
@@ -416,7 +416,7 @@ export const DealSetup: React.FC = () => {
           {/* ── Step 5: Save & form SPV ── */}
           <Step>
             <div className="form-section">
-              <div className="form-section-title">Ready to form your SPV.</div>
+              <div className="form-section-title">Ready To Form Your SPV.</div>
               <p className="form-section-desc">
                 Save your progress or simulate SPV formation. Once formed, you can configure
                 the offering economics in the next step.

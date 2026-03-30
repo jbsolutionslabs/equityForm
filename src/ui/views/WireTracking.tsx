@@ -110,7 +110,7 @@ export const WireTracking: React.FC = () => {
         </div>
         <div className="capital-stat capital-stat--positive">
           <div className="capital-stat-value">${totalReceived.toLocaleString()}</div>
-          <div className="capital-stat-label">Total received</div>
+          <div className="capital-stat-label">Total Received</div>
         </div>
         <div className="capital-stat capital-stat--warning">
           <div className="capital-stat-value">${totalAwaiting.toLocaleString()}</div>
@@ -120,7 +120,7 @@ export const WireTracking: React.FC = () => {
           <div className="capital-stat-value">
             {totalCommitted > 0 ? Math.round((totalReceived / totalCommitted) * 100) : 0}%
           </div>
-          <div className="capital-stat-label">Capital in</div>
+          <div className="capital-stat-label">Capital In</div>
         </div>
       </div>
 
@@ -231,7 +231,7 @@ export const WireTracking: React.FC = () => {
             </div>
             <div className="modal-body">
               <div className="field-group">
-                <label className="field-label" htmlFor="wire-conf-num">Wire confirmation number <span className="field-required">*</span></label>
+                <label className="field-label" htmlFor="wire-conf-num">Wire Confirmation Number <span className="field-required">*</span></label>
                 <input
                   id="wire-conf-num"
                   className="field-input"
@@ -243,7 +243,7 @@ export const WireTracking: React.FC = () => {
               </div>
               <div className="form-row">
                 <div className="field-group">
-                  <label className="field-label" htmlFor="wire-amount">Amount received ($)</label>
+                  <label className="field-label" htmlFor="wire-amount">Amount Received ($)</label>
                   <CurrencyInput
                     id="wire-amount"
                     className="field-input"
@@ -253,7 +253,7 @@ export const WireTracking: React.FC = () => {
                   />
                 </div>
                 <div className="field-group">
-                  <label className="field-label" htmlFor="wire-date">Date received</label>
+                  <label className="field-label" htmlFor="wire-date">Date Received</label>
                   <input
                     id="wire-date"
                     type="date"

@@ -73,7 +73,7 @@ function InvestorsTable({ investors, subscriptions }: {
             <th style={{ textAlign: 'right' }}>Subscription</th>
             <th style={{ textAlign: 'right' }}>Units</th>
             <th style={{ textAlign: 'right' }}>Ownership</th>
-            <th>Sub status</th>
+            <th>Sub Status</th>
           </tr>
         </thead>
         <tbody>
@@ -220,7 +220,7 @@ export const Review: React.FC = () => {
       <div className="actions-bar--primary">
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-navy-900)', marginBottom: 4 }}>
-            Document actions
+            Document Actions
           </div>
           <div style={{ fontSize: 12.5, color: 'var(--color-slate-600)' }}>
             Complete these steps in order: Generate → GP Sign → Download → Lock Cap Table
@@ -305,13 +305,13 @@ export const Review: React.FC = () => {
 
           {/* Deal summary */}
           <SummaryCard
-            title="Deal entity"
+            title="Deal Entity"
             rows={[
-              ['Entity name',        fmtVal(data.deal.entityName)],
-              ['Formation state',    fmtVal(data.deal.formationState)],
+              ['Entity Name',        fmtVal(data.deal.entityName)],
+              ['Formation State',    fmtVal(data.deal.formationState)],
               ['EIN',               fmtVal(data.deal.ein)],
-              ['Principal address', fmtVal(data.deal.principalAddress)],
-              ['Effective date',    fmtVal(data.deal.effectiveDate)],
+              ['Principal Address', fmtVal(data.deal.principalAddress)],
+              ['Effective Date',    fmtVal(data.deal.effectiveDate)],
               ['Registered agent',  fmtVal(data.deal.registeredAgentName)],
               ['GP entity',        fmtVal(data.deal.gpEntityName)],
               ['GP signer',        fmtVal(data.deal.gpSignerName) + (data.deal.gpSignerTitle ? `, ${data.deal.gpSignerTitle}` : '')],
@@ -320,7 +320,7 @@ export const Review: React.FC = () => {
 
           {/* Property summary */}
           <SummaryCard
-            title="Investment property"
+            title="Investment Property"
             rows={[
               ['Address',  fmtVal(data.deal.propertyAddress)],
               ['City',     fmtVal(data.deal.propertyCity)],
@@ -332,7 +332,7 @@ export const Review: React.FC = () => {
 
           {/* Offering summary */}
           <SummaryCard
-            title="Offering economics"
+            title="Offering Economics"
             rows={[
               ['Exemption',          fmtVal(data.offering.offeringExemption)],
               ['Minimum investment', fmtCurrency(data.offering.minimumInvestment)],

@@ -253,12 +253,12 @@ export const Investors: React.FC = () => {
                 <div className="investor-card-body">
                   {/* Identity */}
                   <div className="form-section-title" style={{ fontSize: 15, marginBottom: 12, marginTop: 4 }}>
-                    Identity &amp; type
+                    Identity &amp; Type
                   </div>
                   <div className="form-row">
                     <div className="field-group">
                       <label className="field-label" htmlFor={`investor-name-${idx}`}>
-                        Full legal name <span className="field-required">*</span>
+                        Full Legal Name <span className="field-required">*</span>
                       </label>
                       <FieldHelp text="As it should appear on the subscription agreement and all documents." />
                       <input
@@ -269,7 +269,7 @@ export const Investors: React.FC = () => {
                       />
                     </div>
                     <div className="field-group">
-                      <label className="field-label" htmlFor={`investor-type-${idx}`}>Subscriber type</label>
+                      <label className="field-label" htmlFor={`investor-type-${idx}`}>Subscriber Type</label>
                       <FieldHelp text="Is this investor a person or a legal entity?" />
                       <select
                         id={`investor-type-${idx}`}
@@ -286,7 +286,7 @@ export const Investors: React.FC = () => {
                     <>
                       <div className="form-row">
                         <div className="field-group">
-                          <label className="field-label" htmlFor={`investor-entityname-${idx}`}>Entity legal name</label>
+                          <label className="field-label" htmlFor={`investor-entityname-${idx}`}>Entity Legal Name</label>
                           <input
                             id={`investor-entityname-${idx}`}
                             className="field-input"
@@ -295,7 +295,7 @@ export const Investors: React.FC = () => {
                           />
                         </div>
                         <div className="field-group">
-                          <label className="field-label" htmlFor={`investor-formstate-${idx}`}>Formation state</label>
+                          <label className="field-label" htmlFor={`investor-formstate-${idx}`}>Formation State</label>
                           <input
                             id={`investor-formstate-${idx}`}
                             className="field-input"
@@ -306,7 +306,7 @@ export const Investors: React.FC = () => {
                       </div>
                       <div className="form-row">
                         <div className="field-group">
-                          <label className="field-label" htmlFor={`investor-signername-${idx}`}>Authorised signer name</label>
+                          <label className="field-label" htmlFor={`investor-signername-${idx}`}>Authorised Signer Name</label>
                           <input
                             id={`investor-signername-${idx}`}
                             className="field-input"
@@ -315,7 +315,7 @@ export const Investors: React.FC = () => {
                           />
                         </div>
                         <div className="field-group">
-                          <label className="field-label" htmlFor={`investor-signertitle-${idx}`}>Signer title</label>
+                          <label className="field-label" htmlFor={`investor-signertitle-${idx}`}>Signer Title</label>
                           <input
                             id={`investor-signertitle-${idx}`}
                             className="field-input"
@@ -330,10 +330,10 @@ export const Investors: React.FC = () => {
                   <hr className="form-divider" />
 
                   {/* Investment */}
-                  <div className="form-section-title" style={{ fontSize: 15, marginBottom: 12 }}>Investment details</div>
+                  <div className="form-section-title" style={{ fontSize: 15, marginBottom: 12 }}>Investment Details</div>
                   <div className="form-row">
                     <div className="field-group">
-                      <label className="field-label" htmlFor={`investor-amount-${idx}`}>Subscription amount ($)</label>
+                      <label className="field-label" htmlFor={`investor-amount-${idx}`}>Subscription Amount ($)</label>
                       <FieldHelp text="The total dollar amount this investor is committing to the offering." />
                       <Controller
                         control={form.control}
@@ -350,7 +350,7 @@ export const Investors: React.FC = () => {
                       />
                     </div>
                     <div className="field-group">
-                      <label className="field-label" htmlFor={`investor-units-${idx}`}>Class A units</label>
+                      <label className="field-label" htmlFor={`investor-units-${idx}`}>Class A Units</label>
                       <FieldHelp text="Number of Class A membership units being subscribed." />
                       <input
                         id={`investor-units-${idx}`}
@@ -389,10 +389,10 @@ export const Investors: React.FC = () => {
                   <hr className="form-divider" />
 
                   {/* Contact */}
-                  <div className="form-section-title" style={{ fontSize: 15, marginBottom: 12 }}>Contact &amp; address</div>
+                  <div className="form-section-title" style={{ fontSize: 15, marginBottom: 12 }}>Contact &amp; Address</div>
                   <div className="form-row">
                     <div className="field-group">
-                      <label className="field-label" htmlFor={`investor-email-${idx}`}>Email address</label>
+                      <label className="field-label" htmlFor={`investor-email-${idx}`}>Email Address</label>
                       <input
                         id={`investor-email-${idx}`}
                         type="email"
@@ -402,7 +402,7 @@ export const Investors: React.FC = () => {
                       />
                     </div>
                     <div className="field-group">
-                      <label className="field-label" htmlFor={`investor-phone-${idx}`}>Phone number</label>
+                      <label className="field-label" htmlFor={`investor-phone-${idx}`}>Phone Number</label>
                       <input
                         id={`investor-phone-${idx}`}
                         type="tel"
@@ -414,7 +414,7 @@ export const Investors: React.FC = () => {
                   </div>
 
                   <div className="field-group">
-                    <label className="field-label" htmlFor={`investor-address-${idx}`}>Street address</label>
+                    <label className="field-label" htmlFor={`investor-address-${idx}`}>Street Address</label>
                     <input
                       id={`investor-address-${idx}`}
                       className="field-input"

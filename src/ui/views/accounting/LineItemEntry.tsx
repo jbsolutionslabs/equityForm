@@ -35,7 +35,7 @@ type Tab = 'pnl' | 'belowline' | 'workingcapital' | 'distributions'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'pnl',           label: 'P&L Line Items' },
-  { id: 'belowline',     label: 'Below the Line' },
+  { id: 'belowline',     label: 'Below The Line' },
   { id: 'workingcapital',label: 'Working Capital' },
   { id: 'distributions', label: 'Distributions' },
 ]

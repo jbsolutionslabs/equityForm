@@ -157,23 +157,23 @@ export const OperatingAgreement: React.FC = () => {
               <div className="review-summary-value">{data.deal.entityName || '—'}</div>
             </div>
             <div className="review-summary-item">
-              <div className="review-summary-label">Formation state</div>
+              <div className="review-summary-label">Formation State</div>
               <div className="review-summary-value">{data.deal.formationState || '—'}</div>
             </div>
             <div className="review-summary-item">
-              <div className="review-summary-label">GP entity</div>
+              <div className="review-summary-label">GP Entity</div>
               <div className="review-summary-value">{data.deal.gpEntityName || '—'}</div>
             </div>
             <div className="review-summary-item">
-              <div className="review-summary-label">GP signer</div>
+              <div className="review-summary-label">GP Signer</div>
               <div className="review-summary-value">{data.deal.gpSignerName || '—'}</div>
             </div>
             <div className="review-summary-item">
-              <div className="review-summary-label">Offering type</div>
+              <div className="review-summary-label">Offering Type</div>
               <div className="review-summary-value">{data.offering.offeringExemption || '—'}</div>
             </div>
             <div className="review-summary-item">
-              <div className="review-summary-label">Effective date</div>
+              <div className="review-summary-label">Effective Date</div>
               <div className="review-summary-value">{data.deal.effectiveDate || '—'}</div>
             </div>
           </div>
@@ -247,7 +247,7 @@ export const OperatingAgreement: React.FC = () => {
 
           {/* Acknowledgment checklist */}
           <div className="card" style={{ marginTop: 20 }}>
-            <h3 style={{ marginTop: 0, marginBottom: 16 }}>Acknowledge before signing</h3>
+            <h3 style={{ marginTop: 0, marginBottom: 16 }}>Acknowledge Before Signing</h3>
             <div className="ack-checklist">
               <label className="ack-item">
                 <input
