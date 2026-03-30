@@ -104,7 +104,7 @@ export const ESignature: React.FC = () => {
       <div className="capital-summary" style={{ marginBottom: 24 }}>
         <div className="capital-stat">
           <div className="capital-stat-value">{totalCount}</div>
-          <div className="capital-stat-label">Total investors</div>
+          <div className="capital-stat-label">Total Investors</div>
         </div>
         <div className="capital-stat">
           <div className="capital-stat-value">{signedCount}</div>
@@ -112,11 +112,11 @@ export const ESignature: React.FC = () => {
         </div>
         <div className="capital-stat">
           <div className="capital-stat-value">{sentCount}</div>
-          <div className="capital-stat-label">Awaiting signature</div>
+          <div className="capital-stat-label">Awaiting Signature</div>
         </div>
         <div className="capital-stat">
           <div className="capital-stat-value">{totalCount - signedCount - sentCount}</div>
-          <div className="capital-stat-label">Not sent</div>
+          <div className="capital-stat-label">Not Sent</div>
         </div>
       </div>
 

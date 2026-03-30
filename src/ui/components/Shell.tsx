@@ -97,7 +97,7 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
             <div className="sidebar-logo-icon" aria-hidden="true">E</div>
             <span className="sidebar-app-name">EquityForm</span>
           </div>
-          <p className="sidebar-tagline">Guided deal setup</p>
+          <p className="sidebar-tagline">Guided Deal Setup</p>
         </div>
 
         <nav className="sidebar-nav" aria-label="Modules">

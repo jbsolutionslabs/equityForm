@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useAppStore } from '../../state/store'
 import { HelpCard } from '../components/HelpCard'
+import { CurrencyInput } from '../components/CurrencyInput'
 
 export const WireTracking: React.FC = () => {
   const data         = useAppStore((s) => s.data)
@@ -12,7 +13,7 @@ export const WireTracking: React.FC = () => {
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
   const [wireModal, setWireModal] = useState<{ investorId: string; name: string } | null>(null)
   const [wireConf, setWireConf]   = useState('')
-  const [wireAmt, setWireAmt]     = useState('')
+  const [wireAmt, setWireAmt]     = useState(0)
   const [wireDate, setWireDate]   = useState('')
   const [copySuccess, setCopySuccess] = useState(false)
 
@@ -59,7 +60,7 @@ export const WireTracking: React.FC = () => {
       return
     }
     if (wireModal) {
-      recordWirePayment(wireModal.investorId, wireConf.trim(), wireAmt ? Number(wireAmt) : undefined, wireDate || undefined)
+      recordWirePayment(wireModal.investorId, wireConf.trim(), wireAmt > 0 ? wireAmt : undefined, wireDate || undefined)
       notify(`Wire confirmed for ${wireModal.name}.`)
       setWireModal(null)
     }
@@ -109,7 +110,7 @@ export const WireTracking: React.FC = () => {
         </div>
         <div className="capital-stat capital-stat--positive">
           <div className="capital-stat-value">${totalReceived.toLocaleString()}</div>
-          <div className="capital-stat-label">Total received</div>
+          <div className="capital-stat-label">Total Received</div>
         </div>
         <div className="capital-stat capital-stat--warning">
           <div className="capital-stat-value">${totalAwaiting.toLocaleString()}</div>
@@ -119,7 +120,7 @@ export const WireTracking: React.FC = () => {
           <div className="capital-stat-value">
             {totalCommitted > 0 ? Math.round((totalReceived / totalCommitted) * 100) : 0}%
           </div>
-          <div className="capital-stat-label">Capital in</div>
+          <div className="capital-stat-label">Capital In</div>
         </div>
       </div>
 
@@ -230,7 +231,7 @@ export const WireTracking: React.FC = () => {
             </div>
             <div className="modal-body">
               <div className="field-group">
-                <label className="field-label" htmlFor="wire-conf-num">Wire confirmation number <span className="field-required">*</span></label>
+                <label className="field-label" htmlFor="wire-conf-num">Wire Confirmation Number <span className="field-required">*</span></label>
                 <input
                   id="wire-conf-num"
                   className="field-input"
@@ -242,18 +243,17 @@ export const WireTracking: React.FC = () => {
               </div>
               <div className="form-row">
                 <div className="field-group">
-                  <label className="field-label" htmlFor="wire-amount">Amount received ($)</label>
-                  <input
+                  <label className="field-label" htmlFor="wire-amount">Amount Received ($)</label>
+                  <CurrencyInput
                     id="wire-amount"
-                    type="number"
                     className="field-input"
                     placeholder="Leave blank to use committed amount"
                     value={wireAmt}
-                    onChange={(e) => setWireAmt(e.target.value)}
+                    onChange={(v) => setWireAmt(v)}
                   />
                 </div>
                 <div className="field-group">
-                  <label className="field-label" htmlFor="wire-date">Date received</label>
+                  <label className="field-label" htmlFor="wire-date">Date Received</label>
                   <input
                     id="wire-date"
                     type="date"

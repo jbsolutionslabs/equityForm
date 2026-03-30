@@ -5,6 +5,7 @@ import {
   defaultMFPnL,
   defaultHotelPnL,
 } from '../../../state/accountingStore'
+import { CurrencyInput } from '../../components/CurrencyInput'
 import {
   getMonthlyDebtService,
   getMonthlyDepreciation,
@@ -34,7 +35,7 @@ type Tab = 'pnl' | 'belowline' | 'workingcapital' | 'distributions'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'pnl',           label: 'P&L Line Items' },
-  { id: 'belowline',     label: 'Below the Line' },
+  { id: 'belowline',     label: 'Below The Line' },
   { id: 'workingcapital',label: 'Working Capital' },
   { id: 'distributions', label: 'Distributions' },
 ]
@@ -67,12 +68,10 @@ function NumRow({
         {readOnly ? (
           <div className="line-item-readonly">{value.toLocaleString()}</div>
         ) : (
-          <input
-            type="number"
+          <CurrencyInput
             className="field-input field-input--sm"
-            value={value || ''}
-            min={0}
-            onChange={(e) => onChange?.(parseFloat(e.target.value) || 0)}
+            value={value}
+            onChange={(v) => onChange?.(v)}
           />
         )}
       </div>

@@ -19,8 +19,14 @@ export const CapTable: React.FC = () => {
   const isLocked  = !!deal.capTableLockedAt
   const canLock   = canLockCapTable(data)
 
-  const totalUnits   = investors.reduce((sum, inv) => sum + (inv.classAUnits || 0), 0)
-  const totalAmount  = investors.reduce((sum, inv) => sum + (inv.subscriptionAmount || 0), 0)
+  // Only include investors who have actually sent funds (subscription status === 'paid')
+  const paidInvestorIds = new Set(
+    data.subscriptions.filter((s) => s.status === 'paid').map((s) => s.investorId),
+  )
+  const paidInvestors = investors.filter((inv) => paidInvestorIds.has(inv.id))
+
+  const totalUnits   = paidInvestors.reduce((sum, inv) => sum + (inv.classAUnits || 0), 0)
+  const totalAmount  = paidInvestors.reduce((sum, inv) => sum + (inv.subscriptionAmount || 0), 0)
 
   // For display, add a GP row representing 0-unit management interest
   const gpName = deal.gpEntityName || deal.gpSignerName || 'GP / Managing Member'
@@ -35,15 +41,18 @@ export const CapTable: React.FC = () => {
     const rows = [
       ['Name', 'Type', 'Class A Units', 'Ownership %', 'Subscription Amount'],
       [gpName, 'GP', '0', 'Management interest', '$0'],
-      ...investors.map((inv) => [
+      // only include investors who have paid
+      ...paidInvestors.map((inv) => [
         inv.fullLegalName,
         inv.subscriberType === 'entity' ? 'LP (Entity)' : 'LP (Individual)',
         String(inv.classAUnits || 0),
-        totalUnits > 0 ? ((( inv.classAUnits || 0) / totalUnits) * 100).toFixed(2) + '%' : '—',
+        totalUnits > 0 ? (((inv.classAUnits || 0) / totalUnits) * 100).toFixed(2) + '%' : '—',
         `$${(inv.subscriptionAmount || 0).toLocaleString()}`,
       ]),
-      ['TOTAL', '', String(totalUnits), '100%', `$${totalAmount.toLocaleString()}`],
     ]
+    if (paidInvestors.length > 0) {
+      rows.push(['TOTAL', '', String(totalUnits), '100%', `$${totalAmount.toLocaleString()}`])
+    }
     const csv = rows.map((r) => r.map((c) => `"${c}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const url  = URL.createObjectURL(blob)
@@ -85,69 +94,76 @@ export const CapTable: React.FC = () => {
             {deal.entityName || 'Entity'} — Membership Interests
           </h3>
         </div>
-        <table className="data-table" style={{ width: '100%' }}>
-          <thead>
-            <tr>
-              <th>Member</th>
-              <th>Type</th>
-              <th style={{ textAlign: 'right' }}>Class A Units</th>
-              <th style={{ textAlign: 'right' }}>Ownership %</th>
-              <th style={{ textAlign: 'right' }}>Subscription Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {/* GP row */}
-            <tr style={{ background: 'var(--color-slate-50)' }}>
-              <td>
-                <div style={{ fontWeight: 500 }}>{gpName}</div>
-                <div style={{ fontSize: 12, color: 'var(--color-slate-500)' }}>Managing Member</div>
-              </td>
-              <td><span className="status-badge" style={{ background: 'var(--color-navy-900)', color: '#fff', fontSize: 11 }}>GP</span></td>
-              <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>0</td>
-              <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>Management</td>
-              <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>—</td>
-            </tr>
-            {/* LP rows */}
-            {investors.map((inv) => {
-              const pct = totalUnits > 0 ? (((inv.classAUnits || 0) / totalUnits) * 100).toFixed(2) : '0.00'
-              return (
-                <tr key={inv.id}>
-                  <td>
-                    <div style={{ fontWeight: 500 }}>{inv.fullLegalName}</div>
-                    <div style={{ fontSize: 12, color: 'var(--color-slate-500)' }}>{inv.email}</div>
+        {/* keep table content aligned with header padding */}
+        <div style={{ padding: '0 24px 24px' }}>
+          <table className="data-table" style={{ width: '100%' }}>
+            <thead>
+              <tr>
+                <th>Member</th>
+                <th>Type</th>
+                <th style={{ textAlign: 'right' }}>Class A Units</th>
+                <th style={{ textAlign: 'right' }}>Ownership %</th>
+                <th style={{ textAlign: 'right' }}>Subscription Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* GP row */}
+              <tr style={{ background: 'var(--color-slate-50)' }}>
+                <td>
+                  <div style={{ fontWeight: 500 }}>{gpName}</div>
+                  <div style={{ fontSize: 12, color: 'var(--color-slate-500)' }}>Managing Member</div>
+                </td>
+                <td><span className="status-badge" style={{ background: 'var(--color-navy-900)', color: '#fff', fontSize: 11 }}>GP</span></td>
+                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>0</td>
+                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>Management</td>
+                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>—</td>
+              </tr>
+
+              {/* LP rows — only show investors who have paid */}
+              {paidInvestors.map((inv) => {
+                const pct = totalUnits > 0 ? (((inv.classAUnits || 0) / totalUnits) * 100).toFixed(2) : '0.00'
+                return (
+                  <tr key={inv.id}>
+                    <td>
+                      <div style={{ fontWeight: 500 }}>{inv.fullLegalName}</div>
+                      <div style={{ fontSize: 12, color: 'var(--color-slate-500)' }}>{inv.email}</div>
+                    </td>
+                    <td>
+                      <span className="status-badge status-badge--none" style={{ fontSize: 11 }}>
+                        {inv.subscriberType === 'entity' ? 'LP (Entity)' : 'LP (Ind.)'}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+                      {(inv.classAUnits || 0).toLocaleString()}
+                    </td>
+                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+                      {pct}%
+                    </td>
+                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+                      ${(inv.subscriptionAmount || 0).toLocaleString()}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+
+            {paidInvestors.length > 0 && (
+              <tfoot>
+                <tr style={{ fontWeight: 700, background: 'var(--color-slate-50)' }}>
+                  <td>TOTAL</td>
+                  <td></td>
+                  <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                    {totalUnits.toLocaleString()}
                   </td>
-                  <td>
-                    <span className="status-badge status-badge--none" style={{ fontSize: 11 }}>
-                      {inv.subscriberType === 'entity' ? 'LP (Entity)' : 'LP (Ind.)'}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
-                    {(inv.classAUnits || 0).toLocaleString()}
-                  </td>
-                  <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
-                    {pct}%
-                  </td>
-                  <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
-                    ${(inv.subscriptionAmount || 0).toLocaleString()}
+                  <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>100%</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                    ${totalAmount.toLocaleString()}
                   </td>
                 </tr>
-              )
-            })}
-          </tbody>
-          <tfoot>
-            <tr style={{ fontWeight: 700, background: 'var(--color-slate-50)' }}>
-              <td>TOTAL</td>
-              <td></td>
-              <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                {totalUnits.toLocaleString()}
-              </td>
-              <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>100%</td>
-              <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                ${totalAmount.toLocaleString()}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
+              </tfoot>
+            )}
+          </table>
+        </div>
       </div>
 
       {/* Actions */}

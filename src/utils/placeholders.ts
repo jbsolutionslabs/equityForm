@@ -16,6 +16,14 @@ function deriveLastName(full?: string) {
   return parts.length > 1 ? parts[parts.length - 1] : parts[0]
 }
 
+function roundToTenth(value: unknown) {
+  if (value === null || value === undefined || value === '') return value
+  const cleaned = typeof value === 'string' ? value.replace(/%/g, '').trim() : value
+  const num = Number(cleaned)
+  if (Number.isNaN(num)) return value
+  return Math.round(num * 10) / 10
+}
+
 function parseCityStateZip(address?: string) {
   // very simple heuristic: look for last comma-separated parts
   if (!address) return { city: '', state: '', zip: '' }
@@ -37,7 +45,7 @@ function buildLpRows(investors: Investor[]) {
     LP_ADDRESS: [inv.streetAddress, inv.city, inv.state, inv.zip].filter(Boolean).join(', '),
     LP_CONTRIBUTION: inv.subscriptionAmount || 0,
     LP_CLASS_A: inv.classAUnits || 0,
-    LP_PCT: inv.ownershipPct || 0,
+    LP_PCT: roundToTenth(inv.ownershipPct ?? 0),
   }))
 }
 
@@ -181,7 +189,7 @@ export function generatePlaceholders(data: AppData) {
   // Investors / subscription placeholders
   placeholders.INVESTORS = data.investors.map((i) => ({
     SUBSCRIBER_CONTRIBUTION: i.subscriptionAmount ?? 0,
-    SUBSCRIBER_OWNERSHIP_PCT: i.ownershipPct ?? 0,
+    SUBSCRIBER_OWNERSHIP_PCT: roundToTenth(i.ownershipPct ?? 0),
     SUBSCRIBER_LAST_NAME: i.derivedLastName ?? deriveLastName(i.fullLegalName),
     FULL_LEGAL_NAME: i.fullLegalName,
     STREET_ADDRESS: i.streetAddress || '',
@@ -211,7 +219,7 @@ export function generatePlaceholders(data: AppData) {
     placeholders.LP_1_ADDRESS = [first.streetAddress, first.city, first.state, first.zip].filter(Boolean).join(', ')
     placeholders.LP_1_CONTRIBUTION = first.subscriptionAmount || 0
     placeholders.LP_1_CLASS_A = first.classAUnits || 0
-    placeholders.LP_1_PCT = first.ownershipPct || 0
+    placeholders.LP_1_PCT = roundToTenth(first.ownershipPct ?? 0)
     map.LP_1_NAME = { type: 'repeated', source: 'investors[0].fullLegalName' }
     map.LP_1_ADDRESS = { type: 'repeated', source: 'investors[0].address fields' }
     map.LP_1_CONTRIBUTION = { type: 'repeated', source: 'investors[0].subscriptionAmount' }

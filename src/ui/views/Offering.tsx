@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
 import Stepper, { Step } from '../components/Stepper'
 import { FieldHelp, Tooltip, HelpCard } from '../components/HelpCard'
+import { CurrencyInput } from '../components/CurrencyInput'
 import CompletionBadge from '../components/CompletionBadge'
-import { useForm } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useAppStore } from '../../state/store'
@@ -106,7 +107,7 @@ export const Offering: React.FC = () => {
           {/* ── Step 1: Offering exemption & solicitation ── */}
           <Step>
             <div className="form-section">
-              <div className="form-section-title">How are you raising capital?</div>
+              <div className="form-section-title">How Are You Raising Capital?</div>
               <p className="form-section-desc">
                 The Regulation D exemption determines whether you can advertise the offering publicly
                 and what investor verification is required.
@@ -149,7 +150,7 @@ export const Offering: React.FC = () => {
                 <div className="field-group">
                   <div className="field-label-row">
                     <label className="field-label" htmlFor="solicitationMethod">
-                      Solicitation method
+                      Solicitation Method
                       {exemption === '506(b)' && <span className="field-required"> *</span>}
                     </label>
                     <Tooltip
@@ -182,7 +183,7 @@ export const Offering: React.FC = () => {
           {/* ── Step 2: Investment parameters ── */}
           <Step>
             <div className="form-section">
-              <div className="form-section-title">Set your investment parameters.</div>
+              <div className="form-section-title">Set Your Investment Parameters.</div>
               <p className="form-section-desc">
                 Define the minimum check size and closing timeline for this offering.
               </p>
@@ -191,7 +192,7 @@ export const Offering: React.FC = () => {
                 <div className="field-group">
                   <div className="field-label-row">
                     <label className="field-label" htmlFor="minimumInvestment">
-                      Minimum investment ($)
+                      Minimum Investment ($)
                     </label>
                     <Tooltip
                       title="Minimum investment"
@@ -199,20 +200,24 @@ export const Offering: React.FC = () => {
                     />
                   </div>
                   <FieldHelp text="Enter the minimum dollar amount per investor. This appears in the subscription agreement." />
-                  <input
-                    id="minimumInvestment"
-                    type="number"
-                    className="field-input"
-                    placeholder="e.g. 50000"
-                    min={0}
-                    step={1000}
-                    {...form.register('minimumInvestment', { valueAsNumber: true })}
+                  <Controller
+                    control={form.control}
+                    name="minimumInvestment"
+                    render={({ field }) => (
+                      <CurrencyInput
+                        id="minimumInvestment"
+                        className="field-input"
+                        placeholder="e.g. 50000"
+                        value={field.value ?? 0}
+                        onChange={(v) => field.onChange(v || null)}
+                      />
+                    )}
                   />
                 </div>
 
                 <div className="field-group">
                   <label className="field-label" htmlFor="closingDate">
-                    Target closing date
+                    Target Closing Date
                   </label>
                   <FieldHelp text="When you expect to close the round and stop accepting new subscriptions." />
                   <input
@@ -229,7 +234,7 @@ export const Offering: React.FC = () => {
           {/* ── Step 3: Preferred return ── */}
           <Step>
             <div className="form-section">
-              <div className="form-section-title">Structure the LP preferred return.</div>
+              <div className="form-section-title">Structure The LP Preferred Return.</div>
               <p className="form-section-desc">
                 A preferred return gives LPs priority on distributions before the GP earns a promote.
                 It aligns incentives and is standard in most real estate deals.
@@ -261,7 +266,7 @@ export const Offering: React.FC = () => {
                     <div className="field-group">
                       <div className="field-label-row">
                         <label className="field-label" htmlFor="preferredReturnRate">
-                          Preferred return rate (%)
+                          Preferred Return Rate (%)
                         </label>
                       </div>
                       <FieldHelp text="Annual percentage LPs earn before GP promote kicks in. 6–8% is common." />
@@ -279,7 +284,7 @@ export const Offering: React.FC = () => {
 
                     <div className="field-group">
                       <label className="field-label" htmlFor="preferredReturnType">
-                        Preferred return type
+                        Preferred Return Type
                       </label>
                       <FieldHelp text="How unpaid preferred return is treated over time." />
                       <select
@@ -299,7 +304,7 @@ export const Offering: React.FC = () => {
                     <div className="field-group">
                       <div className="field-label-row">
                         <label className="field-label" htmlFor="irrRate">
-                          IRR hurdle rate (%) <span className="field-required">*</span>
+                          IRR Hurdle Rate (%) <span className="field-required">*</span>
                         </label>
                       </div>
                       <FieldHelp text="The minimum IRR investors must receive before the GP earns any promote." />
@@ -329,7 +334,7 @@ export const Offering: React.FC = () => {
           {/* ── Step 4: GP promote & LP split ── */}
           <Step>
             <div className="form-section">
-              <div className="form-section-title">What's the GP promote?</div>
+              <div className="form-section-title">What's The GP Promote?</div>
               <p className="form-section-desc">
                 The promote is the GP's share of profits above the preferred return.
                 The LP residual is calculated automatically.
@@ -338,7 +343,7 @@ export const Offering: React.FC = () => {
               <div className="field-group" style={{ maxWidth: 280 }}>
                 <div className="field-label-row">
                   <label className="field-label" htmlFor="gpPromote">
-                    GP promote (%)
+                    GP Promote (%)
                   </label>
                   <Tooltip
                     title="GP Promote / Carried Interest"
@@ -370,7 +375,7 @@ export const Offering: React.FC = () => {
           {/* ── Step 5: Fees & optional fields ── */}
           <Step>
             <div className="form-section">
-              <div className="form-section-title">Optional: fees &amp; asset management.</div>
+              <div className="form-section-title">Optional: Fees &amp; Asset Management.</div>
               <p className="form-section-desc">
                 Describe any management or transaction fees the GP will charge. These appear in the
                 Operating Agreement. Leave blank if not applicable.
@@ -378,7 +383,7 @@ export const Offering: React.FC = () => {
 
               <div className="field-group">
                 <label className="field-label" htmlFor="assetManagementFeeDescription">
-                  Asset management fee description
+                  Asset Management Fee Description
                 </label>
                 <FieldHelp text='e.g. "1% per annum of invested equity, charged quarterly from operating cash flow."' />
                 <textarea

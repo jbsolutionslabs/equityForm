@@ -1,5 +1,8 @@
 import React, { useState, useRef } from 'react'
 import { useAppStore, canGenerateOA, isSpvFormed } from '../../state/store'
+import { generatePlaceholders } from '../../utils/placeholders'
+import { generateOperatingAgreementHtml } from '../../utils/pdfTemplate'
+import html2pdf from 'html2pdf.js'
 import { HelpCard } from '../components/HelpCard'
 
 type SubStep = 1 | 2 | 3
@@ -21,6 +24,7 @@ export const OperatingAgreement: React.FC = () => {
   const generateOA        = useAppStore((s) => s.generateOA)
   const sendOaForDocuSign = useAppStore((s) => s.sendOaForDocuSign)
   const simulateOaSigned  = useAppStore((s) => s.simulateOaSigned)
+  const { values }        = generatePlaceholders(data)
 
   const spvOk  = isSpvFormed(data)
   const canGen = canGenerateOA(data)
@@ -42,6 +46,10 @@ export const OperatingAgreement: React.FC = () => {
     setNotification({ msg, type })
     window.setTimeout(() => setNotification(null), 4000)
   }
+
+  const entityName = data.deal.entityName || '—'
+  const formationState = data.deal.formationState || '—'
+  const effectiveDate = data.deal.effectiveDate || '—'
 
   const handleGenerate = () => {
     if (!canGen) {
@@ -67,6 +75,34 @@ export const OperatingAgreement: React.FC = () => {
   const handleSimulateSigned = () => {
     simulateOaSigned()
     notify('Simulated: DocuSign envelope completed. OA is now GP-signed.')
+  }
+
+  const downloadOAAsDoc = (html: string, filename = 'operating-agreement.doc') => {
+    const blob = new Blob([html], { type: 'application/msword' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url; a.download = filename
+    document.body.appendChild(a); a.click()
+    a.remove(); URL.revokeObjectURL(url)
+  }
+
+  const handleDownloadPdf = () => {
+    const html      = generateOperatingAgreementHtml(values)
+    const container = document.createElement('div')
+    container.innerHTML = html
+    document.body.appendChild(container)
+    const filename = `${(String(values.ENTITY_NAME || 'operating-agreement')).replace(/\s+/g, '-').toLowerCase()}.pdf`
+    html2pdf()
+      .set({ margin: 0.5, filename, image: { type: 'jpeg' as const, quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' as const } })
+      .from(container)
+      .save()
+      .finally(() => container.remove())
+  }
+
+  const handleDownloadDoc = () => {
+    const html = generateOperatingAgreementHtml(values)
+    const name = `${(String(values.ENTITY_NAME || 'operating-agreement')).replace(/\s+/g, '-').toLowerCase()}.doc`
+    downloadOAAsDoc(html, name)
   }
 
   const scrollToSection = (id: string) => {
@@ -157,23 +193,23 @@ export const OperatingAgreement: React.FC = () => {
               <div className="review-summary-value">{data.deal.entityName || '—'}</div>
             </div>
             <div className="review-summary-item">
-              <div className="review-summary-label">Formation state</div>
+              <div className="review-summary-label">Formation State</div>
               <div className="review-summary-value">{data.deal.formationState || '—'}</div>
             </div>
             <div className="review-summary-item">
-              <div className="review-summary-label">GP entity</div>
+              <div className="review-summary-label">GP Entity</div>
               <div className="review-summary-value">{data.deal.gpEntityName || '—'}</div>
             </div>
             <div className="review-summary-item">
-              <div className="review-summary-label">GP signer</div>
+              <div className="review-summary-label">GP Signer</div>
               <div className="review-summary-value">{data.deal.gpSignerName || '—'}</div>
             </div>
             <div className="review-summary-item">
-              <div className="review-summary-label">Offering type</div>
+              <div className="review-summary-label">Offering Type</div>
               <div className="review-summary-value">{data.offering.offeringExemption || '—'}</div>
             </div>
             <div className="review-summary-item">
-              <div className="review-summary-label">Effective date</div>
+              <div className="review-summary-label">Effective Date</div>
               <div className="review-summary-value">{data.deal.effectiveDate || '—'}</div>
             </div>
           </div>
@@ -232,11 +268,18 @@ export const OperatingAgreement: React.FC = () => {
             {/* Document viewer */}
             <div className="doc-viewer-content" ref={docRef}>
               {oa?.documentText ? (
-                <pre className="doc-preview-text">
-                  {/* Inject data-section anchors at rough intervals based on content */}
-                  <span data-section="formation" />
-                  {oa.documentText}
-                </pre>
+                <div className="doc-paper">
+                  <div className="doc-paper-header">
+                    <div className="doc-paper-title">Operating Agreement</div>
+                    <div className="doc-paper-entity">{entityName}, LLC</div>
+                    <div className="doc-paper-subtitle">A {formationState} Limited Liability Company</div>
+                    <div className="doc-paper-meta"><strong>Effective Date:</strong> {effectiveDate}</div>
+                  </div>
+                  <div className="doc-paper-body">
+                    <span data-section="formation" />
+                    {oa.documentText}
+                  </div>
+                </div>
               ) : (
                 <div style={{ padding: 24, color: 'var(--color-slate-500)' }}>
                   No document text found. Go back and regenerate.
@@ -245,9 +288,24 @@ export const OperatingAgreement: React.FC = () => {
             </div>
           </div>
 
+          <div className="card" style={{ marginTop: 20 }}>
+            <h3 style={{ marginTop: 0, marginBottom: 12 }}>Download for Review</h3>
+            <p style={{ margin: 0, color: 'var(--color-slate-600)', fontSize: 14 }}>
+              Export the latest Operating Agreement to verify PDF and Word formatting.
+            </p>
+            <div style={{ display: 'flex', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-secondary" onClick={handleDownloadPdf}>
+                Download PDF
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={handleDownloadDoc}>
+                Download .doc
+              </button>
+            </div>
+          </div>
+
           {/* Acknowledgment checklist */}
           <div className="card" style={{ marginTop: 20 }}>
-            <h3 style={{ marginTop: 0, marginBottom: 16 }}>Acknowledge before signing</h3>
+            <h3 style={{ marginTop: 0, marginBottom: 16 }}>Acknowledge Before Signing</h3>
             <div className="ack-checklist">
               <label className="ack-item">
                 <input
