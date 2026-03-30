@@ -128,6 +128,9 @@ export const Review: React.FC = () => {
 
   const ph     = generatePlaceholders(data)
   const values = ph.values
+  const entityName = data.deal.entityName || '—'
+  const formationState = data.deal.formationState || '—'
+  const effectiveDate = data.deal.effectiveDate || '—'
 
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
   const [showFullDoc, setShowFullDoc]   = useState(false)
@@ -367,7 +370,17 @@ export const Review: React.FC = () => {
                 className="doc-preview-body"
                 style={{ maxHeight: showFullDoc ? 'none' : 480 }}
               >
-                {oaText}
+                <div className="doc-paper doc-paper--preview">
+                  <div className="doc-paper-header">
+                    <div className="doc-paper-title">Operating Agreement</div>
+                    <div className="doc-paper-entity">{entityName}, LLC</div>
+                    <div className="doc-paper-subtitle">A {formationState} Limited Liability Company</div>
+                    <div className="doc-paper-meta"><strong>Effective Date:</strong> {effectiveDate}</div>
+                  </div>
+                  <div className="doc-paper-body">
+                    {oaText}
+                  </div>
+                </div>
               </div>
             </div>
           )}

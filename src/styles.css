@@ -989,6 +989,52 @@ select.field-input {
   border-top: 1px solid var(--color-slate-200);
 }
 
+.investor-action-panel {
+  background: var(--color-slate-50);
+  border: 1px solid var(--color-slate-200);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+}
+
+.investor-action-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.investor-action-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-navy-900);
+}
+
+.investor-action-subtitle {
+  font-size: 12.5px;
+  color: var(--color-slate-600);
+  margin-top: 2px;
+}
+
+.investor-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.investor-action-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.investor-action-links .link-btn {
+  font-size: 13px;
+}
+
 .investor-sub-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1167,15 +1213,10 @@ tbody tr:hover { background: var(--color-slate-50); }
 }
 
 .doc-preview-body {
-  padding: 28px 32px;
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
-  font-size: 12.5px;
-  color: var(--color-navy-900);
-  white-space: pre-wrap;
-  word-break: break-word;
+  padding: 24px 28px;
+  background: var(--color-slate-50);
   max-height: 480px;
   overflow-y: auto;
-  line-height: 1.75;
 }
 
 /* Key-value summary */
@@ -1568,15 +1609,67 @@ pre {
 }
 
 .doc-viewer-content {
-  padding: 32px 36px;
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 13.5px;
-  line-height: 1.85;
-  color: #1a1a1a;
-  white-space: pre-wrap;
-  word-break: break-word;
+  padding: 24px;
+  background: var(--color-slate-50);
+  border: 1px solid var(--color-slate-200);
+  border-radius: var(--radius-card);
   max-height: 560px;
   overflow-y: auto;
+}
+
+.doc-paper {
+  background: var(--color-white);
+  border-radius: 12px;
+  border: 1px solid var(--color-slate-200);
+  padding: 32px 36px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+}
+
+.doc-paper--preview {
+  box-shadow: none;
+}
+
+.doc-paper-header {
+  text-align: center;
+  padding-bottom: 16px;
+  margin-bottom: 24px;
+  border-bottom: 2px solid var(--color-navy-900);
+}
+
+.doc-paper-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 22px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-navy-900);
+}
+
+.doc-paper-entity {
+  margin-top: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-navy-900);
+}
+
+.doc-paper-subtitle {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--color-slate-600);
+}
+
+.doc-paper-meta {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--color-slate-600);
+}
+
+.doc-paper-body {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 14px;
+  line-height: 1.9;
+  color: #111;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* Acknowledgment checklist */

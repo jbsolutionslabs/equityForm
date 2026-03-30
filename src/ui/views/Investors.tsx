@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useAppStore, Investor, canSendSubAgreements } from '../../state/store'
 import { v4 as uuidv4 } from 'uuid'
-import { generateSubscriptionAgreementText } from '../../utils/pdfTemplate'
+import { generateSubscriptionAgreementHtml } from '../../utils/pdfTemplate'
 import { generatePlaceholders } from '../../utils/placeholders'
 import { FieldHelp, HelpCard } from '../components/HelpCard'
 import { CurrencyInput } from '../components/CurrencyInput'
@@ -127,11 +127,12 @@ export const Investors: React.FC = () => {
     const ph        = generatePlaceholders(appData)
     const idx       = appData.investors.findIndex((i) => i.id === invId)
     const invPh     = (ph.values.INVESTORS && (ph.values.INVESTORS as unknown[])[idx]) ?? {}
-    const text      = generateSubscriptionAgreementText(ph.values, invPh as Record<string, unknown>)
+    const html      = generateSubscriptionAgreementHtml(ph.values, invPh as Record<string, unknown>)
     const w = window.open('', '_blank')
     if (w) {
-      w.document.write('<pre style="font-family:monospace;padding:24px;max-width:800px;margin:0 auto">' + text.replace(/</g, '&lt;') + '</pre>')
-      w.document.title = 'Subscription Preview'
+      w.document.open()
+      w.document.write(html)
+      w.document.close()
     } else {
       notify('Popup blocked — please allow popups for this site to preview the subscription agreement.', 'error')
     }
@@ -251,6 +252,109 @@ export const Investors: React.FC = () => {
               {/* Expanded form body */}
               {isExpanded && (
                 <div className="investor-card-body">
+                  <div className="investor-action-panel">
+                    <div className="investor-action-header">
+                      <div>
+                        <div className="investor-action-title">Subscription agreement</div>
+                        <div className="investor-action-subtitle">
+                          Generate, send, and record status for this investor's subscription.
+                        </div>
+                      </div>
+                      {subStatus && (
+                        <span className={`status-badge ${STATUS_CLASS[subStatus] ?? 'status-badge--none'}`}>
+                          {STATUS_LABELS[subStatus] ?? subStatus}
+                        </span>
+                      )}
+                    </div>
+                    <div className="investor-action-buttons">
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={!canGenerateSub}
+                        title={!canGenerateSub ? 'Operating Agreement must be GP-signed (Stage 3) before generating subscription agreements' : undefined}
+                        onClick={() => {
+                          generateSubscriptionForInvestor(f.id)
+                          notify(`Subscription generated for ${name}.`)
+                        }}
+                      >
+                        Generate subscription
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        disabled={!canGenerateSub}
+                        title={!canGenerateSub ? 'Operating Agreement must be GP-signed (Stage 3) before sending subscription agreements' : undefined}
+                        onClick={() => {
+                          sendSubscriptionForSignature(f.id)
+                          notify(`Subscription sent for e-signature for ${name}.`)
+                        }}
+                      >
+                        Send for e-sign
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => previewSubscription(f.id)}
+                      >
+                        Preview agreement
+                      </button>
+                    </div>
+                    <div className="investor-action-links">
+                      <button
+                        type="button"
+                        className="link-btn"
+                        onClick={() => {
+                          markSubscriptionSigned(f.id)
+                          notify(`Marked as signed for ${name}.`)
+                        }}
+                      >
+                        Mark signed
+                      </button>
+                      <button
+                        type="button"
+                        className="link-btn"
+                        onClick={() => setShowWire((prev) => ({ ...prev, [idx]: !prev[idx] }))}
+                      >
+                        Record wire
+                      </button>
+                    </div>
+
+                    {showWire[idx] && (
+                      <div className="investor-wire-row">
+                        <input
+                          className="field-input"
+                          style={{ maxWidth: 280, height: 38 }}
+                          placeholder="Wire confirmation #"
+                          value={wireInput[idx] ?? ''}
+                          onChange={(e) => setWireInput((prev) => ({ ...prev, [idx]: e.target.value }))}
+                          aria-label="Wire confirmation number"
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={() => {
+                            const conf = wireInput[idx]?.trim()
+                            if (conf) {
+                              recordWirePayment(f.id, conf)
+                              setShowWire((prev) => ({ ...prev, [idx]: false }))
+                              setWireInput((prev) => ({ ...prev, [idx]: '' }))
+                              notify(`Wire recorded for ${name}.`)
+                            }
+                          }}
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => setShowWire((prev) => ({ ...prev, [idx]: false }))}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Identity */}
                   <div className="form-section-title" style={{ fontSize: 15, marginBottom: 12, marginTop: 4 }}>
                     Identity &amp; Type
@@ -438,93 +542,6 @@ export const Investors: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Subscription actions */}
-                  <div className="investor-sub-actions">
-                    <button
-                      type="button"
-                      className="btn btn-primary btn-sm"
-                      disabled={!canGenerateSub}
-                      title={!canGenerateSub ? 'Operating Agreement must be GP-signed (Stage 3) before generating subscription agreements' : undefined}
-                      onClick={() => {
-                        generateSubscriptionForInvestor(f.id)
-                        notify(`Subscription generated for ${name}.`)
-                      }}
-                    >
-                      Generate subscription
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      disabled={!canGenerateSub}
-                      title={!canGenerateSub ? 'Operating Agreement must be GP-signed (Stage 3) before sending subscription agreements' : undefined}
-                      onClick={() => {
-                        sendSubscriptionForSignature(f.id)
-                        notify(`Subscription sent for e-signature for ${name}.`)
-                      }}
-                    >
-                      Send for e-sign
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => previewSubscription(f.id)}
-                    >
-                      Preview sub agreement
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => {
-                        markSubscriptionSigned(f.id)
-                        notify(`Marked as signed for ${name}.`)
-                      }}
-                    >
-                      Mark signed
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => setShowWire((prev) => ({ ...prev, [idx]: !prev[idx] }))}
-                    >
-                      Record wire
-                    </button>
-                  </div>
-
-                  {/* Wire confirmation inline input */}
-                  {showWire[idx] && (
-                    <div className="investor-wire-row">
-                      <input
-                        className="field-input"
-                        style={{ maxWidth: 280, height: 38 }}
-                        placeholder="Wire confirmation #"
-                        value={wireInput[idx] ?? ''}
-                        onChange={(e) => setWireInput((prev) => ({ ...prev, [idx]: e.target.value }))}
-                        aria-label="Wire confirmation number"
-                      />
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        onClick={() => {
-                          const conf = wireInput[idx]?.trim()
-                          if (conf) {
-                            recordWirePayment(f.id, conf)
-                            setShowWire((prev) => ({ ...prev, [idx]: false }))
-                            setWireInput((prev) => ({ ...prev, [idx]: '' }))
-                            notify(`Wire recorded for ${name}.`)
-                          }
-                        }}
-                      >
-                        Confirm
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => setShowWire((prev) => ({ ...prev, [idx]: false }))}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
