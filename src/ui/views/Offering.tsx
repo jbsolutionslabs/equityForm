@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
 import Stepper, { Step } from '../components/Stepper'
 import { FieldHelp, Tooltip, HelpCard } from '../components/HelpCard'
+import { CurrencyInput } from '../components/CurrencyInput'
 import CompletionBadge from '../components/CompletionBadge'
-import { useForm } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useAppStore } from '../../state/store'
@@ -199,14 +200,18 @@ export const Offering: React.FC = () => {
                     />
                   </div>
                   <FieldHelp text="Enter the minimum dollar amount per investor. This appears in the subscription agreement." />
-                  <input
-                    id="minimumInvestment"
-                    type="number"
-                    className="field-input"
-                    placeholder="e.g. 50000"
-                    min={0}
-                    step={1000}
-                    {...form.register('minimumInvestment', { valueAsNumber: true })}
+                  <Controller
+                    control={form.control}
+                    name="minimumInvestment"
+                    render={({ field }) => (
+                      <CurrencyInput
+                        id="minimumInvestment"
+                        className="field-input"
+                        placeholder="e.g. 50000"
+                        value={field.value ?? 0}
+                        onChange={(v) => field.onChange(v || null)}
+                      />
+                    )}
                   />
                 </div>
 

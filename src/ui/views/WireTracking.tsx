@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useAppStore } from '../../state/store'
 import { HelpCard } from '../components/HelpCard'
+import { CurrencyInput } from '../components/CurrencyInput'
 
 export const WireTracking: React.FC = () => {
   const data         = useAppStore((s) => s.data)
@@ -12,7 +13,7 @@ export const WireTracking: React.FC = () => {
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
   const [wireModal, setWireModal] = useState<{ investorId: string; name: string } | null>(null)
   const [wireConf, setWireConf]   = useState('')
-  const [wireAmt, setWireAmt]     = useState('')
+  const [wireAmt, setWireAmt]     = useState(0)
   const [wireDate, setWireDate]   = useState('')
   const [copySuccess, setCopySuccess] = useState(false)
 
@@ -59,7 +60,7 @@ export const WireTracking: React.FC = () => {
       return
     }
     if (wireModal) {
-      recordWirePayment(wireModal.investorId, wireConf.trim(), wireAmt ? Number(wireAmt) : undefined, wireDate || undefined)
+      recordWirePayment(wireModal.investorId, wireConf.trim(), wireAmt > 0 ? wireAmt : undefined, wireDate || undefined)
       notify(`Wire confirmed for ${wireModal.name}.`)
       setWireModal(null)
     }
@@ -243,13 +244,12 @@ export const WireTracking: React.FC = () => {
               <div className="form-row">
                 <div className="field-group">
                   <label className="field-label" htmlFor="wire-amount">Amount received ($)</label>
-                  <input
+                  <CurrencyInput
                     id="wire-amount"
-                    type="number"
                     className="field-input"
                     placeholder="Leave blank to use committed amount"
                     value={wireAmt}
-                    onChange={(e) => setWireAmt(e.target.value)}
+                    onChange={(v) => setWireAmt(v)}
                   />
                 </div>
                 <div className="field-group">

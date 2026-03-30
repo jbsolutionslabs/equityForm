@@ -5,6 +5,7 @@ import {
   defaultMFPnL,
   defaultHotelPnL,
 } from '../../../state/accountingStore'
+import { CurrencyInput } from '../../components/CurrencyInput'
 import {
   getMonthlyDebtService,
   getMonthlyDepreciation,
@@ -67,12 +68,10 @@ function NumRow({
         {readOnly ? (
           <div className="line-item-readonly">{value.toLocaleString()}</div>
         ) : (
-          <input
-            type="number"
+          <CurrencyInput
             className="field-input field-input--sm"
-            value={value || ''}
-            min={0}
-            onChange={(e) => onChange?.(parseFloat(e.target.value) || 0)}
+            value={value}
+            onChange={(v) => onChange?.(v)}
           />
         )}
       </div>

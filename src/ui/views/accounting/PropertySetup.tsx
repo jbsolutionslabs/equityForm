@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useAccountingStore, buildDefaultEntry } from '../../../state/accountingStore'
 import { useAppStore } from '../../../state/store'
 import type { AccountingProperty } from '../../../state/accountingTypes'
+import { CurrencyInput } from '../../components/CurrencyInput'
 
 /* ─── Types ── */
 
@@ -347,11 +348,10 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
             <label className="field-label">Purchase price</label>
             <div className="input-with-adornment">
               <span className="field-adornment">$</span>
-              <input
-                type="number"
+              <CurrencyInput
                 className="field-input"
-                value={core.purchasePrice || ''}
-                onChange={(e) => patchCore('purchasePrice', parseFloat(e.target.value) || 0)}
+                value={core.purchasePrice}
+                onChange={(v) => patchCore('purchasePrice', v)}
               />
             </div>
           </div>
@@ -360,11 +360,10 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
             <label className="field-label">Mortgage balance at closing</label>
             <div className="input-with-adornment">
               <span className="field-adornment">$</span>
-              <input
-                type="number"
+              <CurrencyInput
                 className="field-input"
-                value={core.mortgageBalance || ''}
-                onChange={(e) => patchCore('mortgageBalance', parseFloat(e.target.value) || 0)}
+                value={core.mortgageBalance}
+                onChange={(v) => patchCore('mortgageBalance', v)}
               />
             </div>
           </div>
@@ -373,11 +372,10 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
             <label className="field-label">Initial equity contributed</label>
             <div className="input-with-adornment">
               <span className="field-adornment">$</span>
-              <input
-                type="number"
+              <CurrencyInput
                 className="field-input"
-                value={core.initialEquity || ''}
-                onChange={(e) => patchCore('initialEquity', parseFloat(e.target.value) || 0)}
+                value={core.initialEquity}
+                onChange={(v) => patchCore('initialEquity', v)}
               />
             </div>
           </div>
@@ -402,11 +400,10 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
             <label className="field-label">LP equity invested *</label>
             <div className="input-with-adornment">
               <span className="field-adornment">$</span>
-              <input
-                type="number"
+              <CurrencyInput
                 className={`field-input ${errors.lpEquity ? 'field-input--error' : ''}`}
-                value={core.lpEquity || ''}
-                onChange={(e) => patchCore('lpEquity', parseFloat(e.target.value) || 0)}
+                value={core.lpEquity}
+                onChange={(v) => patchCore('lpEquity', v)}
               />
             </div>
             {errors.lpEquity && <div className="field-error">{errors.lpEquity}</div>}
@@ -522,7 +519,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                 <label className="field-label">Depreciable building basis</label>
                 <div className="input-with-adornment">
                   <span className="field-adornment">$</span>
-                  <input type="number" className="field-input" value={adv.depreciableBuilding || ''} onChange={(e) => patchAdv('depreciableBuilding', parseFloat(e.target.value) || 0)} />
+                  <CurrencyInput className="field-input" value={adv.depreciableBuilding} onChange={(v) => patchAdv('depreciableBuilding', v)} />
                 </div>
                 <div className="field-hint">Leave 0 to auto-derive as 85% of purchase price</div>
               </div>
@@ -538,7 +535,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                 <label className="field-label">Accumulated depreciation (BOY)</label>
                 <div className="input-with-adornment">
                   <span className="field-adornment">$</span>
-                  <input type="number" className="field-input" value={adv.accumulatedDepreciationBOY || ''} onChange={(e) => patchAdv('accumulatedDepreciationBOY', parseFloat(e.target.value) || 0)} />
+                  <CurrencyInput className="field-input" value={adv.accumulatedDepreciationBOY} onChange={(v) => patchAdv('accumulatedDepreciationBOY', v)} />
                 </div>
                 <div className="field-hint">0 if starting from acquisition year</div>
               </div>
@@ -546,7 +543,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                 <label className="field-label">Deferred financing costs</label>
                 <div className="input-with-adornment">
                   <span className="field-adornment">$</span>
-                  <input type="number" className="field-input" value={adv.deferredFinancingCosts || ''} onChange={(e) => patchAdv('deferredFinancingCosts', parseFloat(e.target.value) || 0)} />
+                  <CurrencyInput className="field-input" value={adv.deferredFinancingCosts} onChange={(v) => patchAdv('deferredFinancingCosts', v)} />
                 </div>
               </div>
             </div>
@@ -557,7 +554,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                 <label className="field-label">GP co-invest equity</label>
                 <div className="input-with-adornment">
                   <span className="field-adornment">$</span>
-                  <input type="number" className="field-input" value={adv.gpEquity || ''} onChange={(e) => patchAdv('gpEquity', parseFloat(e.target.value) || 0)} />
+                  <CurrencyInput className="field-input" value={adv.gpEquity} onChange={(v) => patchAdv('gpEquity', v)} />
                 </div>
               </div>
               <div className="field-group">
@@ -595,11 +592,10 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                   <label className="field-label">{label}</label>
                   <div className="input-with-adornment">
                     <span className="field-adornment">$</span>
-                    <input
-                      type="number"
+                    <CurrencyInput
                       className="field-input"
-                      value={(adv[field] as number) || ''}
-                      onChange={(e) => patchAdv(field, parseFloat(e.target.value) || 0 as any)}
+                      value={adv[field] as number}
+                      onChange={(v) => patchAdv(field, v as any)}
                     />
                   </div>
                   <div className="field-hint">{hint}</div>
@@ -613,14 +609,14 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                 <label className="field-label">Default monthly CapEx</label>
                 <div className="input-with-adornment">
                   <span className="field-adornment">$</span>
-                  <input type="number" className="field-input" value={adv.monthlyCapExDefault || ''} onChange={(e) => patchAdv('monthlyCapExDefault', parseFloat(e.target.value) || 0)} />
+                  <CurrencyInput className="field-input" value={adv.monthlyCapExDefault} onChange={(v) => patchAdv('monthlyCapExDefault', v)} />
                 </div>
               </div>
               <div className="field-group">
                 <label className="field-label">Default replacement reserve</label>
                 <div className="input-with-adornment">
                   <span className="field-adornment">$</span>
-                  <input type="number" className="field-input" value={adv.monthlyReserveDefault || ''} onChange={(e) => patchAdv('monthlyReserveDefault', parseFloat(e.target.value) || 0)} />
+                  <CurrencyInput className="field-input" value={adv.monthlyReserveDefault} onChange={(v) => patchAdv('monthlyReserveDefault', v)} />
                 </div>
               </div>
             </div>

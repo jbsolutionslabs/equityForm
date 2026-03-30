@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useForm, useFieldArray } from 'react-hook-form'
+import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useAppStore, Investor, canSendSubAgreements } from '../../state/store'
@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { generateSubscriptionAgreementText } from '../../utils/pdfTemplate'
 import { generatePlaceholders } from '../../utils/placeholders'
 import { FieldHelp, HelpCard } from '../components/HelpCard'
+import { CurrencyInput } from '../components/CurrencyInput'
 import CompletionBadge from '../components/CompletionBadge'
 
 /* ─── Schema ────────────────────────────────────────────────────────────── */
@@ -334,14 +335,18 @@ export const Investors: React.FC = () => {
                     <div className="field-group">
                       <label className="field-label" htmlFor={`investor-amount-${idx}`}>Subscription amount ($)</label>
                       <FieldHelp text="The total dollar amount this investor is committing to the offering." />
-                      <input
-                        id={`investor-amount-${idx}`}
-                        type="number"
-                        className="field-input"
-                        placeholder="e.g. 100000"
-                        min={0}
-                        step={1000}
-                        {...form.register(`investors.${idx}.subscriptionAmount` as const, { valueAsNumber: true })}
+                      <Controller
+                        control={form.control}
+                        name={`investors.${idx}.subscriptionAmount` as const}
+                        render={({ field }) => (
+                          <CurrencyInput
+                            id={`investor-amount-${idx}`}
+                            className="field-input"
+                            placeholder="e.g. 100000"
+                            value={field.value ?? 0}
+                            onChange={(v) => field.onChange(v || null)}
+                          />
+                        )}
                       />
                     </div>
                     <div className="field-group">
