@@ -2,10 +2,11 @@ import React, { useState } from 'react'
 import Stepper, { Step } from '../components/Stepper'
 import { FieldHelp, Tooltip, HelpCard } from '../components/HelpCard'
 import CompletionBadge from '../components/CompletionBadge'
-import { useForm } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useAppStore } from '../../state/store'
+import { FormattedNumberInput } from '../components/FormattedNumberInput'
 
 const baseSchema = z.object({
   offeringExemption:           z.enum(['506(b)', '506(c)', '']).optional(),
@@ -199,14 +200,20 @@ export const Offering: React.FC = () => {
                     />
                   </div>
                   <FieldHelp text="Enter the minimum dollar amount per investor. This appears in the subscription agreement." />
-                  <input
-                    id="minimumInvestment"
-                    type="number"
-                    className="field-input"
-                    placeholder="e.g. 50000"
-                    min={0}
-                    step={1000}
-                    {...form.register('minimumInvestment', { valueAsNumber: true })}
+                  <Controller
+                    control={form.control}
+                    name="minimumInvestment"
+                    render={({ field }) => (
+                      <FormattedNumberInput
+                        id="minimumInvestment"
+                        className="field-input"
+                        placeholder="e.g. 50000"
+                        min={0}
+                        onBlur={field.onBlur}
+                        value={field.value ?? null}
+                        onValueChange={field.onChange}
+                      />
+                    )}
                   />
                 </div>
 
@@ -265,15 +272,22 @@ export const Offering: React.FC = () => {
                         </label>
                       </div>
                       <FieldHelp text="Annual percentage LPs earn before GP promote kicks in. 6–8% is common." />
-                      <input
-                        id="preferredReturnRate"
-                        type="number"
-                        className="field-input"
-                        placeholder="e.g. 8"
-                        min={0}
-                        max={100}
-                        step={0.5}
-                        {...form.register('preferredReturnRate', { valueAsNumber: true })}
+                      <Controller
+                        control={form.control}
+                        name="preferredReturnRate"
+                        render={({ field }) => (
+                          <FormattedNumberInput
+                            id="preferredReturnRate"
+                            className="field-input"
+                            placeholder="e.g. 8"
+                            min={0}
+                            max={100}
+                            step={0.5}
+                            onBlur={field.onBlur}
+                            value={field.value ?? null}
+                            onValueChange={field.onChange}
+                          />
+                        )}
                       />
                     </div>
 
@@ -303,16 +317,23 @@ export const Offering: React.FC = () => {
                         </label>
                       </div>
                       <FieldHelp text="The minimum IRR investors must receive before the GP earns any promote." />
-                      <input
-                        id="irrRate"
-                        type="number"
-                        className={`field-input${errors.irrRate ? ' field-input--error' : ''}`}
-                        placeholder="e.g. 10"
-                        min={0}
-                        step={0.5}
-                        style={{ maxWidth: 160 }}
-                        aria-invalid={!!errors.irrRate}
-                        {...form.register('irrRate', { valueAsNumber: true })}
+                      <Controller
+                        control={form.control}
+                        name="irrRate"
+                        render={({ field }) => (
+                          <FormattedNumberInput
+                            id="irrRate"
+                            className={`field-input${errors.irrRate ? ' field-input--error' : ''}`}
+                            placeholder="e.g. 10"
+                            min={0}
+                            step={0.5}
+                            style={{ maxWidth: 160 }}
+                            aria-invalid={!!errors.irrRate}
+                            onBlur={field.onBlur}
+                            value={field.value ?? null}
+                            onValueChange={field.onChange}
+                          />
+                        )}
                       />
                       {errors.irrRate && (
                         <div className="field-error-msg" role="alert">
@@ -346,15 +367,22 @@ export const Offering: React.FC = () => {
                   />
                 </div>
                 <FieldHelp text="Enter the GP's share of profits after the preferred return. 20% is standard." />
-                <input
-                  id="gpPromote"
-                  type="number"
-                  className="field-input"
-                  placeholder="e.g. 20"
-                  min={0}
-                  max={100}
-                  step={1}
-                  {...form.register('gpPromote', { valueAsNumber: true })}
+                <Controller
+                  control={form.control}
+                  name="gpPromote"
+                  render={({ field }) => (
+                    <FormattedNumberInput
+                      id="gpPromote"
+                      className="field-input"
+                      placeholder="e.g. 20"
+                      min={0}
+                      max={100}
+                      step={1}
+                      onBlur={field.onBlur}
+                      value={field.value ?? null}
+                      onValueChange={field.onChange}
+                    />
+                  )}
                 />
               </div>
 

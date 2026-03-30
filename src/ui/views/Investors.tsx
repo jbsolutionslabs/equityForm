@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useForm, useFieldArray } from 'react-hook-form'
+import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useAppStore, Investor, canSendSubAgreements } from '../../state/store'
@@ -8,6 +8,7 @@ import { generateSubscriptionAgreementText } from '../../utils/pdfTemplate'
 import { generatePlaceholders } from '../../utils/placeholders'
 import { FieldHelp, HelpCard } from '../components/HelpCard'
 import CompletionBadge from '../components/CompletionBadge'
+import { FormattedNumberInput } from '../components/FormattedNumberInput'
 
 /* ─── Schema ────────────────────────────────────────────────────────────── */
 const investorSchema = z.object({
@@ -334,26 +335,39 @@ export const Investors: React.FC = () => {
                     <div className="field-group">
                       <label className="field-label" htmlFor={`investor-amount-${idx}`}>Subscription amount ($)</label>
                       <FieldHelp text="The total dollar amount this investor is committing to the offering." />
-                      <input
-                        id={`investor-amount-${idx}`}
-                        type="number"
-                        className="field-input"
-                        placeholder="e.g. 100000"
-                        min={0}
-                        step={1000}
-                        {...form.register(`investors.${idx}.subscriptionAmount` as const, { valueAsNumber: true })}
+                      <Controller
+                        control={form.control}
+                        name={`investors.${idx}.subscriptionAmount` as const}
+                        render={({ field }) => (
+                          <FormattedNumberInput
+                            id={`investor-amount-${idx}`}
+                            className="field-input"
+                            placeholder="e.g. 100000"
+                            min={0}
+                            onBlur={field.onBlur}
+                            value={field.value ?? null}
+                            onValueChange={field.onChange}
+                          />
+                        )}
                       />
                     </div>
                     <div className="field-group">
                       <label className="field-label" htmlFor={`investor-units-${idx}`}>Class A units</label>
                       <FieldHelp text="Number of Class A membership units being subscribed." />
-                      <input
-                        id={`investor-units-${idx}`}
-                        type="number"
-                        className="field-input"
-                        placeholder="e.g. 1000"
-                        min={0}
-                        {...form.register(`investors.${idx}.classAUnits` as const, { valueAsNumber: true })}
+                      <Controller
+                        control={form.control}
+                        name={`investors.${idx}.classAUnits` as const}
+                        render={({ field }) => (
+                          <FormattedNumberInput
+                            id={`investor-units-${idx}`}
+                            className="field-input"
+                            placeholder="e.g. 1000"
+                            min={0}
+                            onBlur={field.onBlur}
+                            value={field.value ?? null}
+                            onValueChange={field.onChange}
+                          />
+                        )}
                       />
                     </div>
                   </div>

@@ -21,6 +21,22 @@ const confidenceClass = (confidence: number) => {
   return 'confidence-badge confidence-badge--low'
 }
 
+const formatNumberInput = (value: number | string | boolean | null) => {
+  if (value === null || value === undefined || value === '' || typeof value === 'boolean') return ''
+  const numeric = typeof value === 'number'
+    ? value
+    : Number(String(value).replace(/,/g, ''))
+  if (Number.isNaN(numeric)) return ''
+  return numeric.toLocaleString('en-US')
+}
+
+const parseNumberInput = (raw: string) => {
+  const cleaned = raw.replace(/,/g, '').trim()
+  if (!cleaned) return null
+  const numeric = Number(cleaned)
+  return Number.isNaN(numeric) ? null : numeric
+}
+
 const renderInput = (
   rule: ImportFieldRule | undefined,
   field: ImportedFieldResult,
@@ -38,16 +54,16 @@ const renderInput = (
 
   return (
     <input
-      type={rule?.type === 'string' ? 'text' : 'number'}
+      type="text"
       className="field-input field-input--sm"
       value={
         rule?.type === 'string'
           ? (typeof field.value === 'string' ? field.value : '')
-          : (typeof field.value === 'number' ? field.value : '')
+          : formatNumberInput(field.value)
       }
       onChange={(event) => {
         const raw = event.target.value
-        onChange(rule?.type === 'string' ? raw : (raw ? Number(raw) : null))
+        onChange(rule?.type === 'string' ? raw : parseNumberInput(raw))
       }}
     />
   )

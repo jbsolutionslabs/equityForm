@@ -22,6 +22,7 @@ import type {
   DistributionEntry,
 } from '../../../state/accountingTypes'
 import { SpreadsheetImportModal } from '../../components/SpreadsheetImportModal'
+import { FormattedNumberInput } from '../../components/FormattedNumberInput'
 import type { MultiMonthImportResult } from '../../../server/types/importTypes'
 import { applyImportedValues, type EntryDraft } from './applyImportedValues'
 
@@ -70,12 +71,11 @@ function NumRow({
         {readOnly ? (
           <div className="line-item-readonly">{value.toLocaleString()}</div>
         ) : (
-          <input
-            type="number"
+          <FormattedNumberInput
             className="field-input field-input--sm"
-            value={value || ''}
+            value={value}
             min={0}
-            onChange={(e) => onChange?.(parseFloat(e.target.value) || 0)}
+            onValueChange={(nextValue) => onChange?.(nextValue ?? 0)}
           />
         )}
       </div>
@@ -540,13 +540,12 @@ export const LineItemEntry: React.FC<Props> = ({
                 {readOnly ? (
                   <div className="line-item-readonly">{dist.actualLPDistribution.toLocaleString()}</div>
                 ) : (
-                  <input
-                    type="number"
+                  <FormattedNumberInput
                     className="field-input field-input--sm"
-                    value={dist.actualLPDistribution || ''}
+                    value={dist.actualLPDistribution}
                     min={0}
-                    onChange={(e) => {
-                      const v = parseFloat(e.target.value) || 0
+                    onValueChange={(nextValue) => {
+                      const v = nextValue ?? 0
                       patchDist('actualLPDistribution', v)
                       patchDist('isOverridden', v !== dist.calculatedLPPref)
                     }}
