@@ -100,6 +100,7 @@ export const LineItemEntry: React.FC<Props> = ({
 }) => {
   const getEntry    = useAccountingStore((s) => s.getEntry)
   const upsertEntry = useAccountingStore((s) => s.upsertEntry)
+  const deleteEntry = useAccountingStore((s) => s.deleteEntry)
 
   const [tab, setTab] = useState<Tab>('pnl')
   const [saving, setSaving] = useState(false)
@@ -209,6 +210,7 @@ export const LineItemEntry: React.FC<Props> = ({
   const bl    = entry.belowLine
   const wc    = entry.workingCapital
   const dist  = entry.distributions
+  const existingEntry = getEntry(property.id, period)
 
   // Derived totals for display
   const mfPnl  = pnl as MultifamilyPnL
@@ -230,6 +232,14 @@ export const LineItemEntry: React.FC<Props> = ({
   // Period label
   const [py, pm] = period.split('-').map(Number)
   const periodDisplay = new Date(py, pm - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+
+  const handleDeleteEntry = () => {
+    if (!existingEntry) return
+    if (!window.confirm(`Delete entry for ${periodDisplay}? This cannot be undone.`)) return
+    deleteEntry(existingEntry.id)
+    notify('Entry deleted.', 'success')
+    onCancel?.()
+  }
 
   return (
     <div className="page-enter">
@@ -606,6 +616,16 @@ export const LineItemEntry: React.FC<Props> = ({
             {onCancel && (
               <button type="button" className="btn btn-secondary" onClick={onCancel}>Cancel</button>
             )}
+          {existingEntry && (
+            <button
+              type="button"
+              className="btn btn-danger"
+              disabled={saving}
+              onClick={handleDeleteEntry}
+            >
+              Delete Entry
+            </button>
+          )}
             <button type="button" className="btn btn-primary" disabled={saving} onClick={handleSave}>
               {saving ? 'Saving…' : 'Save Entry'}
             </button>

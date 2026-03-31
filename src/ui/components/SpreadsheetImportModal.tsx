@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect, useRef } from 'react'
 import { importSpreadsheetApi } from '../../api/importSpreadsheet'
 import { detectMonths } from '../../server/imports/detectMonths'
 import { runMultiMonthImport } from '../../server/imports/runMultiMonthImport'
@@ -69,6 +69,8 @@ export const SpreadsheetImportModal: React.FC<Props> = ({ open, assetClass, peri
   const [error, setError] = useState<string | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
 
+  const overlayRef = useRef<HTMLDivElement | null>(null)
+
   const ruleMap = useMemo(() => {
     return importFieldRules.reduce<Record<string, typeof importFieldRules[number]>>((acc, rule) => {
       acc[rule.fieldKey] = rule
@@ -76,6 +78,12 @@ export const SpreadsheetImportModal: React.FC<Props> = ({ open, assetClass, peri
     }, {})
   }, [])
 
+  useEffect(() => {
+    if (open && overlayRef.current) {
+      overlayRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [open])
+  
   if (!open) return null
 
   const resetFlow = () => {
@@ -206,7 +214,13 @@ export const SpreadsheetImportModal: React.FC<Props> = ({ open, assetClass, peri
   const hasResults = Object.keys(resultsByMonth).length > 0
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="spreadsheet-import-title">
+    <div
+      ref={overlayRef}
+      className="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="spreadsheet-import-title"
+    >
       <div className="modal modal--wide">
         <div className="modal-header">
           <h2 id="spreadsheet-import-title" className="modal-title">Import from Spreadsheet</h2>

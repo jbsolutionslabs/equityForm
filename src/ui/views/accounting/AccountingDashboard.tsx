@@ -10,7 +10,10 @@ import {
 import { PropertySetup }   from './PropertySetup'
 import { LineItemEntry }   from './LineItemEntry'
 import { StatementViewer } from './StatementViewer'
-import type { AccountingProperty } from '../../../state/accountingTypes'
+import type {
+  AccountingProperty,
+  MonthlyEntry,
+} from '../../../state/accountingTypes'
 
 /* ─── Helpers ── */
 
@@ -198,6 +201,8 @@ function PropertyWorkspace({
   const gap     = computePrefGapSummary(entries)
   const [workspace, setWorkspace] = useState<'overview' | 'entry' | 'statements'>('overview')
   const [entryPeriod, setEntryPeriod] = useState('')
+  const deleteEntry = useAccountingStore((s) => s.deleteEntry)
+  const deleteProperty = useAccountingStore((s) => s.deleteProperty)
 
   const now           = new Date()
   const defaultPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -234,6 +239,25 @@ function PropertyWorkspace({
     : null
   const ytdEGI = isData?.rows.find((r) => r.key === 'egi' || r.key === 'total-rev')?.value ?? 0
   const ytdNet = isData?.rows.find((r) => r.key === 'net-income')?.value ?? 0
+
+  const handleDeleteEntry = (target: MonthlyEntry) => {
+    if (!window.confirm(
+      `Delete entry for ${formatPeriod(target.period)}? This cannot be undone.`,
+    )) return
+    deleteEntry(target.id)
+    if (workspace === 'entry' && entryPeriod === target.period) {
+      setWorkspace('overview')
+      setEntryPeriod('')
+    }
+  }
+
+  const handleDeleteProperty = () => {
+    if (!window.confirm(
+      `Delete ${property.name}? This removes the property and all its monthly entries permanently.`,
+    )) return
+    deleteProperty(property.id)
+    onBack()
+  }
 
   return (
     <div className="page-enter">
@@ -285,6 +309,13 @@ function PropertyWorkspace({
         >
           View Statements →
         </button>
+          <button
+            type="button"
+            className="btn btn-danger"
+            onClick={handleDeleteProperty}
+          >
+            Delete Property
+          </button>
       </div>
 
       {/* YTD stats */}
@@ -366,15 +397,24 @@ function PropertyWorkspace({
                     <td style={{ textAlign: 'right', color: gapV > 0.01 ? 'var(--color-warning)' : undefined }}>
                       {gapV > 0.01 ? fmtCurrency(gapV) : '—'}
                     </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => { setEntryPeriod(e.period); setWorkspace('entry') }}
-                      >
-                        Edit
-                      </button>
-                    </td>
+                <td>
+                  <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => { setEntryPeriod(e.period); setWorkspace('entry') }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger btn-sm"
+                      onClick={() => handleDeleteEntry(e)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </td>
                   </tr>
                 )
               })}
