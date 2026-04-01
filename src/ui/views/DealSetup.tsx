@@ -7,6 +7,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useAppStore, OaStatus } from '../../state/store'
+import { AddressAutocompleteInput, ParsedAddress } from '../components/AddressAutocompleteInput'
 
 const schema = z.object({
   entityName:              z.string().min(1, 'Entity name is required'),
@@ -254,22 +255,24 @@ export const DealSetup: React.FC = () => {
               <div className="field-group">
                 <label className="field-label" htmlFor="registeredAgentAddress">Registered Agent Address</label>
                 <FieldHelp text="The official address where the registered agent can receive service of process." />
-                <input
+                <AddressAutocompleteInput
                   id="registeredAgentAddress"
                   className="field-input"
                   placeholder="e.g. 251 Little Falls Dr, Wilmington, DE 19808"
-                  {...form.register('registeredAgentAddress')}
+                  value={form.watch('registeredAgentAddress') || ''}
+                  onChange={(v) => form.setValue('registeredAgentAddress', v)}
                 />
               </div>
 
               <div className="field-group">
                 <label className="field-label" htmlFor="principalAddress">Principal Office Address</label>
                 <FieldHelp text="The main business address of the LLC — typically where the GP manages the deal." />
-                <input
+                <AddressAutocompleteInput
                   id="principalAddress"
                   className="field-input"
                   placeholder="e.g. 123 Market St, Suite 400, San Francisco, CA 94105"
-                  {...form.register('principalAddress')}
+                  value={form.watch('principalAddress') || ''}
+                  onChange={(v) => form.setValue('principalAddress', v)}
                 />
               </div>
             </div>
@@ -287,11 +290,18 @@ export const DealSetup: React.FC = () => {
               <div className="field-group">
                 <label className="field-label" htmlFor="propertyAddress">Property Street Address</label>
                 <FieldHelp text="The street address of the investment property as it appears in legal records." />
-                <input
+                <AddressAutocompleteInput
                   id="propertyAddress"
                   className="field-input"
                   placeholder="e.g. 450 Valencia St"
-                  {...form.register('propertyAddress')}
+                  value={form.watch('propertyAddress') || ''}
+                  onChange={(v) => form.setValue('propertyAddress', v)}
+                  onSelectAddress={(addr: ParsedAddress) => {
+                    if (addr.streetAddress) form.setValue('propertyAddress', addr.streetAddress)
+                    if (addr.city) form.setValue('propertyCity', addr.city)
+                    if (addr.state) form.setValue('propertyState', addr.state)
+                    if (addr.zip) form.setValue('propertyZip', addr.zip)
+                  }}
                 />
               </div>
 

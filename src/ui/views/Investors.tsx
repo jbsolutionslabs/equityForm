@@ -10,6 +10,7 @@ import { generatePlaceholders } from '../../utils/placeholders'
 import { FieldHelp, HelpCard } from '../components/HelpCard'
 import { CurrencyInput } from '../components/CurrencyInput'
 import CompletionBadge from '../components/CompletionBadge'
+import { AddressAutocompleteInput, ParsedAddress } from '../components/AddressAutocompleteInput'
 
 /* ─── Schema helpers ─────────────────────────────────────────────────────── */
 const requiredString = (message: string) => z.string().min(1, message)
@@ -654,11 +655,18 @@ export const Investors: React.FC = () => {
 
                   <div className="field-group">
                     <label className="field-label" htmlFor={`investor-address-${idx}`}>Street Address</label>
-                    <input
+                    <AddressAutocompleteInput
                       id={`investor-address-${idx}`}
                       className="field-input"
                       placeholder="e.g. 123 Main Street"
-                      {...form.register(`investors.${idx}.streetAddress` as const)}
+                      value={form.watch(`investors.${idx}.streetAddress` as const) || ''}
+                      onChange={(v) => form.setValue(`investors.${idx}.streetAddress` as const, v)}
+                      onSelectAddress={(addr: ParsedAddress) => {
+                        if (addr.streetAddress) form.setValue(`investors.${idx}.streetAddress` as const, addr.streetAddress)
+                        if (addr.city) form.setValue(`investors.${idx}.city` as const, addr.city)
+                        if (addr.state) form.setValue(`investors.${idx}.state` as const, addr.state)
+                        if (addr.zip) form.setValue(`investors.${idx}.zip` as const, addr.zip)
+                      }}
                     />
                   </div>
 
