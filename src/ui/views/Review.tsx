@@ -373,7 +373,7 @@ export const Review: React.FC = () => {
                 <div className="doc-paper doc-paper--preview">
                   <div className="doc-paper-header">
                     <div className="doc-paper-title">Operating Agreement</div>
-                    <div className="doc-paper-entity">{entityName}, LLC</div>
+                    <div className="doc-paper-entity">{entityName}</div>
                     <div className="doc-paper-subtitle">A {formationState} Limited Liability Company</div>
                     <div className="doc-paper-meta"><strong>Effective Date:</strong> {effectiveDate}</div>
                   </div>

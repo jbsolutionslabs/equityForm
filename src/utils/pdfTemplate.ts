@@ -53,7 +53,7 @@ The Members hereby form a limited liability company (the "Company") pursuant to 
 
 1.2  Name.
 
-The name of the Company shall be [ENTITY_NAME], LLC, or such other name as the Managing Member may select from time to time in compliance with applicable law.
+The name of the Company shall be [ENTITY_NAME], or such other name as the Managing Member may select from time to time in compliance with applicable law.
 
 1.3  Principal Place of Business; Registered Agent.
 
@@ -180,7 +180,7 @@ export function generateOperatingAgreementHtml(values: Record<string, any>) {
   <body>
     <div class="doc-cover">
       <div class="doc-title">Operating Agreement</div>
-      <div class="doc-entity">${escapeHtml(values.ENTITY_NAME || '')}, LLC</div>
+      <div class="doc-entity">${escapeHtml(values.ENTITY_NAME || '')}</div>
       <div class="doc-subtitle">A ${escapeHtml(values.FORMATION_STATE || '')} Limited Liability Company</div>
       <div class="doc-meta"><strong>Effective Date:</strong> ${escapeHtml(values.EFFECTIVE_DATE || '')}</div>
     </div>
@@ -197,7 +197,7 @@ function escapeHtml(s: any) {
 }
 
 export function generateSubscriptionAgreementText(values: Record<string, any>, investor: Record<string, any>) {
-  const template = `THIS SUBSCRIPTION AND PARTICIPATION AGREEMENT (this "Agreement") is entered into as of the date indicated on the signature page by and between [ENTITY_NAME], LLC, a [FORMATION_STATE] limited liability company (the "Company"), managed by [GP_ENTITY_NAME] (the "Managing Member"), and the undersigned subscriber (the "Subscriber").\n\nARTICLE I — SUBSCRIPTION\n\n1.1  Subscription for Units.\n\nSubject to the terms and conditions of this Agreement and the Operating Agreement of the Company (the "Operating Agreement"), Subscriber hereby irrevocably subscribes for and agrees to purchase Class A Units of the Company representing a [SUBSCRIBER_OWNERSHIP_PCT]% membership interest in the Company, in exchange for a Capital Contribution of $[SUBSCRIBER_CONTRIBUTION] (the "Subscription Amount").\n\n1.2  Payment of Subscription Amount.\n\nSubscriber shall pay the Subscription Amount by wire transfer or ACH transfer to the following account:\n\nBank Name:  [BANK_NAME]\nAccount Name:  [ACCOUNT_NAME]\nAccount Number:  [ACCOUNT_NUMBER]\nRouting Number:  [ROUTING_NUMBER]\nReference:  [ENTITY_NAME] — [SUBSCRIBER_LAST_NAME]\n\nPayment shall be made no later than [CLOSING_DATE]. The Company shall have no obligation to admit Subscriber as a Member until the Subscription Amount has been received in full in immediately available funds.\n\nSUBSCRIBER INFORMATION\n\nFull Legal Name of Subscriber:  ___________________________________\n\nSubscription Amount: $  [SUBSCRIBER_CONTRIBUTION]\n\nClass A Units Subscribed:  [SUBSCRIBER_OWNERSHIP_PCT]\n\nSUBSCRIBER SIGNATURE\n\nBy executing below, Subscriber agrees to be bound by the terms of this Agreement and the Operating Agreement.\n`;
+  const template = `THIS SUBSCRIPTION AND PARTICIPATION AGREEMENT (this "Agreement") is entered into as of the date indicated on the signature page by and between [ENTITY_NAME], a [FORMATION_STATE] limited liability company (the "Company"), managed by [GP_ENTITY_NAME] (the "Managing Member"), and the undersigned subscriber (the "Subscriber").\n\nARTICLE I — SUBSCRIPTION\n\n1.1  Subscription for Units.\n\nSubject to the terms and conditions of this Agreement and the Operating Agreement of the Company (the "Operating Agreement"), Subscriber hereby irrevocably subscribes for and agrees to purchase Class A Units of the Company representing a [SUBSCRIBER_OWNERSHIP_PCT]% membership interest in the Company, in exchange for a Capital Contribution of $[SUBSCRIBER_CONTRIBUTION] (the "Subscription Amount").\n\n1.2  Payment of Subscription Amount.\n\nSubscriber shall pay the Subscription Amount by wire transfer or ACH transfer to the following account:\n\nBank Name:  [BANK_NAME]\nAccount Name:  [ACCOUNT_NAME]\nAccount Number:  [ACCOUNT_NUMBER]\nRouting Number:  [ROUTING_NUMBER]\nReference:  [ENTITY_NAME] — [SUBSCRIBER_LAST_NAME]\n\nPayment shall be made no later than [CLOSING_DATE]. The Company shall have no obligation to admit Subscriber as a Member until the Subscription Amount has been received in full in immediately available funds.\n\nSUBSCRIBER INFORMATION\n\nFull Legal Name of Subscriber:  ___________________________________\n\nSubscription Amount: $  [SUBSCRIBER_CONTRIBUTION]\n\nClass A Units Subscribed:  [SUBSCRIBER_OWNERSHIP_PCT]\n\nSUBSCRIBER SIGNATURE\n\nBy executing below, Subscriber agrees to be bound by the terms of this Agreement and the Operating Agreement.\n`;
 
   return replaceTokens(template, values, investor)
 }
@@ -260,7 +260,7 @@ export function generateSubscriptionAgreementHtml(values: Record<string, any>, i
   <body>
     <div class="doc-cover">
       <div class="doc-title">Subscription Agreement</div>
-      <div class="doc-entity">${escapeHtml(values.ENTITY_NAME || '')}, LLC</div>
+      <div class="doc-entity">${escapeHtml(values.ENTITY_NAME || '')},</div>
       <div class="doc-subtitle">A ${escapeHtml(values.FORMATION_STATE || '')} Limited Liability Company</div>
       <div class="doc-meta-grid">
         <div><span class="doc-meta-label">Subscriber:</span> ${escapeHtml(subscriberName)}</div>
