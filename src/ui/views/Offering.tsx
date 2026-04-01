@@ -6,7 +6,7 @@ import CompletionBadge from '../components/CompletionBadge'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useAppStore } from '../../state/store'
+import { useAppStore, OaStatus } from '../../state/store'
 
 const baseSchema = z.object({
   offeringExemption:           z.enum(['506(b)', '506(c)', '']).optional(),
@@ -43,9 +43,12 @@ type FormValues = z.infer<typeof baseSchema>
 
 export const Offering: React.FC = () => {
   const setOffering  = useAppStore((s) => s.setOffering)
+  const resetOaStatus = useAppStore((s) => s.resetOaStatus)
   const data         = useAppStore((s) => s.data.offering)
+  const oaStatus: OaStatus = useAppStore((s) => s.data.operatingAgreement?.status ?? 'not_generated')
 
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
+  const [pendingVals, setPendingVals] = useState<FormValues | null>(null)
 
   const notify = (msg: string, type: 'success' | 'error' = 'success') => {
     setNotification({ msg, type })
@@ -66,17 +69,47 @@ export const Offering: React.FC = () => {
   const gpPromote   = watch('gpPromote')
   const lpResidual  = gpPromote != null && !isNaN(Number(gpPromote)) ? 100 - Number(gpPromote) : null
 
-  const onSubmit = (vals: FormValues) => {
+  const persistOffering = (vals: FormValues) => {
     const gp = vals.gpPromote ?? null
-    setOffering({ ...vals, lpResidual: gp !== null ? 100 - gp : null })
+    const normalizedVals: FormValues = {
+      ...vals,
+      irrRate: vals.preferredReturnType === 'IRR-based' ? vals.irrRate ?? null : null,
+    }
+    setOffering({ ...normalizedVals, lpResidual: gp !== null ? 100 - gp : null })
+  }
+
+  const onSubmit = (vals: FormValues) => {
+    if (oaStatus !== 'not_generated') {
+      setPendingVals(vals)
+      return
+    }
+    persistOffering(vals)
     notify('Offering saved. Deal saved.')
   }
 
   const saveProgress = () => {
-    const vals = form.getValues()
-    const gp = vals.gpPromote ?? null
-    setOffering({ ...vals, lpResidual: gp !== null ? 100 - gp : null })
-    notify('Offering saved. You\'re ready to continue.')
+    form.handleSubmit((vals) => {
+      if (oaStatus !== 'not_generated') {
+        setPendingVals(vals)
+        return
+      }
+      persistOffering(vals)
+      notify('Offering saved. You\'re ready to continue.')
+    })()
+  }
+
+  const confirmChangeAndRegenerate = () => {
+    if (pendingVals) {
+      persistOffering(pendingVals)
+      resetOaStatus()
+      notify('Offering saved. Operating Agreement has been reset — please regenerate and re-sign.')
+    }
+    setPendingVals(null)
+  }
+
+  const cancelPendingChange = () => {
+    setPendingVals(null)
+    notify('Changes cancelled. Existing Operating Agreement remains unchanged.')
   }
 
   return (
@@ -410,6 +443,32 @@ export const Offering: React.FC = () => {
       </div>
 
       <HelpCard text="Have questions about choosing an exemption, setting a preferred return, or structuring the promote? Our team can walk you through the options." />
+
+      {/* Change warning modal */}
+      {pendingVals && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="offering-change-warn-title">
+          <div className="modal">
+            <div className="modal-header">
+              <h2 id="offering-change-warn-title" className="modal-title">Operating Agreement Already Generated</h2>
+            </div>
+            <div className="modal-body">
+              <p style={{ margin: 0, color: 'var(--color-slate-600)' }}>
+                The Operating Agreement has already been {oaStatus === 'signed' ? 'signed' : 'generated'}.
+                Saving these economics changes will <strong>reset the OA</strong> and require you to regenerate
+                and re-collect the GP signature.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-primary" onClick={confirmChangeAndRegenerate}>
+                Save &amp; Regenerate OA
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={cancelPendingChange}>
+                Cancel Change
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
