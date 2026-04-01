@@ -3,6 +3,7 @@ import { useAccountingStore, buildDefaultEntry } from '../../../state/accounting
 import { useAppStore } from '../../../state/store'
 import type { AccountingProperty } from '../../../state/accountingTypes'
 import { CurrencyInput } from '../../components/CurrencyInput'
+import { AddressAutocompleteInput, ParsedAddress } from '../../components/AddressAutocompleteInput'
 
 /* ─── Types ── */
 
@@ -452,7 +453,16 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
             <div className="property-setup-grid">
               <div className="field-group">
                 <label className="field-label">Street Address</label>
-                <input type="text" className="field-input" value={adv.address} onChange={(e) => patchAdv('address', e.target.value)} />
+                <AddressAutocompleteInput
+                  className="field-input"
+                  value={adv.address}
+                  onChange={(v) => patchAdv('address', v)}
+                  onSelectAddress={(addr: ParsedAddress) => {
+                    if (addr.streetAddress) patchAdv('address', addr.streetAddress)
+                    if (addr.city) patchAdv('city', addr.city)
+                    if (addr.state) patchAdv('state', addr.state)
+                  }}
+                />
               </div>
               <div className="field-group">
                 <label className="field-label">City</label>

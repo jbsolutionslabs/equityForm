@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useAppStore, isSpvFormed } from '../../state/store'
 import { HelpCard } from '../components/HelpCard'
+import { AddressAutocompleteInput } from '../components/AddressAutocompleteInput'
 
 type ItemKey = 'llcFiled' | 'einObtained' | 'registeredAgent'
 
@@ -259,12 +260,12 @@ export const SpvFormation: React.FC = () => {
                 </div>
                 <div className="field-group">
                   <label className="field-label" htmlFor="agent-address">Registered Agent Address</label>
-                  <input
+                  <AddressAutocompleteInput
                     id="agent-address"
                     className="field-input"
                     placeholder="e.g. 251 Little Falls Dr, Wilmington, DE 19808"
                     value={items.registeredAgent.agentAddress}
-                    onChange={(e) => setField('registeredAgent', 'agentAddress', e.target.value)}
+                    onChange={(v) => setField('registeredAgent', 'agentAddress', v)}
                   />
                 </div>
                 <button type="button" className="btn btn-primary btn-sm" onClick={() => markComplete('registeredAgent')}>
