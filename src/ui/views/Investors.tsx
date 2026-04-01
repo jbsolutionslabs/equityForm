@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useForm, useFieldArray, Controller } from 'react-hook-form'
+import type { SubmitHandler } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useAppStore, Investor, canSendSubAgreements } from '../../state/store'
@@ -10,27 +11,142 @@ import { FieldHelp, HelpCard } from '../components/HelpCard'
 import { CurrencyInput } from '../components/CurrencyInput'
 import CompletionBadge from '../components/CompletionBadge'
 
-/* ─── Schema ────────────────────────────────────────────────────────────── */
-const investorSchema = z.object({
-  id:                z.string(),
-  fullLegalName:     z.string().min(1, 'Full legal name is required'),
-  subscriberType:    z.union([z.literal('individual'), z.literal('entity')]),
-  entityLegalName:   z.string().optional(),
-  subscriptionAmount:z.number().nullable().optional(),
-  classAUnits:       z.number().nullable().optional(),
-  streetAddress:     z.string().optional(),
-  city:              z.string().optional(),
-  state:             z.string().optional(),
-  zip:               z.string().optional(),
-  email:             z.string().optional(),
-  phone:             z.string().optional(),
-  taxId:             z.string().optional(),
-  signerName:        z.string().optional(),
-  signerTitle:       z.string().optional(),
-  accreditedInvestor:z.boolean().nullable().optional(),
+/* ─── Schema helpers ─────────────────────────────────────────────────────── */
+const requiredString = (message: string) => z.string().min(1, message)
+const sanitizeNumberField = (label: string) =>
+  z.preprocess(
+    (value) => {
+      if (value === null || value === undefined) return undefined
+      if (typeof value === 'number' && Number.isNaN(value)) return undefined
+      return value
+    },
+    z.number({ invalid_type_error: `${label} is required`, required_error: `${label} is required` }),
+  )
+const positiveNumberField = (label: string) =>
+  sanitizeNumberField(label).refine((value) => value > 0, { message: `${label} must be greater than 0` })
+
+const investorSchema = z
+  .object({
+    id:               z.string(),
+    fullLegalName:    requiredString('Full legal name is required'),
+    subscriberType:   z.union([z.literal('individual'), z.literal('entity')]),
+    entityLegalName:  z.string().optional(),
+    formationState:   z.string().optional(),
+    signerName:       z.string().optional(),
+    signerTitle:      z.string().optional(),
+    subscriptionAmount: positiveNumberField('Subscription amount'),
+    classAUnits:        positiveNumberField('Class A units'),
+    streetAddress:    requiredString('Street address is required'),
+    city:             requiredString('City is required'),
+    state:            requiredString('State is required'),
+    zip:              requiredString('ZIP is required'),
+    email:            z.string().email('Valid email address is required'),
+    phone:            requiredString('Phone number is required'),
+    taxId:            requiredString('Tax ID is required'),
+    accreditedInvestor: z.preprocess(
+      (value) => (value === null || value === undefined ? false : value),
+      z.boolean(),
+    ),
+  })
+  .superRefine((investor, ctx) => {
+    if (investor.subscriberType === 'entity') {
+      if (!investor.entityLegalName?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Entity legal name is required for entity investors',
+          path: ['entityLegalName'],
+        })
+      }
+      if (!investor.formationState?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Formation state is required for entity investors',
+          path: ['formationState'],
+        })
+      }
+      if (!investor.signerName?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Authorised signer name is required for entity investors',
+          path: ['signerName'],
+        })
+      }
+      if (!investor.signerTitle?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Signer title is required for entity investors',
+          path: ['signerTitle'],
+        })
+      }
+    }
+  })
+
+const schema = z.object({
+  investors: z.array(investorSchema),
 })
 
-const schema = z.object({ investors: z.array(investorSchema) })
+type FormInvestor = z.infer<typeof investorSchema>
+type FormValues = { investors: FormInvestor[] }
+
+const mapInvestorToForm = (investor: Investor): FormInvestor => ({
+  id: investor.id,
+  fullLegalName: investor.fullLegalName || '',
+  subscriberType: investor.subscriberType,
+  entityLegalName: investor.entityLegalName || '',
+  formationState: investor.formationState || '',
+  signerName: investor.signerName || '',
+  signerTitle: investor.signerTitle || '',
+  subscriptionAmount: investor.subscriptionAmount ?? 0,
+  classAUnits: investor.classAUnits ?? 0,
+  streetAddress: investor.streetAddress || '',
+  city: investor.city || '',
+  state: investor.state || '',
+  zip: investor.zip || '',
+  email: investor.email || '',
+  phone: investor.phone || '',
+  taxId: investor.taxId || '',
+  accreditedInvestor: Boolean(investor.accreditedInvestor),
+})
+
+const createBlankFormInvestor = (id: string): FormInvestor => ({
+  id,
+  fullLegalName: '',
+  subscriberType: 'individual',
+  entityLegalName: '',
+  formationState: '',
+  signerName: '',
+  signerTitle: '',
+  subscriptionAmount: 0,
+  classAUnits: 0,
+  streetAddress: '',
+  city: '',
+  state: '',
+  zip: '',
+  email: '',
+  phone: '',
+  taxId: '',
+  accreditedInvestor: false,
+})
+
+const createBlankStoreInvestor = (id: string): Investor => ({
+  id,
+  fullLegalName: '',
+  subscriberType: 'individual',
+  entityLegalName: '',
+  formationState: '',
+  signerName: '',
+  signerTitle: '',
+  subscriptionAmount: 0,
+  classAUnits: 0,
+  streetAddress: '',
+  city: '',
+  state: '',
+  zip: '',
+  email: '',
+  phone: '',
+  taxId: '',
+  accreditedInvestor: false,
+})
 
 /* ─── Status helpers ─────────────────────────────────────────────────────── */
 const STATUS_LABELS: Record<string, string> = {
@@ -61,8 +177,16 @@ export const Investors: React.FC = () => {
   const subscriptions = appData.subscriptions
   const offering   = appData.offering
 
-  const form = useForm({ resolver: zodResolver(schema), defaultValues: { investors: data }, mode: 'onBlur' })
-  const { fields, append, remove } = useFieldArray({ control: form.control, name: 'investors' })
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { investors: data.map(mapInvestorToForm) },
+    mode: 'onBlur',
+  })
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: 'investors',
+    keyName: 'fieldKey',
+  })
 
   // UI state
   const [expanded, setExpanded]   = useState<Record<number, boolean>>({})
@@ -81,18 +205,23 @@ export const Investors: React.FC = () => {
   const getSubStatus = (id: string) =>
     subscriptions.find((s) => s.investorId === id)?.status ?? null
 
+  useEffect(() => {
+    form.reset({ investors: data.map(mapInvestorToForm) })
+  }, [data, form])
+
   const onAdd = () => {
     const id = uuidv4()
-    const inv: Investor = { id, fullLegalName: '', subscriberType: 'individual' }
-    addInvestor(inv)
-    append(inv as z.infer<typeof investorSchema>)
+    const blankForm = createBlankFormInvestor(id)
+    append(blankForm)
     const newIdx = fields.length
     setExpanded((prev) => ({ ...prev, [newIdx]: true }))
   }
 
   const onRemove = (idx: number, id: string) => {
     remove(idx)
-    removeInvestor(id)
+    if (data.some((inv) => inv.id === id)) {
+      removeInvestor(id)
+    }
     setExpanded((prev) => {
       const next = { ...prev }
       delete next[idx]
@@ -100,7 +229,7 @@ export const Investors: React.FC = () => {
     })
   }
 
-  const onSave = (vals: { investors: z.infer<typeof investorSchema>[] }) => {
+  const onSave: SubmitHandler<FormValues> = (vals) => {
     if (offering.offeringExemption === '506(c)') {
       const bad = vals.investors.filter((inv) => inv.accreditedInvestor !== true)
       if (bad.length > 0) {
@@ -112,12 +241,18 @@ export const Investors: React.FC = () => {
       }
     }
     vals.investors.forEach((inv) => {
-      updateInvestor(inv.id, {
+      const payload: Partial<Investor> = {
         ...inv,
         derivedLastName:
           (inv as Investor).derivedLastName ??
           (inv.fullLegalName ? inv.fullLegalName.split(' ').slice(-1)[0] : ''),
-      })
+      }
+
+      if (data.some((existing) => existing.id === inv.id)) {
+        updateInvestor(inv.id, payload)
+      } else {
+        addInvestor(payload as Investor)
+      }
     })
     notify('Investors saved. Deal saved.')
   }
@@ -203,7 +338,7 @@ export const Investors: React.FC = () => {
           const subStatus  = getSubStatus(f.id)
 
           return (
-            <div key={f.id} className="investor-card">
+            <div key={f.fieldKey} className="investor-card">
               {/* Card header (always visible) */}
               <div
                 className="investor-card-header"

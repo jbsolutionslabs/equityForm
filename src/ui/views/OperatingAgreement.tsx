@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { useAppStore, canGenerateOA, isSpvFormed } from '../../state/store'
 import { generatePlaceholders } from '../../utils/placeholders'
-import { generateOperatingAgreementHtml } from '../../utils/pdfTemplate'
+import { generateOperatingAgreementHtml, generateOperatingAgreementText } from '../../utils/pdfTemplate'
 import html2pdf from 'html2pdf.js'
 import { HelpCard } from '../components/HelpCard'
 
@@ -25,6 +25,7 @@ export const OperatingAgreement: React.FC = () => {
   const sendOaForDocuSign = useAppStore((s) => s.sendOaForDocuSign)
   const simulateOaSigned  = useAppStore((s) => s.simulateOaSigned)
   const { values }        = generatePlaceholders(data)
+  const liveOaText        = generateOperatingAgreementText(values)
 
   const spvOk  = isSpvFormed(data)
   const canGen = canGenerateOA(data)
@@ -267,17 +268,17 @@ export const OperatingAgreement: React.FC = () => {
 
             {/* Document viewer */}
             <div className="doc-viewer-content" ref={docRef}>
-              {oa?.documentText ? (
+              {oa?.status !== 'not_generated' ? (
                 <div className="doc-paper">
                   <div className="doc-paper-header">
                     <div className="doc-paper-title">Operating Agreement</div>
-                    <div className="doc-paper-entity">{entityName}, LLC</div>
+                    <div className="doc-paper-entity">{entityName}</div>
                     <div className="doc-paper-subtitle">A {formationState} Limited Liability Company</div>
                     <div className="doc-paper-meta"><strong>Effective Date:</strong> {effectiveDate}</div>
                   </div>
                   <div className="doc-paper-body">
                     <span data-section="formation" />
-                    {oa.documentText}
+                    {liveOaText}
                   </div>
                 </div>
               ) : (

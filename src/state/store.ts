@@ -513,7 +513,17 @@ export const useAppStore = create<AppState>()(
       }, false, 'updateInvestor'),
 
     removeInvestor: (id) =>
-      set((s) => ({ data: { ...s.data, investors: s.data.investors.filter((i) => i.id !== id) } }), false, 'removeInvestor'),
+      set(
+        (s) => ({
+          data: {
+            ...s.data,
+            investors: s.data.investors.filter((i) => i.id !== id),
+            subscriptions: s.data.subscriptions.filter((sub) => sub.investorId !== id),
+          },
+        }),
+        false,
+        'removeInvestor',
+      ),
 
     reset: () => {
       save(defaultData)
