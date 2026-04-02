@@ -41,13 +41,22 @@ const investorSchema = z
     city:             requiredString('City is required'),
     state:            requiredString('State is required'),
     zip:              requiredString('ZIP is required'),
-    email:            z.string().email('Valid email address is required'),
-    phone:            requiredString('Phone number is required'),
-    taxId:            requiredString('Tax ID is required'),
+    email: z
+      .string()
+      .optional()
+      .refine((value) => !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value), {
+        message: 'Valid email address is required',
+      }),
+    phone:            z.string().optional(),
+    taxId:            z.string().optional(),
     accreditedInvestor: z.preprocess(
       (value) => (value === null || value === undefined ? false : value),
       z.boolean(),
     ),
+    accreditedInvestorBasis: z
+      .union([z.literal('income'), z.literal('net_worth')])
+      .nullable()
+      .optional(),
   })
   .superRefine((investor, ctx) => {
     if (investor.subscriberType === 'entity') {
@@ -80,6 +89,14 @@ const investorSchema = z
         })
       }
     }
+
+    if (investor.accreditedInvestor && !investor.accreditedInvestorBasis) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Select how this investor qualifies as accredited',
+        path: ['accreditedInvestorBasis'],
+      })
+    }
   })
 
 const schema = z.object({
@@ -107,6 +124,10 @@ const mapInvestorToForm = (investor: Investor): FormInvestor => ({
   phone: investor.phone || '',
   taxId: investor.taxId || '',
   accreditedInvestor: Boolean(investor.accreditedInvestor),
+  accreditedInvestorBasis:
+    investor.accreditedInvestorBasis === 'income' || investor.accreditedInvestorBasis === 'net_worth'
+      ? investor.accreditedInvestorBasis
+      : null,
 })
 
 const createBlankFormInvestor = (id: string): FormInvestor => ({
@@ -127,6 +148,7 @@ const createBlankFormInvestor = (id: string): FormInvestor => ({
   phone: '',
   taxId: '',
   accreditedInvestor: false,
+  accreditedInvestorBasis: null,
 })
 
 const createBlankStoreInvestor = (id: string): Investor => ({
@@ -147,6 +169,7 @@ const createBlankStoreInvestor = (id: string): Investor => ({
   phone: '',
   taxId: '',
   accreditedInvestor: false,
+  accreditedInvestorBasis: null,
 })
 
 /* ─── Status helpers ─────────────────────────────────────────────────────── */
@@ -232,10 +255,12 @@ export const Investors: React.FC = () => {
 
   const onSave: SubmitHandler<FormValues> = (vals) => {
     if (offering.offeringExemption === '506(c)') {
-      const bad = vals.investors.filter((inv) => inv.accreditedInvestor !== true)
+      const bad = vals.investors.filter(
+        (inv) => inv.accreditedInvestor !== true || !inv.accreditedInvestorBasis,
+      )
       if (bad.length > 0) {
         notify(
-          'Under 506(c) all investors must be marked as accredited. Please review each investor.',
+          'Under 506(c) all investors must be accredited and include whether they qualify by income or net worth.',
           'error',
         )
         return
@@ -256,6 +281,10 @@ export const Investors: React.FC = () => {
       }
     })
     notify('Investors saved. Deal saved.')
+  }
+
+  const onInvalid = () => {
+    notify('Could not save investors. Please fix the required fields and try again.', 'error')
   }
 
   const previewSubscription = (invId: string) => {
@@ -308,7 +337,7 @@ export const Investors: React.FC = () => {
         <button type="button" onClick={onAdd} className="btn btn-primary">
           + Add investor
         </button>
-        <button type="button" onClick={form.handleSubmit(onSave)} className="btn btn-secondary">
+        <button type="button" onClick={form.handleSubmit(onSave, onInvalid)} className="btn btn-secondary">
           Save all investors
         </button>
       </div>
@@ -330,7 +359,7 @@ export const Investors: React.FC = () => {
       )}
 
       {/* Investor cards */}
-      <form onSubmit={form.handleSubmit(onSave)}>
+      <form onSubmit={form.handleSubmit(onSave, onInvalid)}>
         {fields.map((f, idx) => {
           const name   = form.watch(`investors.${idx}.fullLegalName` as const) || 'New investor'
           const type   = form.watch(`investors.${idx}.subscriberType` as const)
@@ -619,12 +648,36 @@ export const Investors: React.FC = () => {
                     <input
                       type="checkbox"
                       id={`investor-accredited-${idx}`}
-                      {...form.register(`investors.${idx}.accreditedInvestor` as const)}
+                      {...form.register(`investors.${idx}.accreditedInvestor` as const, {
+                        onChange: (e) => {
+                          if (!e.target.checked) {
+                            form.setValue(`investors.${idx}.accreditedInvestorBasis` as const, null)
+                          }
+                        },
+                      })}
                     />
                     <label className="checkbox-label" htmlFor={`investor-accredited-${idx}`}>
                       Investor has confirmed accredited status
                     </label>
                   </div>
+
+                  {form.watch(`investors.${idx}.accreditedInvestor` as const) && (
+                    <div className="field-group" style={{ maxWidth: 420, marginTop: 8 }}>
+                      <label className="field-label" htmlFor={`investor-accredited-basis-${idx}`}>
+                        Accredited basis <span className="field-required">*</span>
+                      </label>
+                      <FieldHelp text="Capture the investor's representation basis for accreditation." />
+                      <select
+                        id={`investor-accredited-basis-${idx}`}
+                        className="field-input"
+                        {...form.register(`investors.${idx}.accreditedInvestorBasis` as const)}
+                      >
+                        <option value="">Select basis</option>
+                        <option value="income">Income test</option>
+                        <option value="net_worth">Net worth test</option>
+                      </select>
+                    </div>
+                  )}
 
                   <hr className="form-divider" />
 

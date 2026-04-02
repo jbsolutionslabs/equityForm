@@ -136,10 +136,26 @@ export const CapTable: React.FC = () => {
       )}
 
       {isLocked && (
-        <div className="captable-locked-badge" role="status" aria-label="Cap table locked">
-          <span aria-hidden="true">🔒</span>
-          Cap Table Locked — {new Date(deal.capTableLockedAt!).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-        </div>
+        <>
+          <div className="captable-locked-badge" role="status" aria-label="Cap table locked">
+            <span aria-hidden="true">🔒</span>
+            Cap Table Locked — {new Date(deal.capTableLockedAt!).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+          </div>
+          <div className="state-banner state-banner--warning" style={{ marginTop: 12 }} role="note" aria-label="Form D filing reminder">
+            <span aria-hidden="true">⚠</span>
+            <span>
+              File Form D with the SEC within 15 days of your first close.{' '}
+              <a
+                href="https://www.filermanagement.edgarfiling.sec.gov"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Go to SEC EDGAR filing page
+              </a>
+              .
+            </span>
+          </div>
+        </>
       )}
 
       {/* Cap table */}

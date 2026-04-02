@@ -51,6 +51,16 @@ export const OperatingAgreement: React.FC = () => {
   const entityName = data.deal.entityName || '—'
   const formationState = data.deal.formationState || '—'
   const effectiveDate = data.deal.effectiveDate || '—'
+  const preferredReturnPct = data.offering.preferredReturnEnabled
+    ? data.offering.preferredReturnRate != null
+      ? `${data.offering.preferredReturnRate}%`
+      : '—'
+    : 'None'
+  const gpPromotePct = data.offering.gpPromote != null ? `${data.offering.gpPromote}%` : '—'
+  const lpGpSplit =
+    data.offering.lpResidual != null && data.offering.gpPromote != null
+      ? `LP ${data.offering.lpResidual}% / GP ${data.offering.gpPromote}%`
+      : '—'
 
   const handleGenerate = () => {
     if (!canGen) {
@@ -208,6 +218,18 @@ export const OperatingAgreement: React.FC = () => {
             <div className="review-summary-item">
               <div className="review-summary-label">Offering Type</div>
               <div className="review-summary-value">{data.offering.offeringExemption || '—'}</div>
+            </div>
+            <div className="review-summary-item">
+              <div className="review-summary-label">Preferred Return %</div>
+              <div className="review-summary-value">{preferredReturnPct}</div>
+            </div>
+            <div className="review-summary-item">
+              <div className="review-summary-label">GP Promote %</div>
+              <div className="review-summary-value">{gpPromotePct}</div>
+            </div>
+            <div className="review-summary-item">
+              <div className="review-summary-label">LP/GP Split</div>
+              <div className="review-summary-value">{lpGpSplit}</div>
             </div>
             <div className="review-summary-item">
               <div className="review-summary-label">Effective Date</div>
