@@ -491,7 +491,15 @@ export const useAppStore = create<AppState>()(
           return { data: s.data }
         }
         const deal: Deal = { ...s.data.deal, capTableLockedAt: new Date().toISOString() }
-        return { data: { ...s.data, deal } }
+        const updatedData: AppData = { ...s.data, deal }
+        const { values } = generatePlaceholders(updatedData)
+        const documentText = generateOperatingAgreementText(values)
+        const oa: OperatingAgreement = {
+          ...s.data.operatingAgreement,
+          generatedAt: new Date().toISOString(),
+          documentText,
+        }
+        return { data: { ...updatedData, operatingAgreement: oa } }
       }, false, 'lockCapTable'),
 
     /* ── Investor management ── */

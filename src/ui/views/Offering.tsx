@@ -135,7 +135,7 @@ export const Offering: React.FC = () => {
       )}
 
       <div className="card">
-        <Stepper finishLabel="Save Offering →">
+        <Stepper finishLabel="Save Offering →" onFinish={saveProgress}>
 
           {/* ── Step 1: Offering exemption & solicitation ── */}
           <Step>
@@ -426,15 +426,6 @@ export const Offering: React.FC = () => {
                   placeholder="Describe the asset management fee structure, if any"
                   {...form.register('assetManagementFeeDescription')}
                 />
-              </div>
-
-              <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
-                <button type="button" onClick={saveProgress} className="btn btn-primary">
-                  Save offering
-                </button>
-                <button type="button" onClick={() => form.handleSubmit(onSubmit)()} className="btn btn-secondary">
-                  Validate &amp; save
-                </button>
               </div>
             </div>
           </Step>
