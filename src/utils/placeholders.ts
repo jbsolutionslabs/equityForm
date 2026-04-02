@@ -24,6 +24,53 @@ function roundToTenth(value: unknown) {
   return Math.round(num * 10) / 10
 }
 
+const EXHIBIT_A_PENDING_MESSAGE = 'To be updated upon execution of subscription agreements by each Member.'
+
+function formatCurrencyLabel(value?: number | null) {
+  const num = typeof value === 'number' ? value : Number(value ?? 0)
+  if (Number.isNaN(num)) return '$0'
+  return `$${num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+}
+
+function formatOwnershipPct(value?: number | null) {
+  const num = typeof value === 'number' ? value : Number(value ?? 0)
+  if (Number.isNaN(num)) return '0.00%'
+  return `${num.toFixed(2)}%`
+}
+
+function getPaidInvestors(data: AppData) {
+  const paidIds = new Set(
+    data.subscriptions.filter((s) => s.status === 'paid').map((s) => s.investorId),
+  )
+  return data.investors.filter((inv) => paidIds.has(inv.id))
+}
+
+function buildExhibitAContent(data: AppData) {
+  if (!data.deal.capTableLockedAt) return EXHIBIT_A_PENDING_MESSAGE
+
+  const paidInvestors = getPaidInvestors(data)
+  if (paidInvestors.length === 0) {
+    return 'Cap table locked but no Members have confirmed wires yet.'
+  }
+
+  const totalUnits = paidInvestors.reduce((sum, inv) => sum + (inv.classAUnits || 0), 0)
+  const totalContribution = paidInvestors.reduce((sum, inv) => sum + (inv.subscriptionAmount || 0), 0)
+
+  const rows = [
+    'Member — Class A Units — Ownership % — Subscription Amount',
+    ...paidInvestors.map((inv) => {
+      const units = inv.classAUnits || 0
+      const pct = totalUnits > 0 ? (units / totalUnits) * 100 : 0
+      return `${inv.fullLegalName} — ${units.toLocaleString()} units — ${formatOwnershipPct(pct)} — ${formatCurrencyLabel(
+        inv.subscriptionAmount,
+      )}`
+    }),
+    `TOTAL — ${totalUnits.toLocaleString()} units — 100.00% — ${formatCurrencyLabel(totalContribution)}`,
+  ]
+
+  return rows.join('\n')
+}
+
 function parseCityStateZip(address?: string) {
   // very simple heuristic: look for last comma-separated parts
   if (!address) return { city: '', state: '', zip: '' }
@@ -185,6 +232,9 @@ export function generatePlaceholders(data: AppData) {
 
   placeholders.ROUTING_NUMBER = data.banking.routingNumber || ''
   map.ROUTING_NUMBER = data.banking.routingNumber ? { type: 'input', path: 'banking.routingNumber' } : { type: 'integration', source: 'banking-connector' }
+
+  placeholders.EXHIBIT_A_CONTENT = buildExhibitAContent(data)
+  map.EXHIBIT_A_CONTENT = { type: 'derived', formula: 'dynamic Exhibit A content reflecting paid Members when cap table locks' }
 
   // Investors / subscription placeholders
   placeholders.INVESTORS = data.investors.map((i) => ({

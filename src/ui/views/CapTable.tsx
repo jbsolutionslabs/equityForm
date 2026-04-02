@@ -1,6 +1,9 @@
 import React, { useState } from 'react'
 import { useAppStore, canLockCapTable } from '../../state/store'
 import { HelpCard } from '../components/HelpCard'
+import { generatePlaceholders } from '../../utils/placeholders'
+import { generateOperatingAgreementHtml } from '../../utils/pdfTemplate'
+import html2pdf from 'html2pdf.js'
 
 export const CapTable: React.FC = () => {
   const data        = useAppStore((s) => s.data)
@@ -35,6 +38,58 @@ export const CapTable: React.FC = () => {
     lockCapTable()
     setShowConfirm(false)
     notify('Cap table locked. The deal is now closed.')
+  }
+
+  const downloadOAAsDoc = (html: string, filename = 'operating-agreement-updated.doc') => {
+    const blob = new Blob([html], { type: 'application/msword' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  const getUpdatedOaHtml = () => {
+    const { values } = generatePlaceholders(data)
+    return generateOperatingAgreementHtml(values)
+  }
+
+  const handleDownloadUpdatedOaPdf = () => {
+    if (!isLocked) {
+      notify('Lock the cap table first to generate the final OA with updated Exhibit A.', 'error')
+      return
+    }
+    const html = getUpdatedOaHtml()
+    const container = document.createElement('div')
+    container.innerHTML = html
+    document.body.appendChild(container)
+
+    const filename = `${(deal.entityName || 'operating-agreement').replace(/\s+/g, '-').toLowerCase()}-updated.pdf`
+
+    html2pdf()
+      .set({
+        margin: 0.5,
+        filename,
+        image: { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' as const },
+      })
+      .from(container)
+      .save()
+      .finally(() => container.remove())
+  }
+
+  const handleDownloadUpdatedOaDoc = () => {
+    if (!isLocked) {
+      notify('Lock the cap table first to generate the final OA with updated Exhibit A.', 'error')
+      return
+    }
+    const html = getUpdatedOaHtml()
+    const filename = `${(deal.entityName || 'operating-agreement').replace(/\s+/g, '-').toLowerCase()}-updated.doc`
+    downloadOAAsDoc(html, filename)
   }
 
   const downloadCSV = () => {
@@ -187,6 +242,16 @@ export const CapTable: React.FC = () => {
         <button type="button" className="btn btn-secondary" onClick={downloadCSV}>
           Download CSV
         </button>
+        {isLocked && (
+          <>
+            <button type="button" className="btn btn-secondary" onClick={handleDownloadUpdatedOaPdf}>
+              Download Updated OA (PDF)
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={handleDownloadUpdatedOaDoc}>
+              Download Updated OA (.doc)
+            </button>
+          </>
+        )}
       </div>
 
       {/* Lock confirmation modal */}
