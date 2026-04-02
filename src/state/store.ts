@@ -46,6 +46,7 @@ export type Investor = {
   classAUnits?: number | null
   ownershipPct?: number | null
   accreditedInvestor?: boolean | null
+  accreditedInvestorBasis?: 'income' | 'net_worth' | null
   accreditedInvestorCategories?: string[]
   learnedAboutOffering?: string
   reviewedOperatingAgreement?: boolean | null
@@ -254,6 +255,19 @@ function migrate(data: AppData): AppData {
       status: oa.gpSigned ? 'signed' : oa.generated ? 'generated' : 'not_generated',
     }
   }
+
+  // Normalize investor accreditation basis for backward compatibility
+  if (Array.isArray(data.investors)) {
+    data.investors = data.investors.map((investor) => {
+      const basis = investor.accreditedInvestorBasis
+      const normalizedBasis = basis === 'income' || basis === 'net_worth' ? basis : null
+      return {
+        ...investor,
+        accreditedInvestorBasis: investor.accreditedInvestor ? normalizedBasis : null,
+      }
+    })
+  }
+
   return data
 }
 
