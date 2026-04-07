@@ -212,6 +212,12 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
 
   const [core, setCore]       = useState<CoreForm>(initCore)
   const [adv, setAdv]         = useState<AdvancedForm>(initAdvanced)
+  const [seniorDebtInputMode, setSeniorDebtInputMode] = useState<'amount' | 'pct'>('amount')
+  const [seniorDebtPctInput, setSeniorDebtPctInput] = useState<number>(() => {
+    const initial = initCore()
+    if (initial.purchasePrice <= 0 || initial.mortgageBalance <= 0) return 0
+    return (initial.mortgageBalance / initial.purchasePrice) * 100
+  })
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [errors, setErrors]   = useState<Record<string, string>>({})
   const [saving, setSaving]   = useState(false)
@@ -259,6 +265,10 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
   const monthlyPref = core.lpEquity > 0 && core.lpPrefRateAnnual > 0
     ? Math.round((core.lpEquity * core.lpPrefRateAnnual) / 12)
     : null
+
+  const seniorDebtLtvPct = core.purchasePrice > 0
+    ? (core.mortgageBalance / core.purchasePrice) * 100
+    : 0
 
   return (
     <div className="page-enter">
@@ -352,20 +362,76 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
               <CurrencyInput
                 className="field-input"
                 value={core.purchasePrice}
-                onChange={(v) => patchCore('purchasePrice', v)}
+                onChange={(v) => {
+                  patchCore('purchasePrice', v)
+                  if (seniorDebtInputMode === 'pct') {
+                    patchCore('mortgageBalance', (v * seniorDebtPctInput) / 100)
+                  }
+                }}
               />
             </div>
           </div>
 
           <div className="field-group">
-            <label className="field-label">Mortgage Balance At Closing</label>
-            <div className="input-with-adornment">
-              <span className="field-adornment">$</span>
-              <CurrencyInput
-                className="field-input"
-                value={core.mortgageBalance}
-                onChange={(v) => patchCore('mortgageBalance', v)}
-              />
+            <label className="field-label">Senior Debt at Closing</label>
+            <div className="toggle-group" style={{ marginBottom: 8 }}>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${seniorDebtInputMode === 'amount' ? 'toggle-btn--active' : ''}`}
+                onClick={() => setSeniorDebtInputMode('amount')}
+              >
+                $
+              </button>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${seniorDebtInputMode === 'pct' ? 'toggle-btn--active' : ''}`}
+                onClick={() => {
+                  setSeniorDebtInputMode('pct')
+                  setSeniorDebtPctInput(
+                    core.purchasePrice > 0 ? (core.mortgageBalance / core.purchasePrice) * 100 : 0,
+                  )
+                }}
+              >
+                % of Purchase Price
+              </button>
+            </div>
+
+            {seniorDebtInputMode === 'amount' ? (
+              <div className="input-with-adornment">
+                <span className="field-adornment">$</span>
+                <CurrencyInput
+                  className="field-input"
+                  value={core.mortgageBalance}
+                  onChange={(v) => {
+                    patchCore('mortgageBalance', v)
+                    setSeniorDebtPctInput(core.purchasePrice > 0 ? (v / core.purchasePrice) * 100 : 0)
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="input-with-adornment">
+                <input
+                  type="number"
+                  className="field-input"
+                  value={seniorDebtPctInput || ''}
+                  step={0.1}
+                  onChange={(e) => {
+                    const pct = parseFloat(e.target.value) || 0
+                    setSeniorDebtPctInput(pct)
+                    patchCore('mortgageBalance', (core.purchasePrice * pct) / 100)
+                  }}
+                />
+                <span className="field-adornment">%</span>
+              </div>
+            )}
+
+            <div className="field-hint">
+              Auto LTV: <strong>{seniorDebtLtvPct.toFixed(1)}%</strong>
+              {core.purchasePrice > 0 && (
+                <>
+                  {' '}(${Math.round(core.mortgageBalance).toLocaleString()} debt / ${Math.round(core.purchasePrice).toLocaleString()} purchase price)
+                </>
+              )}
             </div>
           </div>
 
