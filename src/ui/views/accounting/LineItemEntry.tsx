@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   useAccountingStore,
   buildDefaultEntry,
@@ -11,6 +11,7 @@ import {
   getMonthlyDepreciation,
   getMonthlyFinancingCostAmortization,
   getCalculatedLPPref,
+  computeIncomeStatement,
   fmtCurrency,
 } from '../../../utils/financialComputations'
 import type {
@@ -99,6 +100,7 @@ export const LineItemEntry: React.FC<Props> = ({
   readOnly = false,
 }) => {
   const getEntry    = useAccountingStore((s) => s.getEntry)
+  const getEntriesForProperty = useAccountingStore((s) => s.getEntriesForProperty)
   const upsertEntry = useAccountingStore((s) => s.upsertEntry)
   const deleteEntry = useAccountingStore((s) => s.deleteEntry)
 
@@ -229,6 +231,49 @@ export const LineItemEntry: React.FC<Props> = ({
   const prefGap    = dist.calculatedLPPref - dist.actualLPDistribution
   const isOverpaid = prefGap < -0.01
 
+  const statementPreview = useMemo(() => {
+    const entriesForProperty = getEntriesForProperty(property.id)
+
+    const draftAsMonthly = {
+      ...entry,
+      id: `draft-${property.id}-${period}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as MonthlyEntry
+
+    const mergedEntries = (() => {
+      const existingIdx = entriesForProperty.findIndex((e) => e.period === period)
+      if (existingIdx === -1) return [...entriesForProperty, draftAsMonthly]
+      return entriesForProperty.map((e, idx) => (idx === existingIdx ? draftAsMonthly : e))
+    })()
+
+    const [year] = period.split('-').map(Number)
+    const [_, month] = period.split('-').map(Number)
+
+    const monthlyStatement = computeIncomeStatement(property, mergedEntries, {
+      type: 'month',
+      year,
+      month,
+    })
+
+    const ytdStatement = computeIncomeStatement(property, mergedEntries, {
+      type: 'year',
+      year,
+    })
+
+    const monthlyNOI = monthlyStatement.rows.find((r) => r.key === 'noi')?.value ?? 0
+    const monthlyNetIncome = monthlyStatement.rows.find((r) => r.key === 'net-income')?.value ?? 0
+    const ytdNOI = ytdStatement.rows.find((r) => r.key === 'noi')?.value ?? 0
+    const ytdNetIncome = ytdStatement.rows.find((r) => r.key === 'net-income')?.value ?? 0
+
+    return {
+      monthlyNOI,
+      monthlyNetIncome,
+      ytdNOI,
+      ytdNetIncome,
+    }
+  }, [entry, getEntriesForProperty, period, property])
+
   // Period label
   const [py, pm] = period.split('-').map(Number)
   const periodDisplay = new Date(py, pm - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
@@ -282,6 +327,41 @@ export const LineItemEntry: React.FC<Props> = ({
         <div className="stat-card">
           <div className="stat-label">LP Pref (Monthly)</div>
           <div className="stat-value">{fmtCurrency(dist.calculatedLPPref)}</div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 0, marginBottom: 20 }}>
+        <div className="line-item-section-header">
+          <span>Income Statement Auto-Preview</span>
+        </div>
+        <p style={{ margin: '8px 0 16px', color: 'var(--color-slate-600)', fontSize: 14 }}>
+          As the GP enters monthly line items, Income Statement totals update automatically.
+        </p>
+        <div className="stat-row" style={{ marginBottom: 0 }}>
+          <div className="stat-card">
+            <div className="stat-label">Current Month NOI</div>
+            <div className={`stat-value ${statementPreview.monthlyNOI < 0 ? 'stat-value--negative' : ''}`}>
+              {fmtCurrency(statementPreview.monthlyNOI)}
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">Current Month Net Income</div>
+            <div className={`stat-value ${statementPreview.monthlyNetIncome < 0 ? 'stat-value--negative' : ''}`}>
+              {fmtCurrency(statementPreview.monthlyNetIncome)}
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">YTD NOI</div>
+            <div className={`stat-value ${statementPreview.ytdNOI < 0 ? 'stat-value--negative' : ''}`}>
+              {fmtCurrency(statementPreview.ytdNOI)}
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">YTD Net Income</div>
+            <div className={`stat-value ${statementPreview.ytdNetIncome < 0 ? 'stat-value--negative' : ''}`}>
+              {fmtCurrency(statementPreview.ytdNetIncome)}
+            </div>
+          </div>
         </div>
       </div>
 
