@@ -84,6 +84,22 @@ function parseCityStateZip(address?: string) {
   return { city: '', state: '', zip: '' }
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function stripParsedCityStateZip(address?: string, parsed?: { city: string; state: string; zip: string }) {
+  if (!address) return ''
+  if (!parsed) return address.trim()
+  const suffixParts = [parsed.city, parsed.state, parsed.zip].filter(Boolean)
+  if (suffixParts.length === 0) return address.trim()
+
+  const suffix = suffixParts.join(' ')
+  const regex = new RegExp(`[\\s,]*${escapeRegExp(suffix)}\\s*$`)
+  const stripped = address.replace(regex, '').replace(/,+\s*$/, '').trim()
+  return stripped || address.trim()
+}
+
 // Build LP_n entries from investors
 function buildLpRows(investors: Investor[]) {
   return investors.map((inv, idx) => ({
@@ -134,11 +150,11 @@ export function generatePlaceholders(data: AppData) {
   placeholders.DEAL_PURPOSE = data.deal.dealPurpose || ''
   map.DEAL_PURPOSE = placeholders.DEAL_PURPOSE ? { type: 'input', path: 'deal.dealPurpose' } : { type: 'missing' }
 
-  placeholders.PROPERTY_ADDRESS = data.deal.propertyAddress || ''
+  const parsed = parseCityStateZip(data.deal.propertyAddress)
+  const strippedAddress = stripParsedCityStateZip(data.deal.propertyAddress, parsed)
+  placeholders.PROPERTY_ADDRESS = strippedAddress || data.deal.propertyAddress || ''
   map.PROPERTY_ADDRESS = placeholders.PROPERTY_ADDRESS ? { type: 'input', path: 'deal.propertyAddress' } : { type: 'missing' }
 
-  // parse city/state/zip from property address when possible
-  const parsed = parseCityStateZip(data.deal.propertyAddress)
   placeholders.PROPERTY_CITY = data.deal.propertyCity || parsed.city || ''
   placeholders.PROPERTY_STATE = data.deal.propertyState || parsed.state || ''
   placeholders.PROPERTY_ZIP = data.deal.propertyZip || parsed.zip || ''
@@ -177,10 +193,15 @@ export function generatePlaceholders(data: AppData) {
   placeholders.PREFERRED_RETURN_RATE = data.offering.preferredReturnRate ?? null
   map.PREFERRED_RETURN_RATE = data.offering.preferredReturnEnabled ? { type: 'input', path: 'offering.preferredReturnRate' } : { type: 'derived', formula: 'preferred return disabled' }
 
+  placeholders.PREFERRED_RETURN_ENABLED = data.offering.preferredReturnEnabled ?? false
+  map.PREFERRED_RETURN_ENABLED = placeholders.PREFERRED_RETURN_ENABLED ? { type: 'input', path: 'offering.preferredReturnEnabled' } : { type: 'derived', formula: 'preferred return disabled' }
+
   placeholders.PREFERRED_RETURN_TYPE = data.offering.preferredReturnType || ''
   map.PREFERRED_RETURN_TYPE = placeholders.PREFERRED_RETURN_TYPE ? { type: 'input', path: 'offering.preferredReturnType' } : { type: 'missing' }
 
-  placeholders.IRR_RATE = data.offering.irrRate ?? null
+  placeholders.IRR_RATE = data.offering.preferredReturnEnabled && data.offering.preferredReturnType === 'IRR-based'
+    ? data.offering.irrRate ?? null
+    : null
   map.IRR_RATE = placeholders.PREFERRED_RETURN_TYPE === 'IRR-based' ? { type: 'input', path: 'offering.irrRate' } : { type: 'derived', formula: 'only required for IRR-based preferred return' }
 
   placeholders.GP_PROMOTE = data.offering.gpPromote ?? null

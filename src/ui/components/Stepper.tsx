@@ -4,6 +4,7 @@ type StepperProps = React.PropsWithChildren<{
   startIndex?: number
   onFinish?: () => void
   finishLabel?: string
+  nextDisabled?: (index: number) => boolean
 }>
 
 export const Stepper: React.FC<StepperProps> = ({
@@ -11,6 +12,7 @@ export const Stepper: React.FC<StepperProps> = ({
   startIndex = 0,
   onFinish,
   finishLabel = 'Finish',
+  nextDisabled,
 }) => {
   const steps = React.Children.toArray(children)
   const [index, setIndex]   = useState(startIndex)
@@ -19,6 +21,7 @@ export const Stepper: React.FC<StepperProps> = ({
   const isFirst = index === 0
   const isLast  = index === steps.length - 1
   const pct     = Math.round(((index + 1) / steps.length) * 100)
+  const isNextDisabled = nextDisabled ? nextDisabled(index) : false
 
   const goNext = () => {
     if (!isLast) {
@@ -89,9 +92,10 @@ export const Stepper: React.FC<StepperProps> = ({
 
         <button
           type="button"
-          onClick={goNext}
+          onClick={isNextDisabled ? undefined : goNext}
           className={`btn btn-primary${shaking ? ' shake' : ''}`}
           aria-label={isLast ? finishLabel : 'Continue to next question'}
+          disabled={isNextDisabled}
         >
           {isLast ? finishLabel : 'Continue →'}
         </button>

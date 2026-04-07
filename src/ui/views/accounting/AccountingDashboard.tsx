@@ -42,10 +42,12 @@ function PropertyRow({
   property,
   onOpen,
   onEdit,
+  showPrefGap,
 }: {
   property: AccountingProperty
   onOpen: () => void
   onEdit: () => void
+  showPrefGap: boolean
 }) {
   const entries = useAccountingStore((s) => s.getEntriesForProperty(property.id))
   const gap     = computePrefGapSummary(entries)
@@ -71,12 +73,14 @@ function PropertyRow({
               {entries.length > 0 ? fmtCurrency(ytdNOI) : '—'}
             </div>
           </div>
+        {showPrefGap && (
           <div className="property-row-stat">
             <div className="property-row-stat-label">LP Pref Gap</div>
             <div className={`property-row-stat-value ${gap.gapYTD > 0.01 ? 'text-warning' : ''}`}>
               {gap.gapYTD > 0.01 ? fmtCurrency(gap.gapYTD) : '—'}
             </div>
           </div>
+        )}
           <div className="property-row-stat">
             <div className="property-row-stat-label">Last Entry</div>
             <div className="property-row-stat-value">{latest ? formatPeriod(latest.period) : '—'}</div>
@@ -93,7 +97,7 @@ function PropertyRow({
         </div>
       </div>
 
-      {gap.gapYTD > 0.01 && (
+      {showPrefGap && gap.gapYTD > 0.01 && (
         <div className="property-row-pref-warning">
           ⚠ Behind on LP pref — {gap.monthsWithGap} month{gap.monthsWithGap !== 1 ? 's' : ''} with unpaid pref ({fmtCurrency(gap.gapYTD)} YTD gap)
         </div>
@@ -112,6 +116,7 @@ function DealGroup({
   onOpenProperty,
   onEditProperty,
   onAddProperty,
+  showPrefGap,
 }: {
   dealId: string
   dealLabel: string
@@ -120,6 +125,7 @@ function DealGroup({
   onOpenProperty: (id: string) => void
   onEditProperty: (id: string) => void
   onAddProperty: (dealId: string) => void
+  showPrefGap: boolean
 }) {
   const [collapsed, setCollapsed] = useState(false)
 
@@ -179,6 +185,7 @@ function DealGroup({
                 property={p}
                 onOpen={() => onOpenProperty(p.id)}
                 onEdit={() => onEditProperty(p.id)}
+                showPrefGap={showPrefGap}
               />
             ))
           )}
@@ -193,9 +200,11 @@ function DealGroup({
 function PropertyWorkspace({
   property,
   onBack,
+  showPrefGap,
 }: {
   property: AccountingProperty
   onBack: () => void
+  showPrefGap: boolean
 }) {
   const entries = useAccountingStore((s) => s.getEntriesForProperty(property.id))
   const gap     = computePrefGapSummary(entries)
@@ -275,7 +284,7 @@ function PropertyWorkspace({
       </div>
 
       {/* Pref gap alert */}
-      {gap.gapYTD > 0.01 && (
+      {showPrefGap && gap.gapYTD > 0.01 && (
         <div className="pref-gap-alert">
           <div className="pref-gap-alert-icon">⚠</div>
           <div>
@@ -333,12 +342,14 @@ function PropertyWorkspace({
             <div className="stat-label">YTD Net Income</div>
             <div className={`stat-value ${ytdNet < 0 ? 'stat-value--negative' : ''}`}>{fmtCurrency(ytdNet)}</div>
           </div>
-          <div className="stat-card">
-            <div className="stat-label">LP Pref Gap YTD</div>
-            <div className={`stat-value ${gap.gapYTD > 0.01 ? 'text-warning' : ''}`}>
-              {gap.gapYTD > 0.01 ? fmtCurrency(gap.gapYTD) : '—'}
+          {showPrefGap && (
+            <div className="stat-card">
+              <div className="stat-label">LP Pref Gap YTD</div>
+              <div className={`stat-value ${gap.gapYTD > 0.01 ? 'text-warning' : ''}`}>
+                {gap.gapYTD > 0.01 ? fmtCurrency(gap.gapYTD) : '—'}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -370,8 +381,8 @@ function PropertyWorkspace({
                 <th>Period</th>
                 <th style={{ textAlign: 'right' }}>{property.assetClass === 'multifamily' ? 'EGI' : 'Revenue'}</th>
                 <th style={{ textAlign: 'right' }}>NOI</th>
-                <th style={{ textAlign: 'right' }}>LP Pref</th>
-                <th style={{ textAlign: 'right' }}>Pref Gap</th>
+                {showPrefGap && <th style={{ textAlign: 'right' }}>LP Pref</th>}
+                {showPrefGap && <th style={{ textAlign: 'right' }}>Pref Gap</th>}
                 <th></th>
               </tr>
             </thead>
@@ -393,10 +404,12 @@ function PropertyWorkspace({
                     <td style={{ fontWeight: 500 }}>{formatPeriod(e.period)}</td>
                     <td style={{ textAlign: 'right' }}>{fmtCurrency(egi)}</td>
                     <td style={{ textAlign: 'right', color: noi < 0 ? 'var(--color-error)' : undefined }}>{fmtCurrency(noi)}</td>
-                    <td style={{ textAlign: 'right' }}>{fmtCurrency(e.distributions.actualLPDistribution)}</td>
-                    <td style={{ textAlign: 'right', color: gapV > 0.01 ? 'var(--color-warning)' : undefined }}>
-                      {gapV > 0.01 ? fmtCurrency(gapV) : '—'}
-                    </td>
+                    {showPrefGap && <td style={{ textAlign: 'right' }}>{fmtCurrency(e.distributions.actualLPDistribution)}</td>}
+                    {showPrefGap && (
+                      <td style={{ textAlign: 'right', color: gapV > 0.01 ? 'var(--color-warning)' : undefined }}>
+                        {gapV > 0.01 ? fmtCurrency(gapV) : '—'}
+                      </td>
+                    )}
                 <td>
                   <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                     <button
@@ -431,6 +444,7 @@ function PropertyWorkspace({
 export const AccountingDashboard: React.FC = () => {
   const properties  = useAccountingStore((s) => s.properties)
   const phase1Deal  = useAppStore((s) => s.data.deal)
+  const showPrefGap = useAppStore((s) => !!s.data.offering.preferredReturnEnabled)
   const [view, setView] = useState<View>({ type: 'dashboard' })
   const [addToDealId, setAddToDealId] = useState<string | undefined>()
 
@@ -464,6 +478,7 @@ export const AccountingDashboard: React.FC = () => {
       <PropertyWorkspace
         property={prop}
         onBack={() => setView({ type: 'dashboard' })}
+        showPrefGap={showPrefGap}
       />
     )
   }
@@ -542,6 +557,7 @@ export const AccountingDashboard: React.FC = () => {
               onOpenProperty={(id) => setView({ type: 'property', propertyId: id })}
               onEditProperty={(id) => setView({ type: 'setup', propertyId: id })}
               onAddProperty={(did) => startSetup(did === '__standalone__' ? undefined : did)}
+              showPrefGap={showPrefGap}
             />
           ))}
         </div>

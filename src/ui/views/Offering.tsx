@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import Stepper, { Step } from '../components/Stepper'
 import { FieldHelp, Tooltip, HelpCard } from '../components/HelpCard'
 import { CurrencyInput } from '../components/CurrencyInput'
@@ -37,6 +37,15 @@ const schema = baseSchema.superRefine((vals, ctx) => {
       })
     }
   }
+  if (vals.preferredReturnEnabled) {
+    if (vals.preferredReturnRate === null || vals.preferredReturnRate === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Preferred return rate is required when preferred return is enabled.',
+        path: ['preferredReturnRate'],
+      })
+    }
+  }
 })
 
 type FormValues = z.infer<typeof baseSchema>
@@ -61,13 +70,41 @@ export const Offering: React.FC = () => {
     mode: 'onBlur',
   })
 
-  const { formState: { errors }, watch } = form
+  const { formState: { errors }, watch, setValue, getValues } = form
 
-  const exemption   = watch('offeringExemption')
-  const prefEnabled = watch('preferredReturnEnabled')
-  const prefType    = watch('preferredReturnType')
+  const exemption         = watch('offeringExemption')
+  const prefEnabled       = watch('preferredReturnEnabled')
+  const prefType          = watch('preferredReturnType')
+  const prefReturnRateRaw = watch('preferredReturnRate') as number | string | null | undefined
+  const irrFieldVisible = prefEnabled && prefType === 'IRR-based'
   const gpPromote   = watch('gpPromote')
   const lpResidual  = gpPromote != null && !isNaN(Number(gpPromote)) ? 100 - Number(gpPromote) : null
+  const prefRateRequired = Boolean(
+    prefEnabled && (
+      prefReturnRateRaw === null
+      || prefReturnRateRaw === undefined
+      || prefReturnRateRaw === ''
+      || Number.isNaN(prefReturnRateRaw as number)
+    )
+  )
+
+  useEffect(() => {
+    if (prefEnabled && !prefType) {
+      setValue('preferredReturnType', 'cumulative')
+    }
+    if (!prefEnabled && prefType) {
+      setValue('preferredReturnType', '')
+    }
+  }, [prefEnabled, prefType, setValue])
+
+  useEffect(() => {
+    if (!irrFieldVisible) {
+      const current = getValues('irrRate')
+      if (current !== null && current !== undefined) {
+        setValue('irrRate', null)
+      }
+    }
+  }, [irrFieldVisible, getValues, setValue])
 
   const persistOffering = (vals: FormValues) => {
     const gp = vals.gpPromote ?? null
@@ -135,7 +172,11 @@ export const Offering: React.FC = () => {
       )}
 
       <div className="card">
-        <Stepper finishLabel="Save Offering →" onFinish={saveProgress}>
+        <Stepper
+          finishLabel="Save Offering →"
+          onFinish={saveProgress}
+        nextDisabled={(index) => index === 2 ? prefRateRequired : false}
+        >
 
           {/* ── Step 1: Offering exemption & solicitation ── */}
           <Step>
@@ -265,9 +306,9 @@ export const Offering: React.FC = () => {
           </Step>
 
           {/* ── Step 3: Preferred return ── */}
-          <Step>
-            <div className="form-section">
-              <div className="form-section-title">Structure The LP Preferred Return.</div>
+        <Step>
+          <div className="form-section">
+            <div className="form-section-title">Structure The LP Preferred Return.</div>
               <p className="form-section-desc">
                 A preferred return gives LPs priority on distributions before the GP earns a promote.
                 It aligns incentives and is standard in most real estate deals.
@@ -306,11 +347,12 @@ export const Offering: React.FC = () => {
                       <input
                         id="preferredReturnRate"
                         type="number"
-                        className="field-input"
+                        className={`field-input${prefRateRequired ? ' field-input--error' : ''}`}
                         placeholder="e.g. 8"
                         min={0}
                         max={100}
                         step={0.5}
+                        aria-invalid={prefRateRequired}
                         {...form.register('preferredReturnRate', { valueAsNumber: true })}
                       />
                     </div>
