@@ -13,6 +13,7 @@ type CoreForm = {
   dealId:           string
   purchasePrice:    number
   mortgageBalance:  number   // at closing
+  subordinateDebt:  number   // at closing
   initialEquity:    number
   acquisitionDate:  string
   lpEquity:         number
@@ -67,6 +68,7 @@ const defaultCore = (): CoreForm => ({
   dealId:           '',
   purchasePrice:    0,
   mortgageBalance:  0,
+  subordinateDebt:  0,
   initialEquity:    0,
   acquisitionDate:  '',
   lpEquity:         0,
@@ -111,6 +113,7 @@ function buildProperty(
     acquisitionDate:  core.acquisitionDate,
     debtStructure: {
       loanAmount:         core.mortgageBalance,
+      subordinateLoanAmount: core.subordinateDebt,
       annualInterestRate: adv.annualInterestRate,
       amortizationYears:  adv.amortizationYears,
       loanTermYears:      adv.loanTermYears,
@@ -175,6 +178,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
       dealId:           existingProperty.dealId,
       purchasePrice:    existingProperty.purchasePrice,
       mortgageBalance:  existingProperty.debtStructure.loanAmount,
+      subordinateDebt:  existingProperty.debtStructure.subordinateLoanAmount ?? 0,
       initialEquity:    existingProperty.openingBalances.partnersCapitalBeginning,
       acquisitionDate:  existingProperty.acquisitionDate,
       lpEquity:         existingProperty.waterfall.lpEquity,
@@ -217,6 +221,12 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
     const initial = initCore()
     if (initial.purchasePrice <= 0 || initial.mortgageBalance <= 0) return 0
     return (initial.mortgageBalance / initial.purchasePrice) * 100
+  })
+  const [subDebtInputMode, setSubDebtInputMode] = useState<'amount' | 'pct'>('amount')
+  const [subDebtPctInput, setSubDebtPctInput] = useState<number>(() => {
+    const initial = initCore()
+    if (initial.purchasePrice <= 0 || initial.subordinateDebt <= 0) return 0
+    return (initial.subordinateDebt / initial.purchasePrice) * 100
   })
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [errors, setErrors]   = useState<Record<string, string>>({})
@@ -268,6 +278,10 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
 
   const seniorDebtLtvPct = core.purchasePrice > 0
     ? (core.mortgageBalance / core.purchasePrice) * 100
+    : 0
+
+  const lastDollarLtvPct = core.purchasePrice > 0
+    ? ((core.mortgageBalance + core.subordinateDebt) / core.purchasePrice) * 100
     : 0
 
   return (
@@ -367,6 +381,9 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                   if (seniorDebtInputMode === 'pct') {
                     patchCore('mortgageBalance', (v * seniorDebtPctInput) / 100)
                   }
+                  if (subDebtInputMode === 'pct') {
+                    patchCore('subordinateDebt', (v * subDebtPctInput) / 100)
+                  }
                 }}
               />
             </div>
@@ -430,6 +447,69 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
               {core.purchasePrice > 0 && (
                 <>
                   {' '}(${Math.round(core.mortgageBalance).toLocaleString()} debt / ${Math.round(core.purchasePrice).toLocaleString()} purchase price)
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="field-group">
+            <label className="field-label">Subordinate Debt at Closing</label>
+            <div className="toggle-group" style={{ marginBottom: 8 }}>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${subDebtInputMode === 'amount' ? 'toggle-btn--active' : ''}`}
+                onClick={() => setSubDebtInputMode('amount')}
+              >
+                $
+              </button>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${subDebtInputMode === 'pct' ? 'toggle-btn--active' : ''}`}
+                onClick={() => {
+                  setSubDebtInputMode('pct')
+                  setSubDebtPctInput(
+                    core.purchasePrice > 0 ? (core.subordinateDebt / core.purchasePrice) * 100 : 0,
+                  )
+                }}
+              >
+                % of Purchase Price
+              </button>
+            </div>
+
+            {subDebtInputMode === 'amount' ? (
+              <div className="input-with-adornment">
+                <span className="field-adornment">$</span>
+                <CurrencyInput
+                  className="field-input"
+                  value={core.subordinateDebt}
+                  onChange={(v) => {
+                    patchCore('subordinateDebt', v)
+                    setSubDebtPctInput(core.purchasePrice > 0 ? (v / core.purchasePrice) * 100 : 0)
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="input-with-adornment">
+                <input
+                  type="number"
+                  className="field-input"
+                  value={subDebtPctInput || ''}
+                  step={0.1}
+                  onChange={(e) => {
+                    const pct = parseFloat(e.target.value) || 0
+                    setSubDebtPctInput(pct)
+                    patchCore('subordinateDebt', (core.purchasePrice * pct) / 100)
+                  }}
+                />
+                <span className="field-adornment">%</span>
+              </div>
+            )}
+
+            <div className="field-hint">
+              Last-Dollar LTV: <strong>{lastDollarLtvPct.toFixed(1)}%</strong>
+              {core.purchasePrice > 0 && (
+                <>
+                  {' '}(${Math.round(core.mortgageBalance + core.subordinateDebt).toLocaleString()} total debt / ${Math.round(core.purchasePrice).toLocaleString()} purchase price)
                 </>
               )}
             </div>

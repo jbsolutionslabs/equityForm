@@ -12,6 +12,7 @@ export type AccountingMethod = 'Accrual' | 'Cash'
 
 export type DebtStructure = {
   loanAmount:          number   // original principal
+  subordinateLoanAmount?: number // subordinate debt principal at closing
   annualInterestRate:  number   // decimal e.g. 0.065
   amortizationYears:   number   // e.g. 30
   loanTermYears:       number   // maturity e.g. 5
