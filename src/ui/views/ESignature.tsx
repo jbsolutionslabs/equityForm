@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useAppStore, canSendSubAgreements } from '../../state/store'
 import { HelpCard } from '../components/HelpCard'
+import ModuleProgress from '../components/ModuleProgress'
 
 export const ESignature: React.FC = () => {
   const data          = useAppStore((s) => s.data)
@@ -79,7 +80,13 @@ export const ESignature: React.FC = () => {
   return (
     <div className="page-enter">
       <div className="page-header">
-        <span className="page-header-eyebrow">Stage 5 of 7</span>
+        <ModuleProgress
+          moduleLabel="Legal"
+          step={5}
+          totalSteps={7}
+          stepTitle="E-Signatures"
+          detail="Send and track subscription agreement signatures"
+        />
         <h1>E-Signatures</h1>
         <p className="page-header-subtitle">
           Send subscription agreements to investors for e-signature. The Operating Agreement must be

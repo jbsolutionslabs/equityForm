@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import Stepper, { Step } from '../components/Stepper'
 import { FieldHelp, Tooltip, HelpCard } from '../components/HelpCard'
-import CompletionBadge from '../components/CompletionBadge'
+import ModuleProgress from '../components/ModuleProgress'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -114,15 +114,18 @@ export const DealSetup: React.FC = () => {
     <div className="page-enter">
       {/* Page header */}
       <div className="page-header">
-        <span className="page-header-eyebrow">Step 1 of 4</span>
+        <ModuleProgress
+          moduleLabel="Legal"
+          step={1}
+          totalSteps={7}
+          stepTitle="Questionnaire"
+          detail="Entity, property, and GP setup"
+        />
         <h1>Let's set up your deal.</h1>
         <p className="page-header-subtitle">
           We'll walk through your entity, property, and managing partner details
           one question at a time — all at your pace.
         </p>
-        <div style={{ marginTop: 12 }}>
-          <CompletionBadge />
-        </div>
       </div>
 
       {/* Notification */}
@@ -140,7 +143,7 @@ export const DealSetup: React.FC = () => {
       )}
 
       <div className="card">
-        <Stepper onFinish={onFinish} finishLabel="Continue to Economics →">
+        <Stepper onFinish={onFinish} finishLabel="Continue to Economics →" scopeLabel="Questionnaire section">
 
           {/* ── Step 1: Entity identity ── */}
           <Step>

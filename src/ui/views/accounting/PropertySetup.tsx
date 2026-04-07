@@ -4,6 +4,7 @@ import { useAppStore } from '../../../state/store'
 import type { AccountingProperty } from '../../../state/accountingTypes'
 import { CurrencyInput } from '../../components/CurrencyInput'
 import { AddressAutocompleteInput, ParsedAddress } from '../../components/AddressAutocompleteInput'
+import ModuleProgress from '../../components/ModuleProgress'
 
 /* ─── Types ── */
 
@@ -270,9 +271,13 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
   return (
     <div className="page-enter">
       <div className="page-header">
-        <span className="page-header-eyebrow">
-          {existingProperty ? 'Accounting — Edit Property' : 'Accounting — Add Property'}
-        </span>
+        <ModuleProgress
+          moduleLabel="Accounting"
+          step={2}
+          totalSteps={3}
+          stepTitle={existingProperty ? 'Edit Property Setup' : 'Add Property Setup'}
+          detail="Core setup and assumptions"
+        />
         <h1>{existingProperty ? existingProperty.name : 'Add a Property'}</h1>
         <p className="page-header-subtitle">
           Enter a few key numbers to get started. The platform auto-generates your financial

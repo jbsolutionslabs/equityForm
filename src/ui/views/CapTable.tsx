@@ -4,6 +4,7 @@ import { HelpCard } from '../components/HelpCard'
 import { generatePlaceholders } from '../../utils/placeholders'
 import { generateOperatingAgreementHtml } from '../../utils/pdfTemplate'
 import html2pdf from 'html2pdf.js'
+import ModuleProgress from '../components/ModuleProgress'
 
 export const CapTable: React.FC = () => {
   const data        = useAppStore((s) => s.data)
@@ -121,7 +122,13 @@ export const CapTable: React.FC = () => {
   return (
     <div className="page-enter">
       <div className="page-header">
-        <span className="page-header-eyebrow">Stage 7 of 7</span>
+        <ModuleProgress
+          moduleLabel="Legal"
+          step={7}
+          totalSteps={7}
+          stepTitle="Cap Table Lock"
+          detail="Finalize ownership and close the deal"
+        />
         <h1>Cap Table Lock</h1>
         <p className="page-header-subtitle">
           Review the final ownership table. Once all wires are confirmed, lock the cap table to

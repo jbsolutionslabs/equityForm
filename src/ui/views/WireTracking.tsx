@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useAppStore } from '../../state/store'
 import { HelpCard } from '../components/HelpCard'
 import { CurrencyInput } from '../components/CurrencyInput'
+import ModuleProgress from '../components/ModuleProgress'
 
 export const WireTracking: React.FC = () => {
   const data         = useAppStore((s) => s.data)
@@ -50,7 +51,7 @@ export const WireTracking: React.FC = () => {
   const openWireModal = (investorId: string, name: string) => {
     setWireModal({ investorId, name })
     setWireConf('')
-    setWireAmt('')
+    setWireAmt(0)
     setWireDate('')
   }
 
@@ -88,7 +89,13 @@ export const WireTracking: React.FC = () => {
   return (
     <div className="page-enter">
       <div className="page-header">
-        <span className="page-header-eyebrow">Stage 6 of 7</span>
+        <ModuleProgress
+          moduleLabel="Legal"
+          step={6}
+          totalSteps={7}
+          stepTitle="Wire Tracking"
+          detail="Confirm incoming capital from each investor"
+        />
         <h1>Wire Tracking</h1>
         <p className="page-header-subtitle">
           Confirm capital received from each investor. Once all wires are confirmed, you can

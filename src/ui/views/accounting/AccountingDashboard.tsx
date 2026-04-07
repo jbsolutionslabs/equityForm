@@ -7,6 +7,7 @@ import {
   computeIncomeStatement,
   fmtCurrency,
 } from '../../../utils/financialComputations'
+import ModuleProgress from '../../components/ModuleProgress'
 import { PropertySetup }   from './PropertySetup'
 import { LineItemEntry }   from './LineItemEntry'
 import { StatementViewer } from './StatementViewer'
@@ -274,7 +275,13 @@ function PropertyWorkspace({
         <div style={{ marginBottom: 8 }}>
           <button type="button" className="btn btn-secondary btn-sm" onClick={onBack}>← All Deals</button>
         </div>
-        <span className="page-header-eyebrow">Accounting</span>
+        <ModuleProgress
+          moduleLabel="Accounting"
+          step={3}
+          totalSteps={3}
+          stepTitle="Property Workspace"
+          detail="Monthly entries and statements"
+        />
         <h1>{property.name}</h1>
         <p className="page-header-subtitle">
           {property.assetClass === 'multifamily' ? 'Multifamily — NMHC/NAA' : 'Hotel — USALI 11th Ed.'}
@@ -519,7 +526,13 @@ export const AccountingDashboard: React.FC = () => {
   return (
     <div className="page-enter">
       <div className="page-header">
-        <span className="page-header-eyebrow">Phase 2</span>
+        <ModuleProgress
+          moduleLabel="Accounting"
+          step={1}
+          totalSteps={3}
+          stepTitle="Portfolio Dashboard"
+          detail="Manage properties"
+        />
         <h1>Accounting</h1>
         <p className="page-header-subtitle">
           Monthly P&amp;L entry and financial statement generation for multifamily and hotel assets.

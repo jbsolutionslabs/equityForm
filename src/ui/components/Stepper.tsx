@@ -5,6 +5,7 @@ type StepperProps = React.PropsWithChildren<{
   onFinish?: () => void
   finishLabel?: string
   nextDisabled?: (index: number) => boolean
+  scopeLabel?: string
 }>
 
 export const Stepper: React.FC<StepperProps> = ({
@@ -13,6 +14,7 @@ export const Stepper: React.FC<StepperProps> = ({
   onFinish,
   finishLabel = 'Finish',
   nextDisabled,
+  scopeLabel = 'This page',
 }) => {
   const steps = React.Children.toArray(children)
   const [index, setIndex]   = useState(startIndex)
@@ -49,7 +51,7 @@ export const Stepper: React.FC<StepperProps> = ({
       {/* Progress */}
       <div className="stepper-progress" role="status" aria-label={`Step ${index + 1} of ${steps.length}`}>
         <div className="stepper-progress-header">
-          <span className="stepper-progress-label">Question {index + 1} of {steps.length}</span>
+          <span className="stepper-progress-label">{scopeLabel} {index + 1} of {steps.length}</span>
           <span className="stepper-progress-pct">{pct}% complete</span>
         </div>
         <div

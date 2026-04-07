@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import Stepper, { Step } from '../components/Stepper'
 import { FieldHelp, Tooltip, HelpCard } from '../components/HelpCard'
 import { CurrencyInput } from '../components/CurrencyInput'
-import CompletionBadge from '../components/CompletionBadge'
+import ModuleProgress from '../components/ModuleProgress'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -153,15 +153,18 @@ export const Offering: React.FC = () => {
     <div className="page-enter">
       {/* Page header */}
       <div className="page-header">
-        <span className="page-header-eyebrow">Step 2 of 4</span>
+        <ModuleProgress
+          moduleLabel="Legal"
+          step={1}
+          totalSteps={7}
+          stepTitle="Questionnaire"
+          detail="Offering economics"
+        />
         <h1>Now, let's structure the economics.</h1>
         <p className="page-header-subtitle">
           Configure the offering exemption, investor returns, and the GP promote split.
           We'll explain each piece in plain English.
         </p>
-        <div style={{ marginTop: 12 }}>
-          <CompletionBadge />
-        </div>
       </div>
 
       {/* Notification */}
@@ -176,6 +179,7 @@ export const Offering: React.FC = () => {
           finishLabel="Save Offering →"
           onFinish={saveProgress}
           nextDisabled={(index) => index === 2 ? prefRateRequired : false}
+          scopeLabel="Offering section"
         >
 
           {/* ── Step 1: Offering exemption & solicitation ── */}

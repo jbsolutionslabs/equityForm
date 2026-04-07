@@ -13,6 +13,7 @@ import {
   getCalculatedLPPref,
   fmtCurrency,
 } from '../../../utils/financialComputations'
+import ModuleProgress from '../../components/ModuleProgress'
 import type {
   AccountingProperty,
   MonthlyEntry,
@@ -244,7 +245,13 @@ export const LineItemEntry: React.FC<Props> = ({
   return (
     <div className="page-enter">
       <div className="page-header">
-        <span className="page-header-eyebrow">Monthly Entry — {property.name}</span>
+        <ModuleProgress
+          moduleLabel="Accounting"
+          step={3}
+          totalSteps={3}
+          stepTitle={`Monthly Entry · ${property.name}`}
+          detail="Enter line items and distributions"
+        />
         <h1>{periodDisplay}</h1>
         <p className="page-header-subtitle">
           Enter {mf ? 'multifamily (NMHC/NAA)' : 'hotel (USALI 11th Ed.)'} P&L line items.

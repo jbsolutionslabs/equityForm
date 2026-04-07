@@ -9,7 +9,7 @@ import { generateSubscriptionAgreementHtml } from '../../utils/pdfTemplate'
 import { generatePlaceholders } from '../../utils/placeholders'
 import { FieldHelp, HelpCard } from '../components/HelpCard'
 import { CurrencyInput } from '../components/CurrencyInput'
-import CompletionBadge from '../components/CompletionBadge'
+import ModuleProgress from '../components/ModuleProgress'
 import { AddressAutocompleteInput, ParsedAddress } from '../components/AddressAutocompleteInput'
 
 /* ─── Schema helpers ─────────────────────────────────────────────────────── */
@@ -309,14 +309,19 @@ export const Investors: React.FC = () => {
     <div className="page-enter">
       {/* Page header */}
       <div className="page-header">
-        <span className="page-header-eyebrow">Step 3 of 4</span>
+        <ModuleProgress
+          moduleLabel="Legal"
+          step={4}
+          totalSteps={7}
+          stepTitle="Investor Intake"
+          detail="Add investors and prepare subscription agreements"
+        />
         <h1>Who's investing in this round?</h1>
         <p className="page-header-subtitle">
           Add each LP's details below. Once the SPV is formed and the Operating Agreement is
           GP-signed, you can generate and send subscription agreements.
         </p>
         <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <CompletionBadge />
           {!canGenerateSub && (
             <span className="gate-message" style={{ fontSize: 13 }}>
               Subscription agreements locked — Operating Agreement must be GP-signed first (Stage 3)
