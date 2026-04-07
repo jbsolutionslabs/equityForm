@@ -24,6 +24,10 @@ export const Stepper: React.FC<StepperProps> = ({
   const isNextDisabled = nextDisabled ? nextDisabled(index) : false
 
   const goNext = () => {
+    if (isNextDisabled) {
+      triggerShake()
+      return
+    }
     if (!isLast) {
       setIndex((i) => i + 1)
     } else if (onFinish) {

@@ -175,7 +175,7 @@ export const Offering: React.FC = () => {
         <Stepper
           finishLabel="Save Offering →"
           onFinish={saveProgress}
-        nextDisabled={(index) => index === 2 ? prefRateRequired : false}
+          nextDisabled={(index) => index === 2 ? prefRateRequired : false}
         >
 
           {/* ── Step 1: Offering exemption & solicitation ── */}
