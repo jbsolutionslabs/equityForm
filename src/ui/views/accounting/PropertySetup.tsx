@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useAccountingStore, buildDefaultEntry } from '../../../state/accountingStore'
 import { useAppStore } from '../../../state/store'
 import type { AccountingProperty } from '../../../state/accountingTypes'
@@ -168,6 +168,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
   const addProperty    = useAccountingStore((s) => s.addProperty)
   const updateProperty = useAccountingStore((s) => s.updateProperty)
   const upsertEntry    = useAccountingStore((s) => s.upsertEntry)
+  const appData        = useAppStore((s) => s.data)
 
   // Phase 1 deals — single deal for now
   const phase1Deal = useAppStore((s) => s.data.deal)
@@ -237,6 +238,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
     const initial = initCore()
     return pctOfPurchase(initial.initialEquity, initial.purchasePrice)
   })
+  const [lpEquityManualOverride, setLpEquityManualOverride] = useState<boolean>(() => !!existingProperty)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [errors, setErrors]   = useState<Record<string, string>>({})
   const [saving, setSaving]   = useState(false)
@@ -246,6 +248,19 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
 
   const patchAdv = <K extends keyof AdvancedForm>(k: K, v: AdvancedForm[K]) =>
     setAdv((f) => ({ ...f, [k]: v }))
+
+  const paidInvestorIds = new Set(
+    appData.subscriptions.filter((s) => s.status === 'paid').map((s) => s.investorId),
+  )
+  const paidInvestors = appData.investors.filter((inv) => paidInvestorIds.has(inv.id))
+  const capTableSourceInvestors = paidInvestors.length > 0 ? paidInvestors : appData.investors
+  const capTableLpEquity = capTableSourceInvestors.reduce((sum, inv) => sum + (inv.subscriptionAmount || 0), 0)
+
+  useEffect(() => {
+    if (!lpEquityManualOverride) {
+      patchCore('lpEquity', capTableLpEquity)
+    }
+  }, [lpEquityManualOverride, capTableLpEquity])
 
   const validate = (): boolean => {
     const e: Record<string, string> = {}
@@ -291,6 +306,10 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
 
   const lastDollarLtvPct = core.purchasePrice > 0
     ? ((core.mortgageBalance + core.subordinateDebt) / core.purchasePrice) * 100
+    : 0
+
+  const lpPctOfInitialEquity = core.initialEquity > 0
+    ? roundPct((core.lpEquity / core.initialEquity) * 100)
     : 0
 
   return (
@@ -593,13 +612,41 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
         <div className="property-setup-grid">
           <div className="field-group">
             <label className="field-label">LP Equity Invested *</label>
+            <div className="toggle-group" style={{ marginBottom: 8 }}>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${!lpEquityManualOverride ? 'toggle-btn--active' : ''}`}
+                onClick={() => {
+                  setLpEquityManualOverride(false)
+                  patchCore('lpEquity', capTableLpEquity)
+                }}
+              >
+                Pull from Cap Table
+              </button>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${lpEquityManualOverride ? 'toggle-btn--active' : ''}`}
+                onClick={() => setLpEquityManualOverride(true)}
+              >
+                Manual Override
+              </button>
+            </div>
             <div className="input-with-adornment">
               <span className="field-adornment">$</span>
               <CurrencyInput
                 className={`field-input ${errors.lpEquity ? 'field-input--error' : ''}`}
                 value={core.lpEquity}
+                disabled={!lpEquityManualOverride}
                 onChange={(v) => patchCore('lpEquity', v)}
               />
+            </div>
+            <div className="field-hint">
+              {lpEquityManualOverride
+                ? 'Manual override enabled.'
+                : `Auto from cap table (${paidInvestors.length > 0 ? 'paid investors' : 'all investor subscriptions'}): $${Math.round(capTableLpEquity).toLocaleString()}`}
+              {' '}• {core.initialEquity > 0
+                ? `${lpPctOfInitialEquity.toFixed(2)}% of Initial Equity Contributed`
+                : 'Enter Initial Equity Contributed to show LP %'}
             </div>
             {errors.lpEquity && <div className="field-error">{errors.lpEquity}</div>}
           </div>
