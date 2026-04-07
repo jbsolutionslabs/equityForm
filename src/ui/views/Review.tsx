@@ -1,10 +1,10 @@
 import React, { useState } from 'react'
-import { useAppStore } from '../../state/store'
+import { useAppStore, type Investor, type Subscription } from '../../state/store'
 import { generatePlaceholders } from '../../utils/placeholders'
 import { generateOperatingAgreementHtml, generateOperatingAgreementText } from '../../utils/pdfTemplate'
 import html2pdf from 'html2pdf.js'
 import PlaceholderCoverage from '../components/PlaceholderCoverage'
-import CompletionBadge from '../components/CompletionBadge'
+import ModuleProgress from '../components/ModuleProgress'
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
 function fmtCurrency(n: unknown): string {
@@ -41,8 +41,8 @@ function SummaryCard({ title, rows }: { title: string; rows: [string, string][] 
 }
 
 function InvestorsTable({ investors, subscriptions }: {
-  investors: ReturnType<typeof useAppStore>['data']['investors']
-  subscriptions: ReturnType<typeof useAppStore>['data']['subscriptions']
+  investors: Investor[]
+  subscriptions: Subscription[]
 }) {
   const totalAmount = investors.reduce((sum, i) => sum + (i.subscriptionAmount ?? 0), 0)
   const totalUnits  = investors.reduce((sum, i) => sum + (i.classAUnits ?? 0), 0)
@@ -201,15 +201,18 @@ export const Review: React.FC = () => {
     <div className="page-enter">
       {/* Page header */}
       <div className="page-header">
-        <span className="page-header-eyebrow">Step 4 of 4</span>
+        <ModuleProgress
+          moduleLabel="Legal"
+          step={7}
+          totalSteps={7}
+          stepTitle="Cap Table Lock"
+          detail="Final review and close"
+        />
         <h1>Review &amp; close your deal.</h1>
         <p className="page-header-subtitle">
           Generate the Operating Agreement, collect signatures and wire payments,
           then lock the cap table to finalise.
         </p>
-        <div style={{ marginTop: 12 }}>
-          <CompletionBadge />
-        </div>
       </div>
 
       {/* Notification */}

@@ -40,7 +40,43 @@ function replaceTokens(template: string, values: Record<string, any>, investor?:
   })
 }
 
+function buildPreferredReturnDefinition(values: Record<string, any>) {
+  const prefEnabled = !!values.PREFERRED_RETURN_ENABLED
+  if (!prefEnabled) return ''
+  const prefType = (values.PREFERRED_RETURN_TYPE || '').toLowerCase()
+  if (prefType === 'irr-based') {
+    return `2.7  "IRR"
+
+means internal rate of return, computed using [IRR_RATE]% per annum, compounded monthly, based on a 365-day calendar year for the actual number of days elapsed, taking into account the timing and amounts of all Capital Contributions and distributions. IRR shall be calculated using the Excel IRR function or similar method.`
+  }
+  const carryText = prefType === 'non-cumulative'
+    ? 'Non-cumulative preferred return is earned only in periods where cash is actually distributed; unpaid amounts do not carry forward.'
+    : 'Unpaid preferred return accrues and carries forward each month until fully paid.'
+  return `2.7  "Preferred Return" (Flat Annual Rate)
+
+means a flat annual rate of [PREFERRED_RETURN_RATE]% on unreturned Capital Contributions of each Class A Member. ${carryText}`
+}
+
+function buildWaterfallSection(values: Record<string, any>) {
+  const prefEnabled = !!values.PREFERRED_RETURN_ENABLED
+  if (prefEnabled) {
+    return `(a)  Class A Preferred Return: First, 100% to the Class A Members, pro rata based on Class A Units held, until each Class A Member has received cumulative distributions equal to the Preferred Return on such Member's Capital Contribution;
+
+(b)  Return of Capital: Second, 100% to the Class A Members, pro rata based on Class A Units held, until each Class A Member has received cumulative distributions equal to such Member's aggregate Capital Contributions;
+
+(c)  Promote Split: Thereafter, [GP_PROMOTE]% to the Class B Members, pro rata based on Class B Units held, and [LP_RESIDUAL]% to the Class A Members, pro rata based on Class A Units held.`
+  }
+  return `(a)  Return of Capital: First, 100% to the Class A Members, pro rata based on Class A Units held, until each Class A Member has received cumulative distributions equal to such Member's aggregate Capital Contributions;
+
+(b)  Promote Split: Thereafter, [GP_PROMOTE]% to the Class B Members, pro rata based on Class B Units held, and [LP_RESIDUAL]% to the Class A Members, pro rata based on Class A Units held.`
+}
+
 export function generateOperatingAgreementText(values: Record<string, any>) {
+  const prefDefinition = buildPreferredReturnDefinition(values)
+  const prefDefinitionBlock = prefDefinition ? `${prefDefinition}
+
+` : ''
+  const waterfallSection = buildWaterfallSection(values)
   const template = `THE MEMBERSHIP INTERESTS EVIDENCED BY THIS AGREEMENT HAVE NOT BEEN REGISTERED WITH THE SECURITIES AND EXCHANGE COMMISSION, BUT HAVE BEEN ISSUED PURSUANT TO EXEMPTIONS UNDER THE FEDERAL SECURITIES ACT OF 1933, AS AMENDED. THE SALE, TRANSFER, PLEDGE, HYPOTHECATION, OR OTHER DISPOSITION OF ANY OF THESE MEMBERSHIP INTERESTS IS RESTRICTED AND MAY NOT BE ACCOMPLISHED EXCEPT IN ACCORDANCE WITH THIS AGREEMENT, AND AN APPLICABLE REGISTRATION STATEMENT OR AN OPINION OF COUNSEL SATISFACTORY TO THE COMPANY THAT A REGISTRATION STATEMENT IS NOT NECESSARY.
 
 THIS OPERATING AGREEMENT (this "Agreement") is entered into and effective as of [EFFECTIVE_DATE], by and among [GP_ENTITY_NAME], a [GP_ENTITY_STATE] limited liability company (the "Managing Member" or "General Partner"), and each of the persons or entities who execute a Subscription Agreement and are listed on Exhibit A attached hereto (collectively, the "Members").
@@ -73,11 +109,7 @@ The fiscal year of the Company shall end on December 31 of each year, or such ot
 
 ARTICLE II — DEFINITIONS
 
-2.7  "IRR"
-
-means internal rate of return, computed using [IRR_RATE]% per annum, compounded monthly, based on a 365-day calendar year for the actual number of days elapsed, taking into account the timing and amounts of all Capital Contributions and distributions. IRR shall be calculated using the Excel IRR function or similar method.
-
-2.11  "Preferred Return"
+${prefDefinitionBlock}2.11  "Preferred Return"
 
 means a [PREFERRED_RETURN_RATE]% [PREFERRED_RETURN_TYPE] preferred return on unreturned Capital Contributions of each Class A Member, accruing from the date of such Member's Capital Contribution.
 
@@ -89,11 +121,7 @@ means the real property located at [PROPERTY_ADDRESS], [PROPERTY_CITY], [PROPERT
 
 Subject to Section 6.6 and any applicable restrictions imposed by lenders, the Managing Member shall cause the Company to distribute Net Cash Flow, to the extent available, in the following order and priority:
 
-(a)  Class A Preferred Return: First, 100% to the Class A Members, pro rata based on Class A Units held, until each Class A Member has received cumulative distributions equal to the Preferred Return on such Member's Capital Contribution;
-
-(b)  Return of Capital: Second, 100% to the Class A Members, pro rata based on Class A Units held, until each Class A Member has received cumulative distributions equal to such Member's aggregate Capital Contributions;
-
-(c)  Promote Split: Thereafter, [GP_PROMOTE]% to the Class B Members, pro rata based on Class B Units held, and [LP_RESIDUAL]% to the Class A Members, pro rata based on Class A Units held.
+${waterfallSection}
 
 ARTICLE IX — MISCELLANEOUS
 

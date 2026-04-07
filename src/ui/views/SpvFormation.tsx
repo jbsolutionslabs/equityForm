@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useAppStore, isSpvFormed } from '../../state/store'
 import { HelpCard } from '../components/HelpCard'
 import { AddressAutocompleteInput } from '../components/AddressAutocompleteInput'
+import ModuleProgress from '../components/ModuleProgress'
 
 type ItemKey = 'llcFiled' | 'einObtained' | 'registeredAgent'
 
@@ -92,7 +93,13 @@ export const SpvFormation: React.FC = () => {
   return (
     <div className="page-enter">
       <div className="page-header">
-        <span className="page-header-eyebrow">Stage 2 of 7</span>
+        <ModuleProgress
+          moduleLabel="Legal"
+          step={2}
+          totalSteps={7}
+          stepTitle="SPV Formation"
+          detail="Complete LLC filing, EIN, and registered agent"
+        />
         <h1>SPV Formation</h1>
         <p className="page-header-subtitle">
           Complete all three formation tasks before generating your Operating Agreement.

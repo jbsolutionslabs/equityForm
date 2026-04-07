@@ -4,6 +4,8 @@ type StepperProps = React.PropsWithChildren<{
   startIndex?: number
   onFinish?: () => void
   finishLabel?: string
+  nextDisabled?: (index: number) => boolean
+  scopeLabel?: string
 }>
 
 export const Stepper: React.FC<StepperProps> = ({
@@ -11,6 +13,8 @@ export const Stepper: React.FC<StepperProps> = ({
   startIndex = 0,
   onFinish,
   finishLabel = 'Finish',
+  nextDisabled,
+  scopeLabel = 'This page',
 }) => {
   const steps = React.Children.toArray(children)
   const [index, setIndex]   = useState(startIndex)
@@ -19,8 +23,13 @@ export const Stepper: React.FC<StepperProps> = ({
   const isFirst = index === 0
   const isLast  = index === steps.length - 1
   const pct     = Math.round(((index + 1) / steps.length) * 100)
+  const isNextDisabled = nextDisabled ? nextDisabled(index) : false
 
   const goNext = () => {
+    if (isNextDisabled) {
+      triggerShake()
+      return
+    }
     if (!isLast) {
       setIndex((i) => i + 1)
     } else if (onFinish) {
@@ -42,7 +51,7 @@ export const Stepper: React.FC<StepperProps> = ({
       {/* Progress */}
       <div className="stepper-progress" role="status" aria-label={`Step ${index + 1} of ${steps.length}`}>
         <div className="stepper-progress-header">
-          <span className="stepper-progress-label">Question {index + 1} of {steps.length}</span>
+          <span className="stepper-progress-label">{scopeLabel} {index + 1} of {steps.length}</span>
           <span className="stepper-progress-pct">{pct}% complete</span>
         </div>
         <div
@@ -89,9 +98,10 @@ export const Stepper: React.FC<StepperProps> = ({
 
         <button
           type="button"
-          onClick={goNext}
+          onClick={isNextDisabled ? undefined : goNext}
           className={`btn btn-primary${shaking ? ' shake' : ''}`}
           aria-label={isLast ? finishLabel : 'Continue to next question'}
+          disabled={isNextDisabled}
         >
           {isLast ? finishLabel : 'Continue →'}
         </button>

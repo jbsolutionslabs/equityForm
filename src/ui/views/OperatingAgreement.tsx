@@ -4,6 +4,7 @@ import { generatePlaceholders } from '../../utils/placeholders'
 import { generateOperatingAgreementHtml, generateOperatingAgreementText } from '../../utils/pdfTemplate'
 import html2pdf from 'html2pdf.js'
 import { HelpCard } from '../components/HelpCard'
+import ModuleProgress from '../components/ModuleProgress'
 
 type SubStep = 1 | 2 | 3
 
@@ -132,7 +133,13 @@ export const OperatingAgreement: React.FC = () => {
   return (
     <div className="page-enter">
       <div className="page-header">
-        <span className="page-header-eyebrow">Stage 3 of 7</span>
+        <ModuleProgress
+          moduleLabel="Legal"
+          step={3}
+          totalSteps={7}
+          stepTitle="Operating Agreement"
+          detail="Generate, review, and collect GP signature"
+        />
         <h1>Operating Agreement</h1>
         <p className="page-header-subtitle">
           Generate the LLC Operating Agreement, review it carefully, and collect the GP's

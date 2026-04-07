@@ -4,6 +4,7 @@ import { useAppStore } from '../../../state/store'
 import type { AccountingProperty } from '../../../state/accountingTypes'
 import { CurrencyInput } from '../../components/CurrencyInput'
 import { AddressAutocompleteInput, ParsedAddress } from '../../components/AddressAutocompleteInput'
+import ModuleProgress from '../../components/ModuleProgress'
 
 /* ─── Types ── */
 
@@ -53,6 +54,7 @@ type AdvancedForm = {
   otherAssetsBeginning:        number
   accountsPayableBeginning:    number
   accruedLiabilitiesBeginning: number
+  partnersCapitalBeginning:    number
 
   // Monthly defaults
   monthlyCapExDefault:   number
@@ -81,6 +83,7 @@ const defaultAdvanced = (): AdvancedForm => ({
   gpEquity: 0, gpOwnershipPct: 0.2, gpPromotePct: 0.2,
   cashBeginning: 0, accountsReceivableBeginning: 0, prepaidExpensesBeginning: 0,
   otherAssetsBeginning: 0, accountsPayableBeginning: 0, accruedLiabilitiesBeginning: 0,
+  partnersCapitalBeginning: 0,
   monthlyCapExDefault: 0, monthlyReserveDefault: 0,
 })
 
@@ -129,7 +132,7 @@ function buildProperty(
       otherAssetsBeginning:        adv.otherAssetsBeginning,
       accountsPayableBeginning:    adv.accountsPayableBeginning,
       accruedLiabilitiesBeginning: adv.accruedLiabilitiesBeginning,
-      partnersCapitalBeginning:    core.initialEquity,
+      partnersCapitalBeginning:    adv.partnersCapitalBeginning,
     },
     waterfall: {
       lpEquity:             core.lpEquity,
@@ -205,6 +208,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
       otherAssetsBeginning:        p.openingBalances.otherAssetsBeginning,
       accountsPayableBeginning:    p.openingBalances.accountsPayableBeginning,
       accruedLiabilitiesBeginning: p.openingBalances.accruedLiabilitiesBeginning,
+      partnersCapitalBeginning:    p.openingBalances.partnersCapitalBeginning,
       monthlyCapExDefault:   p.monthlyCapExDefault,
       monthlyReserveDefault: p.monthlyReserveDefault,
     }
@@ -247,7 +251,11 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
         const now    = new Date()
         const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
         const prop   = useAccountingStore.getState().getProperty(propId)
-        if (prop) upsertEntry(buildDefaultEntry(prop, period))
+        if (prop) {
+          const seededEntry = buildDefaultEntry(prop, period)
+          seededEntry.workingCapital.capitalContributions = core.initialEquity
+          upsertEntry(seededEntry)
+        }
       }
 
       onSaved(propId)
@@ -263,9 +271,13 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
   return (
     <div className="page-enter">
       <div className="page-header">
-        <span className="page-header-eyebrow">
-          {existingProperty ? 'Accounting — Edit Property' : 'Accounting — Add Property'}
-        </span>
+        <ModuleProgress
+          moduleLabel="Accounting"
+          step={2}
+          totalSteps={3}
+          stepTitle={existingProperty ? 'Edit Property Setup' : 'Add Property Setup'}
+          detail="Core setup and assumptions"
+        />
         <h1>{existingProperty ? existingProperty.name : 'Add a Property'}</h1>
         <p className="page-header-subtitle">
           Enter a few key numbers to get started. The platform auto-generates your financial
@@ -597,6 +609,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                 ['Other Assets — Beg', 'otherAssetsBeginning', 'Schedule L Line 13'],
                 ['Accounts Payable — Beg', 'accountsPayableBeginning', 'Schedule L Line 15'],
                 ['Accrued Liabilities — Beg', 'accruedLiabilitiesBeginning', 'Schedule L Line 18'],
+                ["Partners' Capital — Beg", 'partnersCapitalBeginning', 'Schedule L Line 21'],
               ] as [string, keyof AdvancedForm, string][]).map(([label, field, hint]) => (
                 <div key={field} className="field-group">
                   <label className="field-label">{label}</label>

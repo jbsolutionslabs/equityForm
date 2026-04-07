@@ -442,6 +442,57 @@ h1, h2, h3, h4, h5, h6 {
   max-width: 560px;
 }
 
+/* ─── Module Progress (global page progress) ────────────────────────────── */
+.module-progress {
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-200);
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.module-progress-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 7px;
+}
+
+.module-progress-module {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.module-progress-step {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-navy-900);
+}
+
+.module-progress-track {
+  height: 6px;
+  background: var(--color-slate-200);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.module-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--color-accent), var(--color-accent-dark));
+  transition: width 0.35s ease;
+}
+
+.module-progress-detail {
+  font-size: 12px;
+  color: var(--color-slate-600);
+  margin-top: 7px;
+}
+
 /* ─── Stepper Progress ───────────────────────────────────────────────────── */
 .stepper-progress {
   background: var(--color-white);
