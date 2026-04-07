@@ -62,6 +62,12 @@ type AdvancedForm = {
 
 const US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC']
 
+const roundPct = (value: number): number => Math.round(value * 100) / 100
+const pctOfPurchase = (amount: number, purchasePrice: number): number => {
+  if (purchasePrice <= 0 || amount <= 0) return 0
+  return roundPct((amount / purchasePrice) * 100)
+}
+
 const defaultCore = (): CoreForm => ({
   name:             '',
   assetClass:       'multifamily',
@@ -219,14 +225,17 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
   const [seniorDebtInputMode, setSeniorDebtInputMode] = useState<'amount' | 'pct'>('amount')
   const [seniorDebtPctInput, setSeniorDebtPctInput] = useState<number>(() => {
     const initial = initCore()
-    if (initial.purchasePrice <= 0 || initial.mortgageBalance <= 0) return 0
-    return (initial.mortgageBalance / initial.purchasePrice) * 100
+    return pctOfPurchase(initial.mortgageBalance, initial.purchasePrice)
   })
   const [subDebtInputMode, setSubDebtInputMode] = useState<'amount' | 'pct'>('amount')
   const [subDebtPctInput, setSubDebtPctInput] = useState<number>(() => {
     const initial = initCore()
-    if (initial.purchasePrice <= 0 || initial.subordinateDebt <= 0) return 0
-    return (initial.subordinateDebt / initial.purchasePrice) * 100
+    return pctOfPurchase(initial.subordinateDebt, initial.purchasePrice)
+  })
+  const [initialEquityInputMode, setInitialEquityInputMode] = useState<'amount' | 'pct'>('amount')
+  const [initialEquityPctInput, setInitialEquityPctInput] = useState<number>(() => {
+    const initial = initCore()
+    return pctOfPurchase(initial.initialEquity, initial.purchasePrice)
   })
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [errors, setErrors]   = useState<Record<string, string>>({})
@@ -384,6 +393,9 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                   if (subDebtInputMode === 'pct') {
                     patchCore('subordinateDebt', (v * subDebtPctInput) / 100)
                   }
+                  if (initialEquityInputMode === 'pct') {
+                    patchCore('initialEquity', (v * initialEquityPctInput) / 100)
+                  }
                 }}
               />
             </div>
@@ -404,9 +416,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                 className={`toggle-btn toggle-btn--sm ${seniorDebtInputMode === 'pct' ? 'toggle-btn--active' : ''}`}
                 onClick={() => {
                   setSeniorDebtInputMode('pct')
-                  setSeniorDebtPctInput(
-                    core.purchasePrice > 0 ? (core.mortgageBalance / core.purchasePrice) * 100 : 0,
-                  )
+                  setSeniorDebtPctInput(pctOfPurchase(core.mortgageBalance, core.purchasePrice))
                 }}
               >
                 % of Purchase Price
@@ -421,7 +431,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                   value={core.mortgageBalance}
                   onChange={(v) => {
                     patchCore('mortgageBalance', v)
-                    setSeniorDebtPctInput(core.purchasePrice > 0 ? (v / core.purchasePrice) * 100 : 0)
+                    setSeniorDebtPctInput(pctOfPurchase(v, core.purchasePrice))
                   }}
                 />
               </div>
@@ -431,7 +441,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                   type="number"
                   className="field-input"
                   value={seniorDebtPctInput || ''}
-                  step={0.1}
+                  step={0.01}
                   onChange={(e) => {
                     const pct = parseFloat(e.target.value) || 0
                     setSeniorDebtPctInput(pct)
@@ -467,9 +477,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                 className={`toggle-btn toggle-btn--sm ${subDebtInputMode === 'pct' ? 'toggle-btn--active' : ''}`}
                 onClick={() => {
                   setSubDebtInputMode('pct')
-                  setSubDebtPctInput(
-                    core.purchasePrice > 0 ? (core.subordinateDebt / core.purchasePrice) * 100 : 0,
-                  )
+                  setSubDebtPctInput(pctOfPurchase(core.subordinateDebt, core.purchasePrice))
                 }}
               >
                 % of Purchase Price
@@ -484,7 +492,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                   value={core.subordinateDebt}
                   onChange={(v) => {
                     patchCore('subordinateDebt', v)
-                    setSubDebtPctInput(core.purchasePrice > 0 ? (v / core.purchasePrice) * 100 : 0)
+                    setSubDebtPctInput(pctOfPurchase(v, core.purchasePrice))
                   }}
                 />
               </div>
@@ -494,7 +502,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                   type="number"
                   className="field-input"
                   value={subDebtPctInput || ''}
-                  step={0.1}
+                  step={0.01}
                   onChange={(e) => {
                     const pct = parseFloat(e.target.value) || 0
                     setSubDebtPctInput(pct)
@@ -517,14 +525,54 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
 
           <div className="field-group">
             <label className="field-label">Initial Equity Contributed</label>
-            <div className="input-with-adornment">
-              <span className="field-adornment">$</span>
-              <CurrencyInput
-                className="field-input"
-                value={core.initialEquity}
-                onChange={(v) => patchCore('initialEquity', v)}
-              />
+            <div className="toggle-group" style={{ marginBottom: 8 }}>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${initialEquityInputMode === 'amount' ? 'toggle-btn--active' : ''}`}
+                onClick={() => setInitialEquityInputMode('amount')}
+              >
+                $
+              </button>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${initialEquityInputMode === 'pct' ? 'toggle-btn--active' : ''}`}
+                onClick={() => {
+                  setInitialEquityInputMode('pct')
+                  setInitialEquityPctInput(pctOfPurchase(core.initialEquity, core.purchasePrice))
+                }}
+              >
+                % of Purchase Price
+              </button>
             </div>
+
+            {initialEquityInputMode === 'amount' ? (
+              <div className="input-with-adornment">
+                <span className="field-adornment">$</span>
+                <CurrencyInput
+                  className="field-input"
+                  value={core.initialEquity}
+                  onChange={(v) => {
+                    patchCore('initialEquity', v)
+                    setInitialEquityPctInput(pctOfPurchase(v, core.purchasePrice))
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="input-with-adornment">
+                <input
+                  type="number"
+                  className="field-input"
+                  value={initialEquityPctInput || ''}
+                  step={0.01}
+                  onChange={(e) => {
+                    const pct = parseFloat(e.target.value) || 0
+                    setInitialEquityPctInput(pct)
+                    patchCore('initialEquity', (core.purchasePrice * pct) / 100)
+                  }}
+                />
+                <span className="field-adornment">%</span>
+              </div>
+            )}
           </div>
 
           <div className="field-group">
