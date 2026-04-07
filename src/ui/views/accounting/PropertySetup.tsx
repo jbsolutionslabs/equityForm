@@ -81,6 +81,12 @@ const defaultCore = (): CoreForm => ({
   lpPrefRateAnnual: 0.08,
 })
 
+const getAnnualLpPrefRateFromOA = (preferredReturnEnabled?: boolean, preferredReturnRate?: number | null): number => {
+  if (!preferredReturnEnabled) return 0
+  if (preferredReturnRate == null || Number.isNaN(preferredReturnRate)) return 0
+  return preferredReturnRate / 100
+}
+
 const defaultAdvanced = (): AdvancedForm => ({
   address: '', city: '', state: 'TX',
   ein: '', taxYear: new Date().getFullYear(), fiscalYearEnd: '12/31', accountingMethod: 'Accrual',
@@ -169,6 +175,10 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
   const updateProperty = useAccountingStore((s) => s.updateProperty)
   const upsertEntry    = useAccountingStore((s) => s.upsertEntry)
   const appData        = useAppStore((s) => s.data)
+  const oaLpPrefRateAnnual = getAnnualLpPrefRateFromOA(
+    appData.offering.preferredReturnEnabled,
+    appData.offering.preferredReturnRate,
+  )
 
   // Phase 1 deals — single deal for now
   const phase1Deal = useAppStore((s) => s.data.deal)
@@ -178,7 +188,13 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
 
   // Hydrate from existing property if editing
   const initCore = (): CoreForm => {
-    if (!existingProperty) return { ...defaultCore(), dealId: availableDeals[0]?.id ?? '' }
+    if (!existingProperty) {
+      return {
+        ...defaultCore(),
+        dealId: availableDeals[0]?.id ?? '',
+        lpPrefRateAnnual: oaLpPrefRateAnnual,
+      }
+    }
     return {
       name:             existingProperty.name,
       assetClass:       existingProperty.assetClass,
@@ -239,6 +255,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
     return pctOfPurchase(initial.initialEquity, initial.purchasePrice)
   })
   const [lpEquityManualOverride, setLpEquityManualOverride] = useState<boolean>(() => !!existingProperty)
+  const [lpPrefRateManualOverride, setLpPrefRateManualOverride] = useState<boolean>(() => !!existingProperty)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [errors, setErrors]   = useState<Record<string, string>>({})
   const [saving, setSaving]   = useState(false)
@@ -261,6 +278,12 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
       patchCore('lpEquity', capTableLpEquity)
     }
   }, [lpEquityManualOverride, capTableLpEquity])
+
+  useEffect(() => {
+    if (!lpPrefRateManualOverride) {
+      patchCore('lpPrefRateAnnual', oaLpPrefRateAnnual)
+    }
+  }, [lpPrefRateManualOverride, oaLpPrefRateAnnual])
 
   const validate = (): boolean => {
     const e: Record<string, string> = {}
@@ -653,15 +676,40 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
 
           <div className="field-group">
             <label className="field-label">Annual LP Preferred Return</label>
+            <div className="toggle-group" style={{ marginBottom: 8 }}>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${!lpPrefRateManualOverride ? 'toggle-btn--active' : ''}`}
+                onClick={() => {
+                  setLpPrefRateManualOverride(false)
+                  patchCore('lpPrefRateAnnual', oaLpPrefRateAnnual)
+                }}
+              >
+                Pull from OA
+              </button>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${lpPrefRateManualOverride ? 'toggle-btn--active' : ''}`}
+                onClick={() => setLpPrefRateManualOverride(true)}
+              >
+                Manual Override
+              </button>
+            </div>
             <div className="input-with-adornment">
               <input
                 type="number"
                 className="field-input"
-                value={core.lpPrefRateAnnual * 100 || ''}
+                value={(core.lpPrefRateAnnual * 100).toFixed(2) || ''}
                 step={0.25}
+                disabled={!lpPrefRateManualOverride}
                 onChange={(e) => patchCore('lpPrefRateAnnual', (parseFloat(e.target.value) || 0) / 100)}
               />
               <span className="field-adornment">%</span>
+            </div>
+            <div className="field-hint">
+              {lpPrefRateManualOverride
+                ? 'Manual override enabled.'
+                : `Auto from Operating Agreement: ${(oaLpPrefRateAnnual * 100).toFixed(2)}%`}
             </div>
           </div>
         </div>
