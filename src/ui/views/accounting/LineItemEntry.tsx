@@ -12,6 +12,7 @@ import {
   getMonthlyFinancingCostAmortization,
   getCalculatedLPPref,
   computeIncomeStatement,
+  fmtAccounting,
   fmtCurrency,
 } from '../../../utils/financialComputations'
 import type {
@@ -35,14 +36,23 @@ type Props = {
   readOnly?: boolean
 }
 
-type Tab = 'pnl' | 'belowline' | 'workingcapital' | 'distributions'
+type Tab = 'pnl' | 'belowline' | 'workingcapital' | 'balancesheet' | 'distributions'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'pnl',           label: 'P&L Line Items' },
   { id: 'belowline',     label: 'Below The Line' },
   { id: 'workingcapital',label: 'Working Capital' },
+  { id: 'balancesheet',  label: 'Balance Sheet (Schedule L)' },
   { id: 'distributions', label: 'Distributions' },
 ]
+
+type ScheduleLRow = {
+  lineNo: number
+  label: string
+  boy: number
+  eom: number
+  total?: boolean
+}
 
 function NumRow({
   label,
@@ -271,6 +281,156 @@ export const LineItemEntry: React.FC<Props> = ({
       monthlyNetIncome,
       ytdNOI,
       ytdNetIncome,
+    }
+  }, [entry, getEntriesForProperty, period, property])
+
+  const scheduleLRows = useMemo(() => {
+    const entriesForProperty = getEntriesForProperty(property.id)
+    const draftAsMonthly = {
+      ...entry,
+      id: `draft-${property.id}-${period}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as MonthlyEntry
+
+    const mergedEntries = (() => {
+      const existingIdx = entriesForProperty.findIndex((e) => e.period === period)
+      if (existingIdx === -1) return [...entriesForProperty, draftAsMonthly]
+      return entriesForProperty.map((e, idx) => (idx === existingIdx ? draftAsMonthly : e))
+    })()
+
+    const [year] = period.split('-').map(Number)
+    const yearStart = `${year}-01`
+    const ytdEntries = mergedEntries
+      .filter((e) => e.period >= yearStart && e.period <= period)
+      .sort((a, b) => a.period.localeCompare(b.period))
+
+    const ob = property.openingBalances
+
+    const cashBoy = ob.cashBeginning
+    const cashEom = cashBoy + ytdEntries.reduce((s, e) => {
+      const operating =
+        e.workingCapital.changeInAccountsReceivable +
+        e.workingCapital.changeInPrepaidExpenses +
+        e.workingCapital.changeInAccountsPayable +
+        e.workingCapital.changeInAccruedLiabilities +
+        e.workingCapital.changeInSecurityDeposits +
+        e.workingCapital.otherOperatingAdjustments
+      const investing =
+        -e.belowLine.capEx -
+        e.belowLine.replacementReserve +
+        e.workingCapital.proceedsFromSaleOfAssets +
+        e.workingCapital.otherInvestingActivities
+      const financing =
+        -e.belowLine.debtServicePrincipal -
+        e.belowLine.debtServiceInterest +
+        e.workingCapital.proceedsFromNewBorrowings +
+        e.workingCapital.capitalContributions +
+        e.workingCapital.otherFinancingActivities -
+        e.distributions.actualLPDistribution -
+        e.distributions.actualGPDistribution
+      const [entryYear] = e.period.split('-').map(Number)
+      const monthlyNI = computeIncomeStatement(property, [e], { type: 'year', year: entryYear })
+        .rows.find((r) => r.key === 'net-income')?.value ?? 0
+      return s + monthlyNI + operating + investing + financing
+    }, 0)
+
+    const arBoy = ob.accountsReceivableBeginning
+    const arEom = arBoy + ytdEntries.reduce((s, e) => s + e.workingCapital.changeInAccountsReceivable, 0)
+
+    const otherCurrentBoy = ob.prepaidExpensesBeginning
+    const otherCurrentEom = otherCurrentBoy + ytdEntries.reduce((s, e) => s + e.workingCapital.changeInPrepaidExpenses, 0)
+
+    const buildingsBoy = property.depreciation.depreciableBuilding
+    const buildingsEom = buildingsBoy
+    const accumDepBoy = property.depreciation.accumulatedDepreciationBOY
+    const accumDepEom = accumDepBoy + ytdEntries.reduce((s, e) => s + e.belowLine.depreciation, 0)
+
+    const otherInvestmentsBoy = property.landValue + ob.otherAssetsBeginning + property.depreciation.deferredFinancingCosts
+    const otherInvestmentsEom =
+      property.landValue +
+      ob.otherAssetsBeginning +
+      Math.max(
+        0,
+        property.depreciation.deferredFinancingCosts -
+        ytdEntries.reduce((s, e) => s + e.belowLine.amortizationFinancingCosts, 0),
+      )
+
+    const totalAssetsBoy =
+      cashBoy + arBoy + otherCurrentBoy + otherInvestmentsBoy + buildingsBoy - accumDepBoy
+    const totalAssetsEom =
+      cashEom + arEom + otherCurrentEom + otherInvestmentsEom + buildingsEom - accumDepEom
+
+    const apBoy = ob.accountsPayableBeginning
+    const apEom = apBoy + ytdEntries.reduce((s, e) => s + e.workingCapital.changeInAccountsPayable, 0)
+
+    const debtAtStart = property.debtStructure.loanAmount
+    const principalPaidYtd = ytdEntries.reduce((s, e) => s + e.belowLine.debtServicePrincipal, 0)
+    const debtEom = Math.max(0, debtAtStart - principalPaidYtd)
+
+    const [startYear] = yearStart.split('-').map(Number)
+    const startDebtService = getMonthlyDebtService(property, `${startYear}-01`)
+    const endDebtService = getMonthlyDebtService(property, period)
+
+    const currentMaturitiesBoy = Math.min(debtAtStart, Math.max(0, startDebtService.principal) * 12)
+    const currentMaturitiesEom = Math.min(debtEom, Math.max(0, endDebtService.principal) * 12)
+
+    const otherCurrentLiabBoy = ob.accruedLiabilitiesBeginning
+    const otherCurrentLiabEom =
+      otherCurrentLiabBoy +
+      ytdEntries.reduce((s, e) => s + e.workingCapital.changeInAccruedLiabilities + e.workingCapital.changeInSecurityDeposits, 0)
+
+    const nonrecourseBoy = property.debtStructure.subordinateLoanAmount ?? 0
+    const nonrecourseEom = nonrecourseBoy
+
+    const longTermDebtBoy = Math.max(0, debtAtStart - currentMaturitiesBoy)
+    const longTermDebtEom = Math.max(0, debtEom - currentMaturitiesEom)
+
+    const netIncomeYtd = computeIncomeStatement(property, ytdEntries, { type: 'year', year })
+      .rows.find((r) => r.key === 'net-income')?.value ?? 0
+    const capitalContribYtd = ytdEntries.reduce((s, e) => s + e.workingCapital.capitalContributions, 0)
+    const distributionsYtd = ytdEntries.reduce(
+      (s, e) => s + e.distributions.actualLPDistribution + e.distributions.actualGPDistribution,
+      0,
+    )
+
+    const partnersCapitalBoy = ob.partnersCapitalBeginning
+    const partnersCapitalEom = partnersCapitalBoy + capitalContribYtd + netIncomeYtd - distributionsYtd
+
+    const totalLCEBoy =
+      apBoy + currentMaturitiesBoy + otherCurrentLiabBoy + nonrecourseBoy + longTermDebtBoy + partnersCapitalBoy
+    const totalLCEEom =
+      apEom + currentMaturitiesEom + otherCurrentLiabEom + nonrecourseEom + longTermDebtEom + partnersCapitalEom
+
+    const rows: ScheduleLRow[] = [
+      { lineNo: 1, label: 'Cash', boy: cashBoy, eom: cashEom },
+      { lineNo: 2, label: 'Trade notes and accounts receivable', boy: arBoy, eom: arEom },
+      { lineNo: 3, label: 'Less: Allowance for bad debts', boy: 0, eom: 0 },
+      { lineNo: 4, label: 'Inventories', boy: 0, eom: 0 },
+      { lineNo: 5, label: 'U.S. government obligations', boy: 0, eom: 0 },
+      { lineNo: 6, label: 'Tax-exempt securities', boy: 0, eom: 0 },
+      { lineNo: 7, label: 'Other current assets', boy: otherCurrentBoy, eom: otherCurrentEom },
+      { lineNo: 8, label: 'Mortgage and real estate loans', boy: 0, eom: 0 },
+      { lineNo: 9, label: 'Other investments (incl. land and other assets)', boy: otherInvestmentsBoy, eom: otherInvestmentsEom },
+      { lineNo: 10, label: 'Buildings and other depreciable assets', boy: buildingsBoy, eom: buildingsEom },
+      { lineNo: 11, label: 'Less: Accumulated depreciation', boy: -accumDepBoy, eom: -accumDepEom },
+      { lineNo: 12, label: 'Depletable assets', boy: 0, eom: 0 },
+      { lineNo: 13, label: 'Less: Accumulated depletion', boy: 0, eom: 0 },
+      { lineNo: 14, label: 'Total assets', boy: totalAssetsBoy, eom: totalAssetsEom, total: true },
+      { lineNo: 15, label: 'Accounts payable', boy: apBoy, eom: apEom },
+      { lineNo: 16, label: 'Mortgages, notes, bonds payable in less than 1 year', boy: currentMaturitiesBoy, eom: currentMaturitiesEom },
+      { lineNo: 17, label: 'Other current liabilities', boy: otherCurrentLiabBoy, eom: otherCurrentLiabEom },
+      { lineNo: 18, label: 'All nonrecourse loans', boy: nonrecourseBoy, eom: nonrecourseEom },
+      { lineNo: 19, label: 'Mortgages, notes, bonds payable in 1 year or more', boy: longTermDebtBoy, eom: longTermDebtEom },
+      { lineNo: 20, label: 'Other liabilities', boy: 0, eom: 0 },
+      { lineNo: 21, label: "Partners' capital accounts", boy: partnersCapitalBoy, eom: partnersCapitalEom },
+      { lineNo: 22, label: 'Total liabilities and capital', boy: totalLCEBoy, eom: totalLCEEom, total: true },
+    ]
+
+    return {
+      rows,
+      imbalanceBoy: totalAssetsBoy - totalLCEBoy,
+      imbalanceEom: totalAssetsEom - totalLCEEom,
     }
   }, [entry, getEntriesForProperty, period, property])
 
@@ -585,6 +745,52 @@ export const LineItemEntry: React.FC<Props> = ({
             <NumRow label="Proceeds from New Borrowings"    value={wc.proceedsFromNewBorrowings}  onChange={(v) => patchWC('proceedsFromNewBorrowings', v)}  readOnly={readOnly} />
             <NumRow label="Capital Contributions"           value={wc.capitalContributions}       onChange={(v) => patchWC('capitalContributions', v)}       readOnly={readOnly} />
             <NumRow label="Other Financing Activities"      value={wc.otherFinancingActivities}   onChange={(v) => patchWC('otherFinancingActivities', v)}   readOnly={readOnly} />
+          </div>
+        )}
+
+        {/* ── Tab: Balance Sheet (Schedule L) ── */}
+        {tab === 'balancesheet' && (
+          <div>
+            <div className="info-box" style={{ marginBottom: 20 }}>
+              <div className="info-box-title">IRS Form 1065 — Schedule L format</div>
+              <p style={{ margin: 0, fontSize: 14 }}>
+                Book-basis Schedule L snapshot for this monthly entry, with Beginning of Year (BOY)
+                and End of Month (EOM) columns.
+              </p>
+            </div>
+
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 70 }}>Line</th>
+                  <th>Description</th>
+                  <th style={{ textAlign: 'right', width: 170 }}>BOY</th>
+                  <th style={{ textAlign: 'right', width: 170 }}>EOM</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scheduleLRows.rows.map((row) => (
+                  <tr key={`sched-l-${row.lineNo}`} style={row.total ? { fontWeight: 700 } : undefined}>
+                    <td>{row.lineNo}</td>
+                    <td>{row.label}</td>
+                    <td style={{ textAlign: 'right' }}>{fmtAccounting(row.boy)}</td>
+                    <td style={{ textAlign: 'right' }}>{fmtAccounting(row.eom)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {(Math.abs(scheduleLRows.imbalanceBoy) > 1 || Math.abs(scheduleLRows.imbalanceEom) > 1) && (
+              <div className="pref-gap-alert" style={{ marginTop: 16 }}>
+                <div className="pref-gap-alert-icon">⚠</div>
+                <div>
+                  <div className="pref-gap-alert-title">Schedule L out-of-balance check</div>
+                  <div className="pref-gap-alert-body">
+                    BOY variance: {fmtAccounting(scheduleLRows.imbalanceBoy)} · EOM variance: {fmtAccounting(scheduleLRows.imbalanceEom)}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

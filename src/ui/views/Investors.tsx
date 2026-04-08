@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import type { SubmitHandler } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -7,6 +7,7 @@ import { useAppStore, Investor, canSendSubAgreements } from '../../state/store'
 import { v4 as uuidv4 } from 'uuid'
 import { generateSubscriptionAgreementHtml } from '../../utils/pdfTemplate'
 import { generatePlaceholders } from '../../utils/placeholders'
+import { BLUE_SKY_RULE_506_BY_STATE } from '../../utils/blueSkyRules'
 import { FieldHelp, HelpCard } from '../components/HelpCard'
 import { CurrencyInput } from '../components/CurrencyInput'
 import CompletionBadge from '../components/CompletionBadge'
@@ -172,6 +173,44 @@ const createBlankStoreInvestor = (id: string): Investor => ({
   accreditedInvestorBasis: null,
 })
 
+const STATE_CODE_TO_NAME: Record<string, string> = {
+  AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California', CO: 'Colorado',
+  CT: 'Connecticut', DE: 'Delaware', FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho',
+  IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana',
+  ME: 'Maine', MD: 'Maryland', MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota',
+  MS: 'Mississippi', MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada',
+  NH: 'New Hampshire', NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York', NC: 'North Carolina',
+  ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania',
+  RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas',
+  UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington', WV: 'West Virginia',
+  WI: 'Wisconsin', WY: 'Wyoming', DC: 'District of Columbia',
+}
+
+const STATE_NAME_TO_CODE: Record<string, string> = Object.fromEntries(
+  Object.entries(STATE_CODE_TO_NAME).map(([code, name]) => [name.toLowerCase(), code]),
+)
+
+function normalizeStateCode(input?: string): string | null {
+  if (!input) return null
+  const value = input.trim()
+  if (!value) return null
+  const maybeCode = value.toUpperCase()
+  if (STATE_CODE_TO_NAME[maybeCode]) return maybeCode
+  const maybeFromName = STATE_NAME_TO_CODE[value.toLowerCase()]
+  return maybeFromName || null
+}
+
+function stateDisplayLabel(input?: string): string {
+  const normalized = normalizeStateCode(input)
+  if (normalized) return `${STATE_CODE_TO_NAME[normalized]} (${normalized})`
+  return input?.trim() || 'Unknown state'
+}
+
+function fmtRuleValue(value?: string): string {
+  if (!value?.trim()) return 'Not listed'
+  return value
+}
+
 /* ─── Status helpers ─────────────────────────────────────────────────────── */
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Generated',
@@ -190,9 +229,11 @@ const STATUS_CLASS: Record<string, string> = {
 /* ─── Component ──────────────────────────────────────────────────────────── */
 export const Investors: React.FC = () => {
   const data                        = useAppStore((s) => s.data.investors)
+  const blueSkyFilings              = useAppStore((s) => s.data.blueSkyFilings)
   const addInvestor                 = useAppStore((s) => s.addInvestor)
   const updateInvestor              = useAppStore((s) => s.updateInvestor)
   const removeInvestor              = useAppStore((s) => s.removeInvestor)
+  const setBlueSkyFilingStep        = useAppStore((s) => s.setBlueSkyFilingStep)
   const generateSubscriptionForInvestor = useAppStore((s) => s.generateSubscriptionForInvestor)
   const sendSubscriptionForSignature    = useAppStore((s) => s.sendSubscriptionForSignature)
   const markSubscriptionSigned          = useAppStore((s) => s.markSubscriptionSigned)
@@ -315,6 +356,73 @@ export const Investors: React.FC = () => {
   }
 
   const canGenerateSub = canSendSubAgreements(appData)
+  const watchedInvestors = form.watch('investors') || []
+  const blueSkyStates = useMemo(() => {
+    const byState = new Map<string, number>()
+    watchedInvestors.forEach((inv) => {
+      const code = normalizeStateCode(inv.state)
+      if (!code) return
+      byState.set(code, (byState.get(code) || 0) + 1)
+    })
+    return Array.from(byState.entries()).sort(([a], [b]) => a.localeCompare(b))
+  }, [watchedInvestors])
+  const blueSkyChecklistSteps: { key: 'requirementsReviewed' | 'stateNoticeFiled' | 'stateFeePaid' | 'evidenceSaved'; label: string; hint: string }[] = [
+    {
+      key: 'requirementsReviewed',
+      label: 'Review state-specific blue sky requirements',
+      hint: 'Confirm notice form type, deadlines, and exemptions for this jurisdiction.',
+    },
+    {
+      key: 'stateNoticeFiled',
+      label: 'File state notice (Form D notice filing)',
+      hint: 'Submit the required state notice filing after SEC Form D filing, per state rules.',
+    },
+    {
+      key: 'stateFeePaid',
+      label: 'Pay state filing fee',
+      hint: 'Record fee payment/waiver confirmation for this state filing.',
+    },
+    {
+      key: 'evidenceSaved',
+      label: 'Save evidence of filing and acceptance',
+      hint: 'Keep copy of submission, receipt, and acceptance confirmation in your deal records.',
+    },
+  ]
+
+  const stateComplianceRows = blueSkyStates.map(([code, count]) => {
+    const rule = BLUE_SKY_RULE_506_BY_STATE[code]
+    const requiresNotice = rule?.requiresFormDNoticeFiling !== false
+    const filing =
+      blueSkyFilings[code] || {
+        requirementsReviewed: false,
+        stateNoticeFiled: false,
+        stateFeePaid: false,
+        evidenceSaved: false,
+      }
+    const completedCount = blueSkyChecklistSteps.reduce(
+      (sum, step) => sum + (filing[step.key] ? 1 : 0),
+      0,
+    )
+    const isComplete = requiresNotice
+      ? completedCount === blueSkyChecklistSteps.length
+      : true
+
+    return {
+      code,
+      count,
+      rule,
+      requiresNotice,
+      filing,
+      completedCount,
+      isComplete,
+    }
+  })
+
+  const rowsRequiringNotice = stateComplianceRows.filter((row) => row.requiresNotice)
+  const rowsNoNoticeRequired = stateComplianceRows.filter((row) => !row.requiresNotice)
+  const allBlueSkyCompliant = stateComplianceRows.length > 0 && stateComplianceRows.every((row) => row.isComplete)
+  const totalChecklistItems = rowsRequiringNotice.length * blueSkyChecklistSteps.length
+  const completedChecklistItems = rowsRequiringNotice.reduce((sum, row) => sum + row.completedCount, 0)
 
   return (
     <div className="page-enter">
@@ -341,6 +449,113 @@ export const Investors: React.FC = () => {
         <div className={`notification notification--${notification.type}`} role="alert">
           {notification.type === 'success' ? '✓ ' : '⚠ '}{notification.msg}
         </div>
+      )}
+
+      {blueSkyStates.length > 0 && (
+        <>
+          <div
+            className={`state-banner ${allBlueSkyCompliant ? 'state-banner--success' : 'state-banner--warning'}`}
+            role="status"
+            aria-live="polite"
+            style={{ marginBottom: 12 }}
+          >
+            <span aria-hidden="true">{allBlueSkyCompliant ? '✓' : '⚠'}</span>
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                {allBlueSkyCompliant ? 'Blue sky compliance complete' : 'Blue sky filing checklist in progress'}
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--color-slate-700)' }}>
+                {allBlueSkyCompliant
+                  ? `All tracked state filing steps are complete (${completedChecklistItems}/${totalChecklistItems}).`
+                  : `Complete required filing tasks for investor states (${completedChecklistItems}/${totalChecklistItems} complete).`}{' '}
+                SEC Form D is generally due within 15 days after first sale.
+              </div>
+            </div>
+          </div>
+
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-header" style={{ fontSize: 15, marginBottom: 8 }}>
+              State blue sky filings (based on investor addresses)
+            </div>
+            <div style={{ fontSize: 12.5, color: 'var(--color-slate-600)', marginBottom: 14 }}>
+              Dataset basis: Rule 506 / Form D state notice layer (NASAA EFD schedule as of 2026-01-01).
+              Always confirm jurisdiction-specific updates with counsel.
+            </div>
+
+            <div style={{ display: 'grid', gap: 14 }}>
+              {stateComplianceRows.map((row) => (
+                <div
+                  key={row.code}
+                  style={{
+                    border: '1px solid var(--color-slate-200)',
+                    borderRadius: 10,
+                    padding: 12,
+                    background: row.isComplete ? 'rgba(24, 124, 70, 0.06)' : 'var(--color-slate-50)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8, alignItems: 'center' }}>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>
+                      {row.rule?.stateName || STATE_CODE_TO_NAME[row.code] || row.code} ({row.code}){row.count > 1 ? ` · ${row.count} LPs` : ''}
+                    </div>
+                    <span className={`status-badge ${row.isComplete ? 'status-badge--paid' : 'status-badge--pending'}`} style={{ fontSize: 11 }}>
+                      {row.requiresNotice
+                        ? `${row.completedCount}/${blueSkyChecklistSteps.length} complete`
+                        : 'No notice filing required'}
+                    </span>
+                  </div>
+
+                  <div style={{ fontSize: 12.5, color: 'var(--color-slate-600)', marginBottom: 10, display: 'grid', gap: 4 }}>
+                    <div><strong>New notice fee:</strong> {fmtRuleValue(row.rule?.newNoticeFee)}</div>
+                    <div><strong>Fee type:</strong> {fmtRuleValue(row.rule?.feeType)}</div>
+                    {!!row.rule?.variableCalculation && (
+                      <div><strong>Variable calculation:</strong> {fmtRuleValue(row.rule?.variableCalculation)}</div>
+                    )}
+                    {!!row.rule?.lateFee && row.rule.lateFee !== 'No' && (
+                      <div><strong>Late filing fee:</strong> {row.rule.lateFee}</div>
+                    )}
+                    {row.rule?.hasRenewalOrAnnualSalesReportFee && (
+                      <div><strong>Renewal/annual fee:</strong> {fmtRuleValue(row.rule?.renewalOrAnnualSalesReportFee)}</div>
+                    )}
+                    {!!row.rule?.amendmentNoticeFee && row.rule.amendmentNoticeFee !== 'No' && (
+                      <div><strong>Amendment fee:</strong> {row.rule.amendmentNoticeFee}</div>
+                    )}
+                  </div>
+
+                  {row.requiresNotice ? (
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {blueSkyChecklistSteps.map((step) => (
+                        <label key={step.key} className="checkbox-row" style={{ alignItems: 'flex-start', marginTop: 0 }}>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(row.filing[step.key])}
+                            onChange={(e) => setBlueSkyFilingStep(row.code, step.key, e.target.checked)}
+                          />
+                          <span className="checkbox-label" style={{ display: 'grid', gap: 2 }}>
+                            <span>{step.label}</span>
+                            <span style={{ fontSize: 12, color: 'var(--color-slate-500)', fontWeight: 400 }}>{step.hint}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="state-banner state-banner--success" style={{ marginBottom: 0 }}>
+                      <span aria-hidden="true">✓</span>
+                      <span style={{ fontSize: 12.5 }}>
+                        This state is marked as not requiring a Rule 506 Form D notice filing in the provided dataset.
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {rowsNoNoticeRequired.length > 0 && (
+              <div style={{ marginTop: 12, fontSize: 12, color: 'var(--color-slate-500)' }}>
+                No-notice states detected: {rowsNoNoticeRequired.map((row) => row.code).join(', ')}.
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {/* Top actions */}
@@ -378,6 +593,8 @@ export const Investors: React.FC = () => {
           const isAccredited = form.watch(`investors.${idx}.accreditedInvestor` as const)
           const isExpanded = expanded[idx] ?? false
           const subStatus  = getSubStatus(f.id)
+          const investorState = form.watch(`investors.${idx}.state` as const)
+          const blueSkyStateCode = normalizeStateCode(investorState)
 
           return (
             <div key={f.fieldKey} className="investor-card">
@@ -767,6 +984,25 @@ export const Investors: React.FC = () => {
                     <div className="field-group">
                       <label className="field-label" htmlFor={`investor-state-${idx}`}>State</label>
                       <input id={`investor-state-${idx}`} className="field-input" maxLength={2} {...form.register(`investors.${idx}.state` as const)} />
+                      {blueSkyStateCode && (
+                        <div
+                          role="status"
+                          aria-live="polite"
+                          style={{
+                            marginTop: 8,
+                            padding: '8px 10px',
+                            borderRadius: 8,
+                            border: '1px solid rgba(180, 120, 20, 0.35)',
+                            background: 'rgba(180, 120, 20, 0.08)',
+                            color: '#7a5312',
+                            fontSize: 12.5,
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          <strong>Blue sky flag:</strong> Investor state entered as {stateDisplayLabel(investorState)}.
+                          Review and file required state Form D notice filing for this jurisdiction.
+                        </div>
+                      )}
                     </div>
                     <div className="field-group">
                       <label className="field-label" htmlFor={`investor-zip-${idx}`}>ZIP</label>
