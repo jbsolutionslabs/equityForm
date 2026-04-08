@@ -60,6 +60,9 @@ export const applyImportedValues = (
       case 'capEx':
       case 'replacementReserve':
         belowLineDraft[field.fieldKey] = Number(field.value)
+        if (field.fieldKey === 'depreciation') {
+          wcDraft.depreciation = Number(field.value)
+        }
         break
       case 'depreciationOverridden':
       case 'debtServiceOverridden':
@@ -77,6 +80,33 @@ export const applyImportedValues = (
       case 'proceedsFromNewBorrowings':
       case 'capitalContributions':
       case 'otherFinancingActivities':
+      case 'netIncome':
+      case 'amortization':
+      case 'deferredTax':
+      case 'gainLossOnSale':
+      case 'accountsReceivableChange':
+      case 'inventoryChange':
+      case 'prepaidExpensesChange':
+      case 'accountsPayableChange':
+      case 'accruedExpensesChange':
+      case 'netCashFromOperations':
+      case 'capitalExpenditures':
+      case 'propertyPurchase':
+      case 'propertySale':
+      case 'investmentPurchase':
+      case 'investmentSale':
+      case 'netCashFromInvesting':
+      case 'debtProceeds':
+      case 'debtRepayment':
+      case 'equityContributions':
+      case 'dividendsDistributions':
+      case 'netCashFromFinancing':
+      case 'netChangeInCash':
+      case 'cashBeginning':
+      case 'cashEnding':
+      case 'interestPaidDisclosure':
+      case 'taxesPaidDisclosure':
+      case 'nonCashInvestingFinancing':
         wcDraft[field.fieldKey] = Number(field.value)
         break
       case 'actualLPDistribution':

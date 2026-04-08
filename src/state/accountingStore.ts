@@ -43,6 +43,39 @@ export const defaultBelowLine = (): BelowLineItems => ({
 })
 
 export const defaultWorkingCapital = (): WorkingCapitalAdjustments => ({
+  netIncome: 0,
+  depreciation: 0,
+  amortization: 0,
+  deferredTax: 0,
+  gainLossOnSale: 0,
+  accountsReceivableChange: 0,
+  inventoryChange: 0,
+  prepaidExpensesChange: 0,
+  accountsPayableChange: 0,
+  accruedExpensesChange: 0,
+  netCashFromOperations: 0,
+
+  capitalExpenditures: 0,
+  propertyPurchase: 0,
+  propertySale: 0,
+  investmentPurchase: 0,
+  investmentSale: 0,
+  netCashFromInvesting: 0,
+
+  debtProceeds: 0,
+  debtRepayment: 0,
+  equityContributions: 0,
+  dividendsDistributions: 0,
+  netCashFromFinancing: 0,
+
+  netChangeInCash: 0,
+  cashBeginning: 0,
+  cashEnding: 0,
+
+  interestPaidDisclosure: 0,
+  taxesPaidDisclosure: 0,
+  nonCashInvestingFinancing: 0,
+
   changeInAccountsReceivable: 0, changeInPrepaidExpenses: 0,
   changeInAccountsPayable: 0, changeInAccruedLiabilities: 0,
   changeInSecurityDeposits: 0, otherOperatingAdjustments: 0,

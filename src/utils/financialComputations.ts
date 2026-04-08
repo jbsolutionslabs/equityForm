@@ -153,22 +153,6 @@ const total = (key: string, label: string, value: number, note?: string): Statem
 const note = (key: string, label: string): StatementRow =>
   ({ key, label, value: null, type: 'note' })
 
-/* ─── Aggregate entries ──────────────────────────────────────────────────────── */
-
-function sumEntries<K extends string>(
-  entries: MonthlyEntry[],
-  getter: (e: MonthlyEntry) => Record<K, number>,
-): Record<K, number> {
-  const result: Record<string, number> = {}
-  for (const e of entries) {
-    const vals = getter(e)
-    for (const k of Object.keys(vals)) {
-      result[k] = (result[k] ?? 0) + (vals[k] ?? 0)
-    }
-  }
-  return result as Record<K, number>
-}
-
 /* ═══════════════════════════════════════════════════════════════════════════════
    INCOME STATEMENT
 ═══════════════════════════════════════════════════════════════════════════════ */
@@ -591,43 +575,73 @@ export function computeCashFlowStatement(
   const periods = periodsForSelection(sel)
   const entries = allEntries.filter((e) => periods.includes(e.period))
 
+  const pickEnteredOrFallback = (entered: number, fallback: number) => (entered !== 0 ? entered : fallback)
+
   // Net income from IS
   const isData    = computeIncomeStatement(property, entries, sel)
   const niRow     = isData.rows.find((r) => r.key === 'net-income')
-  const netIncome = niRow?.value ?? 0
+  const netIncomeFallback = niRow?.value ?? 0
+
+  const netIncome = entries.reduce(
+    (s, e) => s + pickEnteredOrFallback(e.workingCapital.netIncome, netIncomeFallback / Math.max(entries.length, 1)),
+    0,
+  )
 
   // Adjustments
-  const da         = entries.reduce((s, e) => s + e.belowLine.depreciation, 0)
-  const finAmort   = entries.reduce((s, e) => s + e.belowLine.amortizationFinancingCosts, 0)
-  const arChg      = entries.reduce((s, e) => s + e.workingCapital.changeInAccountsReceivable, 0)
-  const prepChg    = entries.reduce((s, e) => s + e.workingCapital.changeInPrepaidExpenses, 0)
-  const apChg      = entries.reduce((s, e) => s + e.workingCapital.changeInAccountsPayable, 0)
-  const accrChg    = entries.reduce((s, e) => s + e.workingCapital.changeInAccruedLiabilities, 0)
+  const da         = entries.reduce((s, e) => s + pickEnteredOrFallback(e.workingCapital.depreciation, e.belowLine.depreciation), 0)
+  const finAmort   = entries.reduce((s, e) => s + pickEnteredOrFallback(e.workingCapital.amortization, e.belowLine.amortizationFinancingCosts), 0)
+  const deferredTax= entries.reduce((s, e) => s + e.workingCapital.deferredTax, 0)
+  const gainLossOnSale = entries.reduce((s, e) => s + e.workingCapital.gainLossOnSale, 0)
+  const arChg      = entries.reduce((s, e) => s + pickEnteredOrFallback(e.workingCapital.accountsReceivableChange, e.workingCapital.changeInAccountsReceivable), 0)
+  const invChg     = entries.reduce((s, e) => s + e.workingCapital.inventoryChange, 0)
+  const prepChg    = entries.reduce((s, e) => s + pickEnteredOrFallback(e.workingCapital.prepaidExpensesChange, e.workingCapital.changeInPrepaidExpenses), 0)
+  const apChg      = entries.reduce((s, e) => s + pickEnteredOrFallback(e.workingCapital.accountsPayableChange, e.workingCapital.changeInAccountsPayable), 0)
+  const accrChg    = entries.reduce((s, e) => s + pickEnteredOrFallback(e.workingCapital.accruedExpensesChange, e.workingCapital.changeInAccruedLiabilities), 0)
   const secDep     = entries.reduce((s, e) => s + e.workingCapital.changeInSecurityDeposits, 0)
   const otherOp    = entries.reduce((s, e) => s + e.workingCapital.otherOperatingAdjustments, 0)
 
-  const netOperating = netIncome + da + finAmort + arChg + prepChg + apChg + accrChg + secDep + otherOp
+  const netOperatingCalc = netIncome + da + finAmort + deferredTax - gainLossOnSale + arChg + invChg + prepChg + apChg + accrChg + secDep + otherOp
+  const netOperatingEntered = entries.reduce((s, e) => s + e.workingCapital.netCashFromOperations, 0)
+  const netOperating = netOperatingEntered !== 0 ? netOperatingEntered : netOperatingCalc
 
   // Investing
-  const capex        = entries.reduce((s, e) => s + e.belowLine.capEx, 0)
+  const capex        = entries.reduce((s, e) => s + pickEnteredOrFallback(e.workingCapital.capitalExpenditures, e.belowLine.capEx), 0)
+  const propertyPurchase = entries.reduce((s, e) => s + e.workingCapital.propertyPurchase, 0)
+  const propertySale = entries.reduce((s, e) => s + e.workingCapital.propertySale, 0)
+  const investmentPurchase = entries.reduce((s, e) => s + e.workingCapital.investmentPurchase, 0)
+  const investmentSale = entries.reduce((s, e) => s + e.workingCapital.investmentSale, 0)
   const reserve      = entries.reduce((s, e) => s + e.belowLine.replacementReserve, 0)
   const proceedsSale = entries.reduce((s, e) => s + e.workingCapital.proceedsFromSaleOfAssets, 0)
   const otherInvest  = entries.reduce((s, e) => s + e.workingCapital.otherInvestingActivities, 0)
-  const netInvesting = -capex - reserve + proceedsSale + otherInvest
+  const netInvestingCalc = -capex - propertyPurchase + propertySale - investmentPurchase + investmentSale - reserve + proceedsSale + otherInvest
+  const netInvestingEntered = entries.reduce((s, e) => s + e.workingCapital.netCashFromInvesting, 0)
+  const netInvesting = netInvestingEntered !== 0 ? netInvestingEntered : netInvestingCalc
 
   // Financing
-  const principal    = entries.reduce((s, e) => s + e.belowLine.debtServicePrincipal, 0)
+  const principal    = entries.reduce((s, e) => s + pickEnteredOrFallback(e.workingCapital.debtRepayment, e.belowLine.debtServicePrincipal), 0)
   const interest     = entries.reduce((s, e) => s + e.belowLine.debtServiceInterest, 0)
-  const newBorrow    = entries.reduce((s, e) => s + e.workingCapital.proceedsFromNewBorrowings, 0)
-  const capContrib   = entries.reduce((s, e) => s + e.workingCapital.capitalContributions, 0)
+  const newBorrow    = entries.reduce((s, e) => s + pickEnteredOrFallback(e.workingCapital.debtProceeds, e.workingCapital.proceedsFromNewBorrowings), 0)
+  const capContrib   = entries.reduce((s, e) => s + pickEnteredOrFallback(e.workingCapital.equityContributions, e.workingCapital.capitalContributions), 0)
   const lpDist       = entries.reduce((s, e) => s + e.distributions.actualLPDistribution, 0)
   const gpDist       = entries.reduce((s, e) => s + e.distributions.actualGPDistribution, 0)
+  const dividendsDistributions = entries.reduce((s, e) => s + pickEnteredOrFallback(e.workingCapital.dividendsDistributions, e.distributions.actualLPDistribution + e.distributions.actualGPDistribution), 0)
   const otherFin     = entries.reduce((s, e) => s + e.workingCapital.otherFinancingActivities, 0)
-  const netFinancing = -principal - interest + newBorrow + capContrib - lpDist - gpDist + otherFin
+  const netFinancingCalc = -principal - interest + newBorrow + capContrib - dividendsDistributions - lpDist - gpDist + otherFin
+  const netFinancingEntered = entries.reduce((s, e) => s + e.workingCapital.netCashFromFinancing, 0)
+  const netFinancing = netFinancingEntered !== 0 ? netFinancingEntered : netFinancingCalc
 
-  const netCashChange = netOperating + netInvesting + netFinancing
-  const cashBeg       = property.openingBalances.cashBeginning
-  const cashEnd       = cashBeg + netCashChange
+  const netCashChangeCalc = netOperating + netInvesting + netFinancing
+  const netCashChangeEntered = entries.reduce((s, e) => s + e.workingCapital.netChangeInCash, 0)
+  const netCashChange = netCashChangeEntered !== 0 ? netCashChangeEntered : netCashChangeCalc
+  const cashBegEntered = entries.reduce((s, e) => s + e.workingCapital.cashBeginning, 0)
+  const cashBeg       = cashBegEntered !== 0 ? cashBegEntered : property.openingBalances.cashBeginning
+  const cashEndComputed = cashBeg + netCashChange
+  const cashEndEntered = entries.reduce((s, e) => s + e.workingCapital.cashEnding, 0)
+  const cashEnd       = cashEndEntered !== 0 ? cashEndEntered : cashEndComputed
+
+  const interestDisclosure = entries.reduce((s, e) => s + e.workingCapital.interestPaidDisclosure, 0)
+  const taxesDisclosure = entries.reduce((s, e) => s + e.workingCapital.taxesPaidDisclosure, 0)
+  const nonCashDisclosure = entries.reduce((s, e) => s + e.workingCapital.nonCashInvestingFinancing, 0)
 
   const rows: StatementRow[] = [
     hdr('ops-hdr', 'A.  CASH FLOWS FROM OPERATING ACTIVITIES  (Indirect Method)'),
@@ -635,7 +649,10 @@ export function computeCashFlowStatement(
     hdr('adj-hdr',      'ADJUSTMENTS TO RECONCILE NET INCOME TO NET CASH FROM OPERATIONS:'),
     indent('da',        'Add: Depreciation & Amortization',         da),
     indent('fin-amort', 'Add: Amortization of Deferred Financing Costs', finAmort),
+    indent('def-tax',   'Add: Deferred Taxes',                       deferredTax),
+    indent('gain-loss-sale', 'Less: Gain (Add: Loss) on Sale of Assets', -gainLossOnSale),
     indent('ar-chg',    '(Increase) Decrease in Accounts Receivable', arChg),
+    indent('inv-chg',   '(Increase) Decrease in Inventory',          invChg),
     indent('prep-chg',  '(Increase) Decrease in Prepaid Expenses',  prepChg),
     indent('ap-chg',    'Increase (Decrease) in Accounts Payable',  apChg),
     indent('accrued-chg','Increase (Decrease) in Accrued Liabilities', accrChg),
@@ -646,6 +663,10 @@ export function computeCashFlowStatement(
 
     hdr('inv-hdr', 'B.  CASH FLOWS FROM INVESTING ACTIVITIES'),
     line('capex',       'Purchase of Real Property / Capital Expenditures', -capex),
+    line('property-purchase', 'Purchase of Property',                        -propertyPurchase),
+    line('property-sale', 'Sale of Property',                                propertySale),
+    line('investment-purchase', 'Purchase of Investments',                   -investmentPurchase),
+    line('investment-sale', 'Sale of Investments',                           investmentSale),
     line('reserve',     'Contributions to Replacement Reserve Account',      -reserve),
     line('sale-proc',   'Proceeds from Sale of Property / Assets',           proceedsSale),
     line('other-inv',   'Other Investing Activities',                        otherInvest),
@@ -657,6 +678,7 @@ export function computeCashFlowStatement(
     line('int-paid',    'Interest Paid on Mortgage',                         -interest),
     line('new-borrow',  'Proceeds from New Borrowings',                      newBorrow),
     line('cap-contrib', 'Capital Contributions from Partners',               capContrib),
+    line('div-dist',    'Dividends / Distributions',                         -dividendsDistributions),
     line('lp-dist-cf',  'Distributions to LP Partners',                      -lpDist),
     line('gp-dist-cf',  'Distributions to GP / Promote',                     -gpDist),
     line('other-fin',   'Other Financing Activities',                        otherFin),
@@ -671,14 +693,15 @@ export function computeCashFlowStatement(
     spacer('s5'),
 
     hdr('supp-hdr', 'E.  SUPPLEMENTAL DISCLOSURES  (Required — ASC 230-10-50)'),
-    line('int-disc',    'Cash Paid for Interest',                            interest),
-    line('tax-disc',    'Cash Paid for Income Taxes',                        0),
+    line('int-disc',    'Cash Paid for Interest',                            interestDisclosure || interest),
+    line('tax-disc',    'Cash Paid for Income Taxes',                        taxesDisclosure),
     spacer('s6'),
 
     hdr('noncash-hdr', 'F.  NON-CASH INVESTING & FINANCING ACTIVITIES'),
     note('noncash-1',   `Depreciation — non-cash charge: ${fmtCurrency(da)}`),
     note('noncash-2',   `Amortization of financing costs: ${fmtCurrency(finAmort)}`),
     note('noncash-3',   `Principal portion of debt service: ${fmtCurrency(principal)}`),
+    note('noncash-4',   nonCashDisclosure !== 0 ? `Additional non-cash investing/financing activities: ${fmtCurrency(nonCashDisclosure)}` : 'No additional non-cash investing/financing activities entered.'),
   ]
 
   return {
