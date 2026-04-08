@@ -254,6 +254,8 @@ export const Investors: React.FC = () => {
   }
 
   const onSave: SubmitHandler<FormValues> = (vals) => {
+    const nonAccredited = vals.investors.filter((inv) => inv.accreditedInvestor !== true)
+
     if (offering.offeringExemption === '506(c)') {
       const bad = vals.investors.filter(
         (inv) => inv.accreditedInvestor !== true || !inv.accreditedInvestorBasis,
@@ -280,6 +282,15 @@ export const Investors: React.FC = () => {
         addInvestor(payload as Investor)
       }
     })
+
+    if (nonAccredited.length > 0) {
+      notify(
+        `Investors saved with warning: ${nonAccredited.length} investor${nonAccredited.length === 1 ? '' : 's'} marked as not accredited. Confirm your exemption permits non-accredited investors.`,
+        'error',
+      )
+      return
+    }
+
     notify('Investors saved. Deal saved.')
   }
 
@@ -364,6 +375,7 @@ export const Investors: React.FC = () => {
           const name   = form.watch(`investors.${idx}.fullLegalName` as const) || 'New investor'
           const type   = form.watch(`investors.${idx}.subscriberType` as const)
           const amount = form.watch(`investors.${idx}.subscriptionAmount` as const)
+          const isAccredited = form.watch(`investors.${idx}.accreditedInvestor` as const)
           const isExpanded = expanded[idx] ?? false
           const subStatus  = getSubStatus(f.id)
 
@@ -385,7 +397,8 @@ export const Investors: React.FC = () => {
                     <div className="investor-card-name">{name}</div>
                     <div className="investor-card-meta">
                       {type === 'entity' ? 'Entity' : 'Individual'}
-                      {amount ? ` · $${Number(amount).toLocaleString()}` : ''}
+                        {amount ? ` · $${Number(amount).toLocaleString()}` : ''}
+                        {` · ${isAccredited ? 'Accredited' : 'Not accredited'}`}
                     </div>
                   </div>
                 </div>
@@ -661,7 +674,30 @@ export const Investors: React.FC = () => {
                     </label>
                   </div>
 
-                  {form.watch(`investors.${idx}.accreditedInvestor` as const) && (
+                  {!isAccredited && (
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      style={{
+                        marginTop: 8,
+                        padding: '8px 10px',
+                        borderRadius: 8,
+                        border: '1px solid rgba(180, 60, 60, 0.35)',
+                        background: 'rgba(180, 60, 60, 0.08)',
+                        color: '#7a1f1f',
+                        fontSize: 13,
+                        lineHeight: 1.4,
+                        maxWidth: 620,
+                      }}
+                    >
+                      <strong>Not accredited:</strong>{' '}
+                      {offering.offeringExemption === '506(c)'
+                        ? 'This investor cannot be saved under Rule 506(c) unless accredited status is confirmed and a basis is selected.'
+                        : 'This investor is explicitly marked as non-accredited. Confirm your selected offering exemption allows non-accredited investors.'}
+                    </div>
+                  )}
+
+                  {isAccredited && (
                     <div className="field-group" style={{ maxWidth: 420, marginTop: 8 }}>
                       <label className="field-label" htmlFor={`investor-accredited-basis-${idx}`}>
                         Accredited basis <span className="field-required">*</span>
