@@ -12,6 +12,7 @@ export type AccountingMethod = 'Accrual' | 'Cash'
 
 export type DebtStructure = {
   loanAmount:          number   // original principal
+  subordinateLoanAmount?: number // subordinate debt principal at closing
   annualInterestRate:  number   // decimal e.g. 0.065
   amortizationYears:   number   // e.g. 30
   loanTermYears:       number   // maturity e.g. 5
@@ -160,6 +161,45 @@ export type BelowLineItems = {
 
 /** Working capital changes — for Cash Flow Statement (indirect method) */
 export type WorkingCapitalAdjustments = {
+  // ASC 230 canonical operating inputs
+  netIncome:                   number
+  depreciation:               number
+  amortization:               number
+  deferredTax:                number
+  gainLossOnSale:             number
+  accountsReceivableChange:   number
+  inventoryChange:            number
+  prepaidExpensesChange:      number
+  accountsPayableChange:      number
+  accruedExpensesChange:      number
+  netCashFromOperations:      number
+
+  // ASC 230 canonical investing inputs
+  capitalExpenditures:        number
+  propertyPurchase:           number
+  propertySale:               number
+  investmentPurchase:         number
+  investmentSale:             number
+  netCashFromInvesting:       number
+
+  // ASC 230 canonical financing inputs
+  debtProceeds:               number
+  debtRepayment:              number
+  equityContributions:        number
+  dividendsDistributions:     number
+  netCashFromFinancing:       number
+
+  // ASC 230 totals / reconciliation
+  netChangeInCash:            number
+  cashBeginning:              number
+  cashEnding:                 number
+
+  // ASC 230 supplemental disclosures
+  interestPaidDisclosure:     number
+  taxesPaidDisclosure:        number
+  nonCashInvestingFinancing:  number
+
+  // Legacy fields (kept for backward compatibility with existing saved entries/imports)
   changeInAccountsReceivable: number
   changeInPrepaidExpenses:    number
   changeInAccountsPayable:    number

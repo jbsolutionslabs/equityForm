@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   useAccountingStore,
   buildDefaultEntry,
@@ -11,6 +11,8 @@ import {
   getMonthlyDepreciation,
   getMonthlyFinancingCostAmortization,
   getCalculatedLPPref,
+  computeIncomeStatement,
+  fmtAccounting,
   fmtCurrency,
 } from '../../../utils/financialComputations'
 import ModuleProgress from '../../components/ModuleProgress'
@@ -35,14 +37,24 @@ type Props = {
   readOnly?: boolean
 }
 
-type Tab = 'pnl' | 'belowline' | 'workingcapital' | 'distributions'
+type Tab = 'pnl' | 'belowline' | 'workingcapital' | 'cashflowasc230' | 'balancesheet' | 'distributions'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'pnl',           label: 'P&L Line Items' },
   { id: 'belowline',     label: 'Below The Line' },
   { id: 'workingcapital',label: 'Working Capital' },
+  { id: 'cashflowasc230',label: 'Cash Flow (ASC 230)' },
+  { id: 'balancesheet',  label: 'Balance Sheet (Schedule L)' },
   { id: 'distributions', label: 'Distributions' },
 ]
+
+type ScheduleLRow = {
+  lineNo: number
+  label: string
+  boy: number
+  eom: number
+  total?: boolean
+}
 
 function NumRow({
   label,
@@ -100,6 +112,7 @@ export const LineItemEntry: React.FC<Props> = ({
   readOnly = false,
 }) => {
   const getEntry    = useAccountingStore((s) => s.getEntry)
+  const getEntriesForProperty = useAccountingStore((s) => s.getEntriesForProperty)
   const upsertEntry = useAccountingStore((s) => s.upsertEntry)
   const deleteEntry = useAccountingStore((s) => s.deleteEntry)
 
@@ -230,6 +243,249 @@ export const LineItemEntry: React.FC<Props> = ({
   const prefGap    = dist.calculatedLPPref - dist.actualLPDistribution
   const isOverpaid = prefGap < -0.01
 
+  const statementPreview = useMemo(() => {
+    const entriesForProperty = getEntriesForProperty(property.id)
+
+    const draftAsMonthly = {
+      ...entry,
+      id: `draft-${property.id}-${period}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as MonthlyEntry
+
+    const mergedEntries = (() => {
+      const existingIdx = entriesForProperty.findIndex((e) => e.period === period)
+      if (existingIdx === -1) return [...entriesForProperty, draftAsMonthly]
+      return entriesForProperty.map((e, idx) => (idx === existingIdx ? draftAsMonthly : e))
+    })()
+
+    const [year] = period.split('-').map(Number)
+    const [_, month] = period.split('-').map(Number)
+
+    const monthlyStatement = computeIncomeStatement(property, mergedEntries, {
+      type: 'month',
+      year,
+      month,
+    })
+
+    const ytdStatement = computeIncomeStatement(property, mergedEntries, {
+      type: 'year',
+      year,
+    })
+
+    const monthlyNOI = monthlyStatement.rows.find((r) => r.key === 'noi')?.value ?? 0
+    const monthlyNetIncome = monthlyStatement.rows.find((r) => r.key === 'net-income')?.value ?? 0
+    const ytdNOI = ytdStatement.rows.find((r) => r.key === 'noi')?.value ?? 0
+    const ytdNetIncome = ytdStatement.rows.find((r) => r.key === 'net-income')?.value ?? 0
+
+    return {
+      monthlyNOI,
+      monthlyNetIncome,
+      ytdNOI,
+      ytdNetIncome,
+    }
+  }, [entry, getEntriesForProperty, period, property])
+
+  const pickEnteredOrFallback = (entered: number, fallback: number) => (entered !== 0 ? entered : fallback)
+
+  const cfoNetIncome = pickEnteredOrFallback(wc.netIncome, statementPreview.monthlyNetIncome)
+  const cfoDepreciation = pickEnteredOrFallback(wc.depreciation, bl.depreciation)
+  const cfoAmortization = pickEnteredOrFallback(wc.amortization, bl.amortizationFinancingCosts)
+  const cfoAr = pickEnteredOrFallback(wc.accountsReceivableChange, wc.changeInAccountsReceivable)
+  const cfoPrepaid = pickEnteredOrFallback(wc.prepaidExpensesChange, wc.changeInPrepaidExpenses)
+  const cfoAp = pickEnteredOrFallback(wc.accountsPayableChange, wc.changeInAccountsPayable)
+  const cfoAccrued = pickEnteredOrFallback(wc.accruedExpensesChange, wc.changeInAccruedLiabilities)
+  const cfoDeferredTax = wc.deferredTax
+  const cfoGainLossOnSale = wc.gainLossOnSale
+  const cfoOperatingTotalCalc =
+    cfoNetIncome +
+    cfoDepreciation +
+    cfoAmortization +
+    cfoDeferredTax -
+    cfoGainLossOnSale +
+    cfoAr +
+    wc.inventoryChange +
+    cfoPrepaid +
+    cfoAp +
+    cfoAccrued
+  const cfoOperatingTotal = pickEnteredOrFallback(wc.netCashFromOperations, cfoOperatingTotalCalc)
+
+  const cfiCapEx = pickEnteredOrFallback(wc.capitalExpenditures, bl.capEx)
+  const cfiInvestingTotalCalc =
+    -cfiCapEx -
+    wc.propertyPurchase +
+    wc.propertySale -
+    wc.investmentPurchase +
+    wc.investmentSale
+  const cfiInvestingTotal = pickEnteredOrFallback(wc.netCashFromInvesting, cfiInvestingTotalCalc)
+
+  const cffDebtProceeds = pickEnteredOrFallback(wc.debtProceeds, wc.proceedsFromNewBorrowings)
+  const cffDebtRepayment = pickEnteredOrFallback(wc.debtRepayment, bl.debtServicePrincipal)
+  const cffEquityContributions = pickEnteredOrFallback(wc.equityContributions, wc.capitalContributions)
+  const cffDistributions = pickEnteredOrFallback(
+    wc.dividendsDistributions,
+    dist.actualLPDistribution + dist.actualGPDistribution,
+  )
+  const cffFinancingTotalCalc = cffDebtProceeds - cffDebtRepayment + cffEquityContributions - cffDistributions
+  const cffFinancingTotal = pickEnteredOrFallback(wc.netCashFromFinancing, cffFinancingTotalCalc)
+
+  const cfsNetChangeCalc = cfoOperatingTotal + cfiInvestingTotal + cffFinancingTotal
+  const cfsNetChange = pickEnteredOrFallback(wc.netChangeInCash, cfsNetChangeCalc)
+  const cfsCashBeginning = pickEnteredOrFallback(wc.cashBeginning, property.openingBalances.cashBeginning)
+  const cfsCashEndingCalc = cfsCashBeginning + cfsNetChange
+  const cfsCashEnding = pickEnteredOrFallback(wc.cashEnding, cfsCashEndingCalc)
+  const cfsReconciliationDelta = cfsCashBeginning + cfsNetChange - cfsCashEnding
+
+  const scheduleLRows = useMemo(() => {
+    const entriesForProperty = getEntriesForProperty(property.id)
+    const draftAsMonthly = {
+      ...entry,
+      id: `draft-${property.id}-${period}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as MonthlyEntry
+
+    const mergedEntries = (() => {
+      const existingIdx = entriesForProperty.findIndex((e) => e.period === period)
+      if (existingIdx === -1) return [...entriesForProperty, draftAsMonthly]
+      return entriesForProperty.map((e, idx) => (idx === existingIdx ? draftAsMonthly : e))
+    })()
+
+    const [year] = period.split('-').map(Number)
+    const yearStart = `${year}-01`
+    const ytdEntries = mergedEntries
+      .filter((e) => e.period >= yearStart && e.period <= period)
+      .sort((a, b) => a.period.localeCompare(b.period))
+
+    const ob = property.openingBalances
+
+    const cashBoy = ob.cashBeginning
+    const cashEom = cashBoy + ytdEntries.reduce((s, e) => {
+      const operating =
+        e.workingCapital.changeInAccountsReceivable +
+        e.workingCapital.changeInPrepaidExpenses +
+        e.workingCapital.changeInAccountsPayable +
+        e.workingCapital.changeInAccruedLiabilities +
+        e.workingCapital.changeInSecurityDeposits +
+        e.workingCapital.otherOperatingAdjustments
+      const investing =
+        -e.belowLine.capEx -
+        e.belowLine.replacementReserve +
+        e.workingCapital.proceedsFromSaleOfAssets +
+        e.workingCapital.otherInvestingActivities
+      const financing =
+        -e.belowLine.debtServicePrincipal -
+        e.belowLine.debtServiceInterest +
+        e.workingCapital.proceedsFromNewBorrowings +
+        e.workingCapital.capitalContributions +
+        e.workingCapital.otherFinancingActivities -
+        e.distributions.actualLPDistribution -
+        e.distributions.actualGPDistribution
+      const [entryYear] = e.period.split('-').map(Number)
+      const monthlyNI = computeIncomeStatement(property, [e], { type: 'year', year: entryYear })
+        .rows.find((r) => r.key === 'net-income')?.value ?? 0
+      return s + monthlyNI + operating + investing + financing
+    }, 0)
+
+    const arBoy = ob.accountsReceivableBeginning
+    const arEom = arBoy + ytdEntries.reduce((s, e) => s + e.workingCapital.changeInAccountsReceivable, 0)
+
+    const otherCurrentBoy = ob.prepaidExpensesBeginning
+    const otherCurrentEom = otherCurrentBoy + ytdEntries.reduce((s, e) => s + e.workingCapital.changeInPrepaidExpenses, 0)
+
+    const buildingsBoy = property.depreciation.depreciableBuilding
+    const buildingsEom = buildingsBoy
+    const accumDepBoy = property.depreciation.accumulatedDepreciationBOY
+    const accumDepEom = accumDepBoy + ytdEntries.reduce((s, e) => s + e.belowLine.depreciation, 0)
+
+    const otherInvestmentsBoy = property.landValue + ob.otherAssetsBeginning + property.depreciation.deferredFinancingCosts
+    const otherInvestmentsEom =
+      property.landValue +
+      ob.otherAssetsBeginning +
+      Math.max(
+        0,
+        property.depreciation.deferredFinancingCosts -
+        ytdEntries.reduce((s, e) => s + e.belowLine.amortizationFinancingCosts, 0),
+      )
+
+    const totalAssetsBoy =
+      cashBoy + arBoy + otherCurrentBoy + otherInvestmentsBoy + buildingsBoy - accumDepBoy
+    const totalAssetsEom =
+      cashEom + arEom + otherCurrentEom + otherInvestmentsEom + buildingsEom - accumDepEom
+
+    const apBoy = ob.accountsPayableBeginning
+    const apEom = apBoy + ytdEntries.reduce((s, e) => s + e.workingCapital.changeInAccountsPayable, 0)
+
+    const debtAtStart = property.debtStructure.loanAmount
+    const principalPaidYtd = ytdEntries.reduce((s, e) => s + e.belowLine.debtServicePrincipal, 0)
+    const debtEom = Math.max(0, debtAtStart - principalPaidYtd)
+
+    const [startYear] = yearStart.split('-').map(Number)
+    const startDebtService = getMonthlyDebtService(property, `${startYear}-01`)
+    const endDebtService = getMonthlyDebtService(property, period)
+
+    const currentMaturitiesBoy = Math.min(debtAtStart, Math.max(0, startDebtService.principal) * 12)
+    const currentMaturitiesEom = Math.min(debtEom, Math.max(0, endDebtService.principal) * 12)
+
+    const otherCurrentLiabBoy = ob.accruedLiabilitiesBeginning
+    const otherCurrentLiabEom =
+      otherCurrentLiabBoy +
+      ytdEntries.reduce((s, e) => s + e.workingCapital.changeInAccruedLiabilities + e.workingCapital.changeInSecurityDeposits, 0)
+
+    const nonrecourseBoy = property.debtStructure.subordinateLoanAmount ?? 0
+    const nonrecourseEom = nonrecourseBoy
+
+    const longTermDebtBoy = Math.max(0, debtAtStart - currentMaturitiesBoy)
+    const longTermDebtEom = Math.max(0, debtEom - currentMaturitiesEom)
+
+    const netIncomeYtd = computeIncomeStatement(property, ytdEntries, { type: 'year', year })
+      .rows.find((r) => r.key === 'net-income')?.value ?? 0
+    const capitalContribYtd = ytdEntries.reduce((s, e) => s + e.workingCapital.capitalContributions, 0)
+    const distributionsYtd = ytdEntries.reduce(
+      (s, e) => s + e.distributions.actualLPDistribution + e.distributions.actualGPDistribution,
+      0,
+    )
+
+    const partnersCapitalBoy = ob.partnersCapitalBeginning
+    const partnersCapitalEom = partnersCapitalBoy + capitalContribYtd + netIncomeYtd - distributionsYtd
+
+    const totalLCEBoy =
+      apBoy + currentMaturitiesBoy + otherCurrentLiabBoy + nonrecourseBoy + longTermDebtBoy + partnersCapitalBoy
+    const totalLCEEom =
+      apEom + currentMaturitiesEom + otherCurrentLiabEom + nonrecourseEom + longTermDebtEom + partnersCapitalEom
+
+    const rows: ScheduleLRow[] = [
+      { lineNo: 1, label: 'Cash', boy: cashBoy, eom: cashEom },
+      { lineNo: 2, label: 'Trade notes and accounts receivable', boy: arBoy, eom: arEom },
+      { lineNo: 3, label: 'Less: Allowance for bad debts', boy: 0, eom: 0 },
+      { lineNo: 4, label: 'Inventories', boy: 0, eom: 0 },
+      { lineNo: 5, label: 'U.S. government obligations', boy: 0, eom: 0 },
+      { lineNo: 6, label: 'Tax-exempt securities', boy: 0, eom: 0 },
+      { lineNo: 7, label: 'Other current assets', boy: otherCurrentBoy, eom: otherCurrentEom },
+      { lineNo: 8, label: 'Mortgage and real estate loans', boy: 0, eom: 0 },
+      { lineNo: 9, label: 'Other investments (incl. land and other assets)', boy: otherInvestmentsBoy, eom: otherInvestmentsEom },
+      { lineNo: 10, label: 'Buildings and other depreciable assets', boy: buildingsBoy, eom: buildingsEom },
+      { lineNo: 11, label: 'Less: Accumulated depreciation', boy: -accumDepBoy, eom: -accumDepEom },
+      { lineNo: 12, label: 'Depletable assets', boy: 0, eom: 0 },
+      { lineNo: 13, label: 'Less: Accumulated depletion', boy: 0, eom: 0 },
+      { lineNo: 14, label: 'Total assets', boy: totalAssetsBoy, eom: totalAssetsEom, total: true },
+      { lineNo: 15, label: 'Accounts payable', boy: apBoy, eom: apEom },
+      { lineNo: 16, label: 'Mortgages, notes, bonds payable in less than 1 year', boy: currentMaturitiesBoy, eom: currentMaturitiesEom },
+      { lineNo: 17, label: 'Other current liabilities', boy: otherCurrentLiabBoy, eom: otherCurrentLiabEom },
+      { lineNo: 18, label: 'All nonrecourse loans', boy: nonrecourseBoy, eom: nonrecourseEom },
+      { lineNo: 19, label: 'Mortgages, notes, bonds payable in 1 year or more', boy: longTermDebtBoy, eom: longTermDebtEom },
+      { lineNo: 20, label: 'Other liabilities', boy: 0, eom: 0 },
+      { lineNo: 21, label: "Partners' capital accounts", boy: partnersCapitalBoy, eom: partnersCapitalEom },
+      { lineNo: 22, label: 'Total liabilities and capital', boy: totalLCEBoy, eom: totalLCEEom, total: true },
+    ]
+
+    return {
+      rows,
+      imbalanceBoy: totalAssetsBoy - totalLCEBoy,
+      imbalanceEom: totalAssetsEom - totalLCEEom,
+    }
+  }, [entry, getEntriesForProperty, period, property])
+
   // Period label
   const [py, pm] = period.split('-').map(Number)
   const periodDisplay = new Date(py, pm - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
@@ -289,6 +545,41 @@ export const LineItemEntry: React.FC<Props> = ({
         <div className="stat-card">
           <div className="stat-label">LP Pref (Monthly)</div>
           <div className="stat-value">{fmtCurrency(dist.calculatedLPPref)}</div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 0, marginBottom: 20 }}>
+        <div className="line-item-section-header">
+          <span>Income Statement Auto-Preview</span>
+        </div>
+        <p style={{ margin: '8px 0 16px', color: 'var(--color-slate-600)', fontSize: 14 }}>
+          As the GP enters monthly line items, Income Statement totals update automatically.
+        </p>
+        <div className="stat-row" style={{ marginBottom: 0 }}>
+          <div className="stat-card">
+            <div className="stat-label">Current Month NOI</div>
+            <div className={`stat-value ${statementPreview.monthlyNOI < 0 ? 'stat-value--negative' : ''}`}>
+              {fmtCurrency(statementPreview.monthlyNOI)}
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">Current Month Net Income</div>
+            <div className={`stat-value ${statementPreview.monthlyNetIncome < 0 ? 'stat-value--negative' : ''}`}>
+              {fmtCurrency(statementPreview.monthlyNetIncome)}
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">YTD NOI</div>
+            <div className={`stat-value ${statementPreview.ytdNOI < 0 ? 'stat-value--negative' : ''}`}>
+              {fmtCurrency(statementPreview.ytdNOI)}
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">YTD Net Income</div>
+            <div className={`stat-value ${statementPreview.ytdNetIncome < 0 ? 'stat-value--negative' : ''}`}>
+              {fmtCurrency(statementPreview.ytdNetIncome)}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -512,6 +803,128 @@ export const LineItemEntry: React.FC<Props> = ({
             <NumRow label="Proceeds from New Borrowings"    value={wc.proceedsFromNewBorrowings}  onChange={(v) => patchWC('proceedsFromNewBorrowings', v)}  readOnly={readOnly} />
             <NumRow label="Capital Contributions"           value={wc.capitalContributions}       onChange={(v) => patchWC('capitalContributions', v)}       readOnly={readOnly} />
             <NumRow label="Other Financing Activities"      value={wc.otherFinancingActivities}   onChange={(v) => patchWC('otherFinancingActivities', v)}   readOnly={readOnly} />
+          </div>
+        )}
+
+        {/* ── Tab: Balance Sheet (Schedule L) ── */}
+        {tab === 'cashflowasc230' && (
+          <div>
+            <div className="info-box" style={{ marginBottom: 20 }}>
+              <div className="info-box-title">ASC 230 — Statement of Cash Flows (Indirect Method)</div>
+              <p style={{ margin: 0, fontSize: 14 }}>
+                Enter canonical ASC 230 lines for Operating, Investing, and Financing activities.
+                This section supports required reconciliation and supplemental disclosures.
+              </p>
+            </div>
+
+            <SectionHeader label="OPERATING ACTIVITIES (INDIRECT METHOD)" />
+            <NumRow label="Net Income" value={wc.netIncome} onChange={(v) => patchWC('netIncome', v)} readOnly={readOnly} hint={`Fallback from P&L: ${fmtCurrency(statementPreview.monthlyNetIncome)}`} />
+            <NumRow label="Depreciation" value={wc.depreciation} onChange={(v) => patchWC('depreciation', v)} readOnly={readOnly} hint={`Fallback: ${fmtCurrency(bl.depreciation)}`} />
+            <NumRow label="Amortization" value={wc.amortization} onChange={(v) => patchWC('amortization', v)} readOnly={readOnly} hint={`Fallback: ${fmtCurrency(bl.amortizationFinancingCosts)}`} />
+            <NumRow label="Deferred Tax" value={wc.deferredTax} onChange={(v) => patchWC('deferredTax', v)} readOnly={readOnly} />
+            <NumRow label="Gain / (Loss) on Sale of Assets" value={wc.gainLossOnSale} onChange={(v) => patchWC('gainLossOnSale', v)} readOnly={readOnly} hint="Gains reduce CFO; losses increase CFO" />
+            <NumRow label="Accounts Receivable Change" value={wc.accountsReceivableChange} onChange={(v) => patchWC('accountsReceivableChange', v)} readOnly={readOnly} hint={`Legacy fallback: ${fmtCurrency(wc.changeInAccountsReceivable)}`} />
+            <NumRow label="Inventory Change" value={wc.inventoryChange} onChange={(v) => patchWC('inventoryChange', v)} readOnly={readOnly} />
+            <NumRow label="Prepaid Expenses Change" value={wc.prepaidExpensesChange} onChange={(v) => patchWC('prepaidExpensesChange', v)} readOnly={readOnly} hint={`Legacy fallback: ${fmtCurrency(wc.changeInPrepaidExpenses)}`} />
+            <NumRow label="Accounts Payable Change" value={wc.accountsPayableChange} onChange={(v) => patchWC('accountsPayableChange', v)} readOnly={readOnly} hint={`Legacy fallback: ${fmtCurrency(wc.changeInAccountsPayable)}`} />
+            <NumRow label="Accrued Expenses Change" value={wc.accruedExpensesChange} onChange={(v) => patchWC('accruedExpensesChange', v)} readOnly={readOnly} hint={`Legacy fallback: ${fmtCurrency(wc.changeInAccruedLiabilities)}`} />
+            <div className="line-item-subtotal">
+              <span>Net Cash Provided by Operating Activities</span>
+              <span>{fmtCurrency(cfoOperatingTotal)}</span>
+            </div>
+
+            <SectionHeader label="INVESTING ACTIVITIES" />
+            <NumRow label="Capital Expenditures" value={wc.capitalExpenditures} onChange={(v) => patchWC('capitalExpenditures', v)} readOnly={readOnly} hint={`Fallback: ${fmtCurrency(bl.capEx)}`} />
+            <NumRow label="Property Purchase" value={wc.propertyPurchase} onChange={(v) => patchWC('propertyPurchase', v)} readOnly={readOnly} />
+            <NumRow label="Property Sale" value={wc.propertySale} onChange={(v) => patchWC('propertySale', v)} readOnly={readOnly} />
+            <NumRow label="Investment Purchase" value={wc.investmentPurchase} onChange={(v) => patchWC('investmentPurchase', v)} readOnly={readOnly} />
+            <NumRow label="Investment Sale" value={wc.investmentSale} onChange={(v) => patchWC('investmentSale', v)} readOnly={readOnly} />
+            <div className="line-item-subtotal">
+              <span>Net Cash Used in Investing Activities</span>
+              <span>{fmtCurrency(cfiInvestingTotal)}</span>
+            </div>
+
+            <SectionHeader label="FINANCING ACTIVITIES" />
+            <NumRow label="Debt Proceeds" value={wc.debtProceeds} onChange={(v) => patchWC('debtProceeds', v)} readOnly={readOnly} hint={`Legacy fallback: ${fmtCurrency(wc.proceedsFromNewBorrowings)}`} />
+            <NumRow label="Debt Repayment (Principal)" value={wc.debtRepayment} onChange={(v) => patchWC('debtRepayment', v)} readOnly={readOnly} hint={`Fallback: ${fmtCurrency(bl.debtServicePrincipal)}`} />
+            <NumRow label="Equity Contributions" value={wc.equityContributions} onChange={(v) => patchWC('equityContributions', v)} readOnly={readOnly} hint={`Legacy fallback: ${fmtCurrency(wc.capitalContributions)}`} />
+            <NumRow label="Dividends / Distributions" value={wc.dividendsDistributions} onChange={(v) => patchWC('dividendsDistributions', v)} readOnly={readOnly} hint={`Fallback: ${fmtCurrency(dist.actualLPDistribution + dist.actualGPDistribution)}`} />
+            <div className="line-item-subtotal">
+              <span>Net Cash Provided by Financing Activities</span>
+              <span>{fmtCurrency(cffFinancingTotal)}</span>
+            </div>
+
+            <SectionHeader label="RECONCILIATION (ASC 230 REQUIRED)" />
+            <NumRow label="Net Change in Cash" value={wc.netChangeInCash} onChange={(v) => patchWC('netChangeInCash', v)} readOnly={readOnly} hint={`Computed: ${fmtCurrency(cfsNetChangeCalc)}`} />
+            <NumRow label="Cash — Beginning" value={wc.cashBeginning} onChange={(v) => patchWC('cashBeginning', v)} readOnly={readOnly} hint={`Fallback from opening balances: ${fmtCurrency(property.openingBalances.cashBeginning)}`} />
+            <NumRow label="Cash — Ending" value={wc.cashEnding} onChange={(v) => patchWC('cashEnding', v)} readOnly={readOnly} hint={`Computed: ${fmtCurrency(cfsCashEndingCalc)}`} />
+            <div className="line-item-total">
+              <span>Beginning Cash + Net Change</span>
+              <span>{fmtCurrency(cfsCashBeginning + cfsNetChange)}</span>
+            </div>
+            {Math.abs(cfsReconciliationDelta) > 1 && (
+              <div className="pref-gap-alert" style={{ marginTop: 16 }}>
+                <div className="pref-gap-alert-icon">⚠</div>
+                <div>
+                  <div className="pref-gap-alert-title">Cash Flow does not reconcile</div>
+                  <div className="pref-gap-alert-body">
+                    Difference (Beginning Cash + Net Change − Ending Cash): {fmtCurrency(cfsReconciliationDelta)}.
+                    ASC 230 requires this to reconcile.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <SectionHeader label="SUPPLEMENTAL DISCLOSURES (ASC 230-10-50)" />
+            <NumRow label="Cash Paid for Interest" value={wc.interestPaidDisclosure} onChange={(v) => patchWC('interestPaidDisclosure', v)} readOnly={readOnly} hint={`Fallback: ${fmtCurrency(bl.debtServiceInterest)}`} />
+            <NumRow label="Cash Paid for Income Taxes" value={wc.taxesPaidDisclosure} onChange={(v) => patchWC('taxesPaidDisclosure', v)} readOnly={readOnly} />
+            <NumRow label="Non-Cash Investing & Financing Activities" value={wc.nonCashInvestingFinancing} onChange={(v) => patchWC('nonCashInvestingFinancing', v)} readOnly={readOnly} hint="Disclosed separately, not in core cash flow totals" />
+          </div>
+        )}
+
+        {/* ── Tab: Balance Sheet (Schedule L) ── */}
+        {tab === 'balancesheet' && (
+          <div>
+            <div className="info-box" style={{ marginBottom: 20 }}>
+              <div className="info-box-title">IRS Form 1065 — Schedule L format</div>
+              <p style={{ margin: 0, fontSize: 14 }}>
+                Book-basis Schedule L snapshot for this monthly entry, with Beginning of Year (BOY)
+                and End of Month (EOM) columns.
+              </p>
+            </div>
+
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 70 }}>Line</th>
+                  <th>Description</th>
+                  <th style={{ textAlign: 'right', width: 170 }}>BOY</th>
+                  <th style={{ textAlign: 'right', width: 170 }}>EOM</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scheduleLRows.rows.map((row) => (
+                  <tr key={`sched-l-${row.lineNo}`} style={row.total ? { fontWeight: 700 } : undefined}>
+                    <td>{row.lineNo}</td>
+                    <td>{row.label}</td>
+                    <td style={{ textAlign: 'right' }}>{fmtAccounting(row.boy)}</td>
+                    <td style={{ textAlign: 'right' }}>{fmtAccounting(row.eom)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {(Math.abs(scheduleLRows.imbalanceBoy) > 1 || Math.abs(scheduleLRows.imbalanceEom) > 1) && (
+              <div className="pref-gap-alert" style={{ marginTop: 16 }}>
+                <div className="pref-gap-alert-icon">⚠</div>
+                <div>
+                  <div className="pref-gap-alert-title">Schedule L out-of-balance check</div>
+                  <div className="pref-gap-alert-body">
+                    BOY variance: {fmtAccounting(scheduleLRows.imbalanceBoy)} · EOM variance: {fmtAccounting(scheduleLRows.imbalanceEom)}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useAccountingStore, buildDefaultEntry } from '../../../state/accountingStore'
 import { useAppStore } from '../../../state/store'
 import type { AccountingProperty } from '../../../state/accountingTypes'
@@ -14,6 +14,7 @@ type CoreForm = {
   dealId:           string
   purchasePrice:    number
   mortgageBalance:  number   // at closing
+  subordinateDebt:  number   // at closing
   initialEquity:    number
   acquisitionDate:  string
   lpEquity:         number
@@ -63,17 +64,30 @@ type AdvancedForm = {
 
 const US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC']
 
+const roundPct = (value: number): number => Math.round(value * 100) / 100
+const pctOfPurchase = (amount: number, purchasePrice: number): number => {
+  if (purchasePrice <= 0 || amount <= 0) return 0
+  return roundPct((amount / purchasePrice) * 100)
+}
+
 const defaultCore = (): CoreForm => ({
   name:             '',
   assetClass:       'multifamily',
   dealId:           '',
   purchasePrice:    0,
   mortgageBalance:  0,
+  subordinateDebt:  0,
   initialEquity:    0,
   acquisitionDate:  '',
   lpEquity:         0,
   lpPrefRateAnnual: 0.08,
 })
+
+const getAnnualLpPrefRateFromOA = (preferredReturnEnabled?: boolean, preferredReturnRate?: number | null): number => {
+  if (!preferredReturnEnabled) return 0
+  if (preferredReturnRate == null || Number.isNaN(preferredReturnRate)) return 0
+  return preferredReturnRate / 100
+}
 
 const defaultAdvanced = (): AdvancedForm => ({
   address: '', city: '', state: 'TX',
@@ -114,6 +128,7 @@ function buildProperty(
     acquisitionDate:  core.acquisitionDate,
     debtStructure: {
       loanAmount:         core.mortgageBalance,
+      subordinateLoanAmount: core.subordinateDebt,
       annualInterestRate: adv.annualInterestRate,
       amortizationYears:  adv.amortizationYears,
       loanTermYears:      adv.loanTermYears,
@@ -162,6 +177,11 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
   const addProperty    = useAccountingStore((s) => s.addProperty)
   const updateProperty = useAccountingStore((s) => s.updateProperty)
   const upsertEntry    = useAccountingStore((s) => s.upsertEntry)
+  const appData        = useAppStore((s) => s.data)
+  const oaLpPrefRateAnnual = getAnnualLpPrefRateFromOA(
+    appData.offering.preferredReturnEnabled,
+    appData.offering.preferredReturnRate,
+  )
 
   // Phase 1 deals — single deal for now
   const phase1Deal = useAppStore((s) => s.data.deal)
@@ -171,13 +191,20 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
 
   // Hydrate from existing property if editing
   const initCore = (): CoreForm => {
-    if (!existingProperty) return { ...defaultCore(), dealId: availableDeals[0]?.id ?? '' }
+    if (!existingProperty) {
+      return {
+        ...defaultCore(),
+        dealId: availableDeals[0]?.id ?? '',
+        lpPrefRateAnnual: oaLpPrefRateAnnual,
+      }
+    }
     return {
       name:             existingProperty.name,
       assetClass:       existingProperty.assetClass,
       dealId:           existingProperty.dealId,
       purchasePrice:    existingProperty.purchasePrice,
       mortgageBalance:  existingProperty.debtStructure.loanAmount,
+      subordinateDebt:  existingProperty.debtStructure.subordinateLoanAmount ?? 0,
       initialEquity:    existingProperty.openingBalances.partnersCapitalBeginning,
       acquisitionDate:  existingProperty.acquisitionDate,
       lpEquity:         existingProperty.waterfall.lpEquity,
@@ -216,6 +243,23 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
 
   const [core, setCore]       = useState<CoreForm>(initCore)
   const [adv, setAdv]         = useState<AdvancedForm>(initAdvanced)
+  const [seniorDebtInputMode, setSeniorDebtInputMode] = useState<'amount' | 'pct'>('amount')
+  const [seniorDebtPctInput, setSeniorDebtPctInput] = useState<number>(() => {
+    const initial = initCore()
+    return pctOfPurchase(initial.mortgageBalance, initial.purchasePrice)
+  })
+  const [subDebtInputMode, setSubDebtInputMode] = useState<'amount' | 'pct'>('amount')
+  const [subDebtPctInput, setSubDebtPctInput] = useState<number>(() => {
+    const initial = initCore()
+    return pctOfPurchase(initial.subordinateDebt, initial.purchasePrice)
+  })
+  const [initialEquityInputMode, setInitialEquityInputMode] = useState<'amount' | 'pct'>('amount')
+  const [initialEquityPctInput, setInitialEquityPctInput] = useState<number>(() => {
+    const initial = initCore()
+    return pctOfPurchase(initial.initialEquity, initial.purchasePrice)
+  })
+  const [lpEquityManualOverride, setLpEquityManualOverride] = useState<boolean>(() => !!existingProperty)
+  const [lpPrefRateManualOverride, setLpPrefRateManualOverride] = useState<boolean>(() => !!existingProperty)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [errors, setErrors]   = useState<Record<string, string>>({})
   const [saving, setSaving]   = useState(false)
@@ -225,6 +269,25 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
 
   const patchAdv = <K extends keyof AdvancedForm>(k: K, v: AdvancedForm[K]) =>
     setAdv((f) => ({ ...f, [k]: v }))
+
+  const paidInvestorIds = new Set(
+    appData.subscriptions.filter((s) => s.status === 'paid').map((s) => s.investorId),
+  )
+  const paidInvestors = appData.investors.filter((inv) => paidInvestorIds.has(inv.id))
+  const capTableSourceInvestors = paidInvestors.length > 0 ? paidInvestors : appData.investors
+  const capTableLpEquity = capTableSourceInvestors.reduce((sum, inv) => sum + (inv.subscriptionAmount || 0), 0)
+
+  useEffect(() => {
+    if (!lpEquityManualOverride) {
+      patchCore('lpEquity', capTableLpEquity)
+    }
+  }, [lpEquityManualOverride, capTableLpEquity])
+
+  useEffect(() => {
+    if (!lpPrefRateManualOverride) {
+      patchCore('lpPrefRateAnnual', oaLpPrefRateAnnual)
+    }
+  }, [lpPrefRateManualOverride, oaLpPrefRateAnnual])
 
   const validate = (): boolean => {
     const e: Record<string, string> = {}
@@ -267,6 +330,18 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
   const monthlyPref = core.lpEquity > 0 && core.lpPrefRateAnnual > 0
     ? Math.round((core.lpEquity * core.lpPrefRateAnnual) / 12)
     : null
+
+  const seniorDebtLtvPct = core.purchasePrice > 0
+    ? (core.mortgageBalance / core.purchasePrice) * 100
+    : 0
+
+  const lastDollarLtvPct = core.purchasePrice > 0
+    ? ((core.mortgageBalance + core.subordinateDebt) / core.purchasePrice) * 100
+    : 0
+
+  const lpPctOfInitialEquity = core.initialEquity > 0
+    ? roundPct((core.lpEquity / core.initialEquity) * 100)
+    : 0
 
   return (
     <div className="page-enter">
@@ -364,33 +439,194 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
               <CurrencyInput
                 className="field-input"
                 value={core.purchasePrice}
-                onChange={(v) => patchCore('purchasePrice', v)}
+                onChange={(v) => {
+                  patchCore('purchasePrice', v)
+                  if (seniorDebtInputMode === 'pct') {
+                    patchCore('mortgageBalance', (v * seniorDebtPctInput) / 100)
+                  }
+                  if (subDebtInputMode === 'pct') {
+                    patchCore('subordinateDebt', (v * subDebtPctInput) / 100)
+                  }
+                  if (initialEquityInputMode === 'pct') {
+                    patchCore('initialEquity', (v * initialEquityPctInput) / 100)
+                  }
+                }}
               />
             </div>
           </div>
 
           <div className="field-group">
-            <label className="field-label">Mortgage Balance At Closing</label>
-            <div className="input-with-adornment">
-              <span className="field-adornment">$</span>
-              <CurrencyInput
-                className="field-input"
-                value={core.mortgageBalance}
-                onChange={(v) => patchCore('mortgageBalance', v)}
-              />
+            <label className="field-label">Senior Debt at Closing</label>
+            <div className="toggle-group" style={{ marginBottom: 8 }}>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${seniorDebtInputMode === 'amount' ? 'toggle-btn--active' : ''}`}
+                onClick={() => setSeniorDebtInputMode('amount')}
+              >
+                $
+              </button>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${seniorDebtInputMode === 'pct' ? 'toggle-btn--active' : ''}`}
+                onClick={() => {
+                  setSeniorDebtInputMode('pct')
+                  setSeniorDebtPctInput(pctOfPurchase(core.mortgageBalance, core.purchasePrice))
+                }}
+              >
+                % of Purchase Price
+              </button>
+            </div>
+
+            {seniorDebtInputMode === 'amount' ? (
+              <div className="input-with-adornment">
+                <span className="field-adornment">$</span>
+                <CurrencyInput
+                  className="field-input"
+                  value={core.mortgageBalance}
+                  onChange={(v) => {
+                    patchCore('mortgageBalance', v)
+                    setSeniorDebtPctInput(pctOfPurchase(v, core.purchasePrice))
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="input-with-adornment">
+                <input
+                  type="number"
+                  className="field-input"
+                  value={seniorDebtPctInput || ''}
+                  step={0.01}
+                  onChange={(e) => {
+                    const pct = parseFloat(e.target.value) || 0
+                    setSeniorDebtPctInput(pct)
+                    patchCore('mortgageBalance', (core.purchasePrice * pct) / 100)
+                  }}
+                />
+                <span className="field-adornment">%</span>
+              </div>
+            )}
+
+            <div className="field-hint">
+              Auto LTV: <strong>{seniorDebtLtvPct.toFixed(1)}%</strong>
+              {core.purchasePrice > 0 && (
+                <>
+                  {' '}(${Math.round(core.mortgageBalance).toLocaleString()} debt / ${Math.round(core.purchasePrice).toLocaleString()} purchase price)
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="field-group">
+            <label className="field-label">Subordinate Debt at Closing</label>
+            <div className="toggle-group" style={{ marginBottom: 8 }}>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${subDebtInputMode === 'amount' ? 'toggle-btn--active' : ''}`}
+                onClick={() => setSubDebtInputMode('amount')}
+              >
+                $
+              </button>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${subDebtInputMode === 'pct' ? 'toggle-btn--active' : ''}`}
+                onClick={() => {
+                  setSubDebtInputMode('pct')
+                  setSubDebtPctInput(pctOfPurchase(core.subordinateDebt, core.purchasePrice))
+                }}
+              >
+                % of Purchase Price
+              </button>
+            </div>
+
+            {subDebtInputMode === 'amount' ? (
+              <div className="input-with-adornment">
+                <span className="field-adornment">$</span>
+                <CurrencyInput
+                  className="field-input"
+                  value={core.subordinateDebt}
+                  onChange={(v) => {
+                    patchCore('subordinateDebt', v)
+                    setSubDebtPctInput(pctOfPurchase(v, core.purchasePrice))
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="input-with-adornment">
+                <input
+                  type="number"
+                  className="field-input"
+                  value={subDebtPctInput || ''}
+                  step={0.01}
+                  onChange={(e) => {
+                    const pct = parseFloat(e.target.value) || 0
+                    setSubDebtPctInput(pct)
+                    patchCore('subordinateDebt', (core.purchasePrice * pct) / 100)
+                  }}
+                />
+                <span className="field-adornment">%</span>
+              </div>
+            )}
+
+            <div className="field-hint">
+              Last-Dollar LTV: <strong>{lastDollarLtvPct.toFixed(1)}%</strong>
+              {core.purchasePrice > 0 && (
+                <>
+                  {' '}(${Math.round(core.mortgageBalance + core.subordinateDebt).toLocaleString()} total debt / ${Math.round(core.purchasePrice).toLocaleString()} purchase price)
+                </>
+              )}
             </div>
           </div>
 
           <div className="field-group">
             <label className="field-label">Initial Equity Contributed</label>
-            <div className="input-with-adornment">
-              <span className="field-adornment">$</span>
-              <CurrencyInput
-                className="field-input"
-                value={core.initialEquity}
-                onChange={(v) => patchCore('initialEquity', v)}
-              />
+            <div className="toggle-group" style={{ marginBottom: 8 }}>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${initialEquityInputMode === 'amount' ? 'toggle-btn--active' : ''}`}
+                onClick={() => setInitialEquityInputMode('amount')}
+              >
+                $
+              </button>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${initialEquityInputMode === 'pct' ? 'toggle-btn--active' : ''}`}
+                onClick={() => {
+                  setInitialEquityInputMode('pct')
+                  setInitialEquityPctInput(pctOfPurchase(core.initialEquity, core.purchasePrice))
+                }}
+              >
+                % of Purchase Price
+              </button>
             </div>
+
+            {initialEquityInputMode === 'amount' ? (
+              <div className="input-with-adornment">
+                <span className="field-adornment">$</span>
+                <CurrencyInput
+                  className="field-input"
+                  value={core.initialEquity}
+                  onChange={(v) => {
+                    patchCore('initialEquity', v)
+                    setInitialEquityPctInput(pctOfPurchase(v, core.purchasePrice))
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="input-with-adornment">
+                <input
+                  type="number"
+                  className="field-input"
+                  value={initialEquityPctInput || ''}
+                  step={0.01}
+                  onChange={(e) => {
+                    const pct = parseFloat(e.target.value) || 0
+                    setInitialEquityPctInput(pct)
+                    patchCore('initialEquity', (core.purchasePrice * pct) / 100)
+                  }}
+                />
+                <span className="field-adornment">%</span>
+              </div>
+            )}
           </div>
 
           <div className="field-group">
@@ -411,28 +647,81 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
         <div className="property-setup-grid">
           <div className="field-group">
             <label className="field-label">LP Equity Invested *</label>
+            <div className="toggle-group" style={{ marginBottom: 8 }}>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${!lpEquityManualOverride ? 'toggle-btn--active' : ''}`}
+                onClick={() => {
+                  setLpEquityManualOverride(false)
+                  patchCore('lpEquity', capTableLpEquity)
+                }}
+              >
+                Pull from Cap Table
+              </button>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${lpEquityManualOverride ? 'toggle-btn--active' : ''}`}
+                onClick={() => setLpEquityManualOverride(true)}
+              >
+                Manual Override
+              </button>
+            </div>
             <div className="input-with-adornment">
               <span className="field-adornment">$</span>
               <CurrencyInput
                 className={`field-input ${errors.lpEquity ? 'field-input--error' : ''}`}
                 value={core.lpEquity}
+                disabled={!lpEquityManualOverride}
                 onChange={(v) => patchCore('lpEquity', v)}
               />
+            </div>
+            <div className="field-hint">
+              {lpEquityManualOverride
+                ? 'Manual override enabled.'
+                : `Auto from cap table (${paidInvestors.length > 0 ? 'paid investors' : 'all investor subscriptions'}): $${Math.round(capTableLpEquity).toLocaleString()}`}
+              {' '}• {core.initialEquity > 0
+                ? `${lpPctOfInitialEquity.toFixed(2)}% of Initial Equity Contributed`
+                : 'Enter Initial Equity Contributed to show LP %'}
             </div>
             {errors.lpEquity && <div className="field-error">{errors.lpEquity}</div>}
           </div>
 
           <div className="field-group">
             <label className="field-label">Annual LP Preferred Return</label>
+            <div className="toggle-group" style={{ marginBottom: 8 }}>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${!lpPrefRateManualOverride ? 'toggle-btn--active' : ''}`}
+                onClick={() => {
+                  setLpPrefRateManualOverride(false)
+                  patchCore('lpPrefRateAnnual', oaLpPrefRateAnnual)
+                }}
+              >
+                Pull from OA
+              </button>
+              <button
+                type="button"
+                className={`toggle-btn toggle-btn--sm ${lpPrefRateManualOverride ? 'toggle-btn--active' : ''}`}
+                onClick={() => setLpPrefRateManualOverride(true)}
+              >
+                Manual Override
+              </button>
+            </div>
             <div className="input-with-adornment">
               <input
                 type="number"
                 className="field-input"
-                value={core.lpPrefRateAnnual * 100 || ''}
+                value={(core.lpPrefRateAnnual * 100).toFixed(2) || ''}
                 step={0.25}
+                disabled={!lpPrefRateManualOverride}
                 onChange={(e) => patchCore('lpPrefRateAnnual', (parseFloat(e.target.value) || 0) / 100)}
               />
               <span className="field-adornment">%</span>
+            </div>
+            <div className="field-hint">
+              {lpPrefRateManualOverride
+                ? 'Manual override enabled.'
+                : `Auto from Operating Agreement: ${(oaLpPrefRateAnnual * 100).toFixed(2)}%`}
             </div>
           </div>
         </div>

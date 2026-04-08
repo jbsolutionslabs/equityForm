@@ -151,6 +151,21 @@ export type Subscription = {
   generatedText?: string
 }
 
+export type BlueSkyChecklistStep =
+  | 'requirementsReviewed'
+  | 'stateNoticeFiled'
+  | 'stateFeePaid'
+  | 'evidenceSaved'
+
+export type BlueSkyFilingStatus = {
+  requirementsReviewed: boolean
+  stateNoticeFiled: boolean
+  stateFeePaid: boolean
+  evidenceSaved: boolean
+  completedAt?: string
+  updatedAt?: string
+}
+
 export type AppData = {
   deal:               Deal
   offering:           Offering
@@ -160,6 +175,7 @@ export type AppData = {
   operatingAgreement: OperatingAgreement
   subscriptions:      Subscription[]
   investors:          Investor[]
+  blueSkyFilings:     Record<string, BlueSkyFilingStatus>
 }
 
 /* ─── Gate Functions (exported) ─────────────────────────────────────────── */
@@ -214,6 +230,7 @@ const defaultData: AppData = {
   operatingAgreement: defaultOA,
   subscriptions:      [],
   investors:          [],
+  blueSkyFilings:     {},
 }
 
 /* ─── Seed data ──────────────────────────────────────────────────────────── */
@@ -268,6 +285,10 @@ function migrate(data: AppData): AppData {
     })
   }
 
+  if (!data.blueSkyFilings || typeof data.blueSkyFilings !== 'object') {
+    data.blueSkyFilings = {}
+  }
+
   return data
 }
 
@@ -281,6 +302,7 @@ type AppState = {
   addInvestor:      (inv: Investor) => void
   updateInvestor:   (id: string, patch: Partial<Investor>) => void
   removeInvestor:   (id: string) => void
+  setBlueSkyFilingStep: (stateCode: string, step: BlueSkyChecklistStep, completed: boolean) => void
   /** Stage 2: mark one checklist item as complete or incomplete */
   markSpvItem:      (item: keyof SpvFormation, data: Partial<SpvFormationItem>) => void
   /** Legacy one-shot SPV formation (kept for backward compat) */
@@ -546,6 +568,39 @@ export const useAppStore = create<AppState>()(
         false,
         'removeInvestor',
       ),
+
+    setBlueSkyFilingStep: (stateCode, step, completed) =>
+      set((s) => {
+        const normalizedCode = stateCode.trim().toUpperCase()
+        if (!normalizedCode) return { data: s.data }
+        const current = s.data.blueSkyFilings[normalizedCode] || {
+          requirementsReviewed: false,
+          stateNoticeFiled: false,
+          stateFeePaid: false,
+          evidenceSaved: false,
+        }
+        const next: BlueSkyFilingStatus = {
+          ...current,
+          [step]: completed,
+          updatedAt: new Date().toISOString(),
+        }
+        const isComplete =
+          next.requirementsReviewed &&
+          next.stateNoticeFiled &&
+          next.stateFeePaid &&
+          next.evidenceSaved
+        next.completedAt = isComplete ? new Date().toISOString() : undefined
+
+        return {
+          data: {
+            ...s.data,
+            blueSkyFilings: {
+              ...s.data.blueSkyFilings,
+              [normalizedCode]: next,
+            },
+          },
+        }
+      }, false, 'setBlueSkyFilingStep'),
 
     reset: () => {
       save(defaultData)
