@@ -2,7 +2,6 @@ import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Shell } from './components/Shell'
 import { DealSetup }            from './views/DealSetup'
-import { Offering }             from './views/Offering'
 import { SpvFormation }         from './views/SpvFormation'
 import { OperatingAgreement }   from './views/OperatingAgreement'
 import { Investors }            from './views/Investors'
@@ -16,7 +15,7 @@ export const App: React.FC = () => (
     <Routes>
       <Route path="/"           element={<Navigate to="/deal" replace />} />
       <Route path="/deal"       element={<DealSetup />} />
-      <Route path="/offering"   element={<Offering />} />
+      <Route path="/offering"   element={<Navigate to="/deal" replace />} />
       <Route path="/spv"        element={<SpvFormation />} />
       <Route path="/oa"         element={<OperatingAgreement />} />
       <Route path="/investors"  element={<Investors />} />

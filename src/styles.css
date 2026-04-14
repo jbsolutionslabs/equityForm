@@ -2037,6 +2037,211 @@ pre {
   line-height: 1.5;
 }
 
+/* ── SPV Formation — Review & Approve pattern ───────────────────────────── */
+
+/* Source badge: shown at top of each step form when data is auto-populated */
+.spv-review-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-accent);
+  background: #eff6ff;
+  border: 1px solid rgba(37,99,235,0.2);
+  border-radius: 20px;
+  padding: 3px 10px;
+  letter-spacing: 0.2px;
+}
+.spv-review-source::before {
+  content: '⟳';
+  font-size: 12px;
+}
+
+/* Review block: read-only display of a pre-populated field */
+.spv-review-block {
+  padding: 12px 14px;
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-200);
+  border-radius: 8px;
+}
+.spv-review-block-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-slate-500);
+  margin-bottom: 4px;
+}
+.spv-review-block-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-navy-900);
+}
+
+/* ── Legal Formation — Step UI ─────────────────────────────────────────── */
+
+/* Locked/disabled step */
+.spv-item--locked {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* Gate badge — inline chip to explain why a step is locked */
+.gate-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-slate-500);
+  background: var(--color-slate-100);
+  border: 1px solid var(--color-slate-200);
+  border-radius: 20px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Registered Agent Cards ──────────────────────────────────────────────── */
+.agent-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1.5px solid var(--color-slate-200);
+  border-radius: var(--radius-card);
+  background: var(--color-white);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.agent-card:hover {
+  border-color: var(--color-slate-400);
+}
+.agent-card--selected {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+  background: #eff6ff;
+}
+.agent-card-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+  letter-spacing: 0.5px;
+}
+
+/* ── Certificate of Formation Preview ───────────────────────────────────── */
+.cert-preview {
+  border: 1px solid var(--color-slate-200);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-white);
+}
+.cert-preview-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-navy-900);
+  background: var(--color-slate-50);
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--color-slate-200);
+  letter-spacing: 0.2px;
+}
+.cert-preview-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--color-slate-100);
+}
+.cert-preview-row:last-child { border-bottom: none; }
+.cert-preview-label {
+  font-size: 12px;
+  color: var(--color-slate-500);
+  width: 140px;
+  flex-shrink: 0;
+}
+.cert-preview-value {
+  font-size: 13px;
+  color: var(--color-navy-900);
+  font-weight: 500;
+}
+
+/* ── Filing Speed Selector ───────────────────────────────────────────────── */
+.filing-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 20px;
+  border: 1.5px solid var(--color-slate-200);
+  border-radius: 10px;
+  background: var(--color-white);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  min-width: 140px;
+  text-align: center;
+}
+.filing-option:hover { border-color: var(--color-slate-400); }
+.filing-option--selected {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+  background: #eff6ff;
+}
+.filing-option-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-navy-900);
+  margin-bottom: 4px;
+}
+.filing-option-fee {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-navy-900);
+  margin-bottom: 4px;
+}
+.filing-option-time {
+  font-size: 12px;
+  color: var(--color-slate-500);
+  line-height: 1.4;
+}
+
+/* ── EIN Instructions ────────────────────────────────────────────────────── */
+.ein-instruction-card {
+  background: var(--color-slate-50);
+  border: 1px solid var(--color-slate-200);
+  border-radius: 8px;
+  padding: 16px 18px;
+}
+.ein-instruction-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-navy-900);
+  margin-bottom: 10px;
+}
+.ein-step-list {
+  margin: 0 0 14px;
+  padding-left: 20px;
+  font-size: 13px;
+  color: var(--color-slate-700);
+  line-height: 1.8;
+}
+.ein-step-list li { margin-bottom: 2px; }
+
+/* ── Foreign Qualification State Card ───────────────────────────────────── */
+.fq-state-info {
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-200);
+  border-radius: 8px;
+  padding: 16px 18px;
+}
+.fq-state-info--not-required {
+  background: #f0fdf4;
+  border-color: rgba(22,163,74,0.3);
+}
+
 /* OA sub-step navigator: indicator + label */
 .oa-nav-step-indicator {
   width: 22px;
