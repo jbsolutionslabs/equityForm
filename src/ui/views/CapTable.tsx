@@ -38,7 +38,136 @@ export const CapTable: React.FC = () => {
   const handleLock = () => {
     lockCapTable()
     setShowConfirm(false)
-    notify('Cap table locked. The deal is now closed.')
+    notify('Cap table locked. Closing documents are ready to download.')
+  }
+
+  // ── K-1 Exhibit ──────────────────────────────────────────────────────────
+  const generateK1ExhibitHtml = (): string => {
+    const lockedDate = deal.capTableLockedAt
+      ? new Date(deal.capTableLockedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+      : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    const rows = paidInvestors.map((inv) => {
+      const pct = totalUnits > 0 ? (((inv.classAUnits || 0) / totalUnits) * 100).toFixed(2) : '0.00'
+      return `<tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0">${inv.fullLegalName}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center">${inv.subscriberType === 'entity' ? 'LP (Entity)' : 'LP (Individual)'}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-family:monospace">${(inv.classAUnits || 0).toLocaleString()}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-family:monospace">${pct}%</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-family:monospace">$${(inv.subscriptionAmount || 0).toLocaleString()}</td>
+      </tr>`
+    }).join('')
+    return `<div style="font-family:Georgia,serif;max-width:800px;margin:0 auto;padding:40px">
+      <h1 style="font-size:20px;text-align:center;margin-bottom:4px">${deal.entityName || 'Entity'}</h1>
+      <h2 style="font-size:15px;text-align:center;font-weight:normal;color:#64748b;margin-bottom:4px">K-1 Exhibit — Ownership Schedule</h2>
+      <p style="text-align:center;font-size:13px;color:#94a3b8;margin-bottom:32px">Cap table locked: ${lockedDate}</p>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:#0f172a;color:#fff">
+          <th style="padding:10px 12px;text-align:left">Member</th>
+          <th style="padding:10px 12px;text-align:center">Type</th>
+          <th style="padding:10px 12px;text-align:right">Class A Units</th>
+          <th style="padding:10px 12px;text-align:right">Ownership %</th>
+          <th style="padding:10px 12px;text-align:right">Subscription</th>
+        </tr></thead>
+        <tbody>
+          <tr style="background:#f8fafc">
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600">${gpName}<br><span style="font-weight:400;font-size:11px;color:#94a3b8">Managing Member</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center">GP</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-family:monospace">0</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-family:monospace">Management</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-family:monospace">—</td>
+          </tr>
+          ${rows}
+        </tbody>
+        <tfoot><tr style="background:#f1f5f9;font-weight:700">
+          <td style="padding:10px 12px" colspan="2">TOTAL</td>
+          <td style="padding:10px 12px;text-align:right;font-family:monospace">${totalUnits.toLocaleString()}</td>
+          <td style="padding:10px 12px;text-align:right;font-family:monospace">100%</td>
+          <td style="padding:10px 12px;text-align:right;font-family:monospace">$${totalAmount.toLocaleString()}</td>
+        </tr></tfoot>
+      </table>
+      <p style="margin-top:32px;font-size:12px;color:#94a3b8;text-align:center">
+        This schedule is Exhibit A to the Operating Agreement of ${deal.entityName || 'the entity'}.
+        Units and percentages are as of the closing date listed above.
+      </p>
+    </div>`
+  }
+
+  const handleDownloadK1Pdf = () => {
+    if (!isLocked) {
+      notify('Lock the cap table first to generate the K-1 exhibit.', 'error')
+      return
+    }
+    const html = generateK1ExhibitHtml()
+    const container = document.createElement('div')
+    container.innerHTML = html
+    document.body.appendChild(container)
+    const filename = `${(deal.entityName || 'K1-Exhibit').replace(/\s+/g, '-').toLowerCase()}-k1-exhibit.pdf`
+    html2pdf()
+      .set({
+        margin:     0.5,
+        filename,
+        image:      { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF:      { unit: 'in', format: 'letter', orientation: 'portrait' as const },
+      })
+      .from(container)
+      .save()
+      .finally(() => container.remove())
+  }
+
+  // ── Closing Memo ─────────────────────────────────────────────────────────
+  const generateClosingMemoHtml = (): string => {
+    const lockedDate = deal.capTableLockedAt
+      ? new Date(deal.capTableLockedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+      : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    const row = (label: string, value: string) =>
+      `<tr><td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;color:#64748b;font-size:13px;width:220px">${label}</td>
+       <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:600">${value}</td></tr>`
+    return `<div style="font-family:Georgia,serif;max-width:700px;margin:0 auto;padding:48px">
+      <h1 style="font-size:22px;margin-bottom:4px">${deal.entityName || 'Entity'}</h1>
+      <h2 style="font-size:15px;font-weight:normal;color:#64748b;margin-bottom:32px;border-bottom:2px solid #0f172a;padding-bottom:12px">
+        Closing Memorandum
+      </h2>
+      <table style="width:100%;border-collapse:collapse">
+        ${row('Entity Name',          deal.entityName || '—')}
+        ${row('Formation State',       'Delaware')}
+        ${row('EIN',                   deal.ein || '—')}
+        ${row('Registered Agent',      deal.registeredAgentName || '—')}
+        ${row('Managing Member (GP)',  gpName)}
+        ${row('Property',             [deal.propertyAddress, deal.propertyCity, deal.propertyState, deal.propertyZip].filter(Boolean).join(', ') || '—')}
+        ${row('Total Capital Raised',  '$' + totalAmount.toLocaleString())}
+        ${row('Number of Investors',   String(paidInvestors.length))}
+        ${row('Total Class A Units',   totalUnits.toLocaleString())}
+        ${row('Closing Date',          lockedDate)}
+      </table>
+      <p style="margin-top:40px;font-size:12px;color:#94a3b8">
+        This closing memorandum is generated automatically by EquityForm upon cap table lock.
+        It summarizes the final state of the deal as of the closing date above.
+      </p>
+    </div>`
+  }
+
+  const handleDownloadClosingMemoPdf = () => {
+    if (!isLocked) {
+      notify('Lock the cap table first to generate the closing memo.', 'error')
+      return
+    }
+    const html = generateClosingMemoHtml()
+    const container = document.createElement('div')
+    container.innerHTML = html
+    document.body.appendChild(container)
+    const filename = `${(deal.entityName || 'closing-memo').replace(/\s+/g, '-').toLowerCase()}-closing-memo.pdf`
+    html2pdf()
+      .set({
+        margin:     0.5,
+        filename,
+        image:      { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF:      { unit: 'in', format: 'letter', orientation: 'portrait' as const },
+      })
+      .from(container)
+      .save()
+      .finally(() => container.remove())
   }
 
   const downloadOAAsDoc = (html: string, filename = 'operating-agreement-updated.doc') => {
@@ -267,6 +396,12 @@ export const CapTable: React.FC = () => {
         </button>
         {isLocked && (
           <>
+            <button type="button" className="btn btn-secondary" onClick={handleDownloadK1Pdf}>
+              Download K-1 Exhibit (PDF)
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={handleDownloadClosingMemoPdf}>
+              Download Closing Memo (PDF)
+            </button>
             <button type="button" className="btn btn-secondary" onClick={handleDownloadUpdatedOaPdf}>
               Download Updated OA (PDF)
             </button>
@@ -295,6 +430,14 @@ export const CapTable: React.FC = () => {
                   <li>All {investors.length} investor{investors.length !== 1 ? 's' : ''} have signed subscription agreements</li>
                   <li>All wire transfers have been confirmed and recorded</li>
                   <li>Unit counts and ownership percentages are correct</li>
+                </ul>
+              </div>
+              <div className="info-box" style={{ marginTop: 12 }}>
+                <div className="info-box-title">Generated on lock</div>
+                <ul style={{ margin: '4px 0 0', paddingLeft: 20, fontSize: 14, color: 'var(--color-slate-600)' }}>
+                  <li>K-1 Exhibit — ownership %, units, and subscription amount per investor</li>
+                  <li>Closing Memo — entity summary, total capital raised, and closing date</li>
+                  <li>Updated Operating Agreement with final Exhibit A</li>
                 </ul>
               </div>
             </div>

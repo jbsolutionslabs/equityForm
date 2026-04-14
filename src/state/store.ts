@@ -6,22 +6,43 @@ import { seed as demoSeed } from '../mock/seed'
 
 /* ─── SPV Formation ─────────────────────────────────────────────────────── */
 export type SpvFormationItem = {
-  complete: boolean
+  complete:     boolean
   completedAt?: string
-  // LLC Filing
-  certificateNumber?: string
-  dateFiled?: string
-  // EIN
+  // Step 1: Entity Name
+  entityName?:  string
+  nameLocked?:  boolean
+  // Step 2: Registered Agent
+  agentProvider?:         'northwest' | 'incorp' | 'ctcorp'
+  agentName?:             string
+  agentAddress?:          string
+  agentConfirmationId?:   string
+  agentAnnualRenewalDate?: string
+  // Step 3: Certificate of Formation
+  certFilingType?:         'standard' | 'same_day'
+  certFilingFee?:          number
+  certificateNumber?:      string
+  dateFiled?:              string
+  certEstimatedCompletion?: string
+  // Step 4: EIN
   ein?: string
-  // Registered Agent
-  agentName?: string
-  agentAddress?: string
+  // Step 5: Foreign Qualification
+  foreignQualRequired?:         boolean
+  foreignQualState?:            string
+  foreignQualStateName?:        string
+  foreignQualFee?:              number
+  foreignQualTimeline?:         number
+  foreignQualConfirmationId?:   string
+  foreignQualFilingMethod?:     'api' | 'manual'
+  foreignQualEstimatedCompletion?: string
 }
 
 export type SpvFormation = {
-  llcFiled:        SpvFormationItem
-  einObtained:     SpvFormationItem
-  registeredAgent: SpvFormationItem
+  entityName?:           SpvFormationItem  // Step 1 — name check & lock
+  registeredAgent:       SpvFormationItem  // Step 2 — agent selection
+  certOfFormation?:      SpvFormationItem  // Step 3 — certificate filing
+  einObtained:           SpvFormationItem  // Step 4 — federal tax ID
+  foreignQualification?: SpvFormationItem  // Step 5 — property-state registration
+  llcFiled?:             SpvFormationItem  // Deprecated — migration only
 }
 
 /* ─── Operating Agreement ───────────────────────────────────────────────── */
@@ -181,10 +202,21 @@ export type AppData = {
 /* ─── Gate Functions (exported) ─────────────────────────────────────────── */
 export function isSpvFormed(data: AppData): boolean {
   const sf = data.spvFormation
-  if (sf) {
-    return sf.llcFiled.complete && sf.einObtained.complete && sf.registeredAgent.complete
+  if (!sf) return !!data.spv?.formed
+
+  // New 5-step flow (post-migration): entityName key is present
+  if (sf.entityName) {
+    return (
+      !!sf.entityName.complete &&
+      !!sf.registeredAgent.complete &&
+      !!sf.certOfFormation?.complete &&
+      !!sf.einObtained.complete &&
+      !!sf.foreignQualification?.complete
+    )
   }
-  return !!data.spv?.formed
+
+  // Legacy 3-step flow fallback
+  return !!(sf as any).llcFiled?.complete && !!sf.einObtained.complete && !!sf.registeredAgent.complete
 }
 
 export function canGenerateOA(data: AppData): boolean {
@@ -212,9 +244,11 @@ const STORAGE_KEY = 'equityform:appdata'
 
 /* ─── Defaults ───────────────────────────────────────────────────────────── */
 const defaultSpvFormation: SpvFormation = {
-  llcFiled:        { complete: false },
-  einObtained:     { complete: false },
-  registeredAgent: { complete: false },
+  entityName:           { complete: false },
+  registeredAgent:      { complete: false },
+  certOfFormation:      { complete: false },
+  einObtained:          { complete: false },
+  foreignQualification: { complete: false },
 }
 
 const defaultOA: OperatingAgreement = {
@@ -253,13 +287,40 @@ try {
 
 /* ─── Data migration (called on load to handle old localStorage) ─────────── */
 function migrate(data: AppData): AppData {
-  // Ensure spvFormation exists
-  if (!data.spvFormation) {
+  const sf = data.spvFormation as any
+
+  if (!sf) {
+    // Very old data — had only the legacy spv object
     const formed = !!data.spv?.formed
     data.spvFormation = {
-      llcFiled:        { complete: formed, ...(formed && { completedAt: data.spv?.formationDate, ein: data.spv?.ein }) },
-      einObtained:     { complete: formed, ...(formed && { ein: data.spv?.ein }) },
-      registeredAgent: { complete: formed, ...(formed && { agentName: data.spv?.registeredAgentName, agentAddress: data.spv?.registeredAgentAddress }) },
+      entityName:           { complete: formed, entityName: data.deal?.entityName },
+      registeredAgent:      { complete: formed, agentName: data.spv?.registeredAgentName, agentAddress: data.spv?.registeredAgentAddress },
+      certOfFormation:      { complete: formed, dateFiled: data.spv?.formationDate },
+      einObtained:          { complete: formed, ein: data.spv?.ein },
+      foreignQualification: { complete: formed },
+    }
+  } else if (sf.llcFiled && !sf.entityName) {
+    // Old 3-step data (llcFiled / einObtained / registeredAgent) → new 5-step
+    const oldFormed = !!sf.llcFiled?.complete
+    data.spvFormation = {
+      entityName:           { complete: oldFormed, entityName: data.deal?.entityName },
+      registeredAgent:      { ...sf.registeredAgent },
+      certOfFormation:      {
+        complete:          !!sf.llcFiled?.complete,
+        certificateNumber: sf.llcFiled?.certificateNumber,
+        dateFiled:         sf.llcFiled?.dateFiled,
+      },
+      einObtained:          { ...sf.einObtained },
+      foreignQualification: { complete: oldFormed },
+    }
+  } else {
+    // Post-migration data — ensure all keys exist
+    data.spvFormation = {
+      entityName:           sf.entityName           ?? { complete: false },
+      registeredAgent:      sf.registeredAgent      ?? { complete: false },
+      certOfFormation:      sf.certOfFormation      ?? { complete: false },
+      einObtained:          sf.einObtained          ?? { complete: false },
+      foreignQualification: sf.foreignQualification ?? { complete: false },
     }
   }
   // Ensure OA status is canonical
@@ -347,24 +408,23 @@ export const useAppStore = create<AppState>()(
       set((s) => {
         const sf: SpvFormation = {
           ...s.data.spvFormation,
-          [item]: { ...s.data.spvFormation[item], ...patch },
+          [item]: { ...(s.data.spvFormation as any)[item], ...patch },
         }
-        // sync legacy spv when all three complete
-        const allFormed = sf.llcFiled.complete && sf.einObtained.complete && sf.registeredAgent.complete
+        const allFormed = isSpvFormed({ ...s.data, spvFormation: sf })
         const spv: SPV = allFormed
           ? {
-              formed: true,
-              formationDate: sf.llcFiled.dateFiled || new Date().toISOString(),
-              ein: sf.einObtained.ein || s.data.spv?.ein,
-              registeredAgentName: sf.registeredAgent.agentName || s.data.spv?.registeredAgentName,
+              formed:                 true,
+              formationDate:          sf.certOfFormation?.dateFiled || new Date().toISOString(),
+              ein:                    sf.einObtained.ein || s.data.spv?.ein,
+              registeredAgentName:    sf.registeredAgent.agentName || s.data.spv?.registeredAgentName,
               registeredAgentAddress: sf.registeredAgent.agentAddress || s.data.spv?.registeredAgentAddress,
             }
           : { ...s.data.spv, formed: false }
-        // also sync deal fields
         const deal: Deal = {
           ...s.data.deal,
-          ...(sf.einObtained.ein && { ein: sf.einObtained.ein }),
-          ...(sf.registeredAgent.agentName && { registeredAgentName: sf.registeredAgent.agentName }),
+          ...(sf.entityName?.entityName  && { entityName: sf.entityName.entityName }),
+          ...(sf.einObtained.ein         && { ein: sf.einObtained.ein }),
+          ...(sf.registeredAgent.agentName    && { registeredAgentName: sf.registeredAgent.agentName }),
           ...(sf.registeredAgent.agentAddress && { registeredAgentAddress: sf.registeredAgent.agentAddress }),
         }
         return { data: { ...s.data, spvFormation: sf, spv, deal } }
@@ -375,9 +435,11 @@ export const useAppStore = create<AppState>()(
       set((s) => {
         const newSpv: SPV = { ...s.data.spv, ...spv, formed: true, formationDate: spv.formationDate || new Date().toISOString() }
         const sf: SpvFormation = {
-          llcFiled:        { complete: true, completedAt: newSpv.formationDate },
-          einObtained:     { complete: !!newSpv.ein, completedAt: newSpv.formationDate, ein: newSpv.ein },
-          registeredAgent: { complete: !!(newSpv.registeredAgentName && newSpv.registeredAgentAddress), agentName: newSpv.registeredAgentName, agentAddress: newSpv.registeredAgentAddress },
+          entityName:           { complete: true, completedAt: newSpv.formationDate, entityName: s.data.deal.entityName },
+          registeredAgent:      { complete: !!(newSpv.registeredAgentName && newSpv.registeredAgentAddress), agentName: newSpv.registeredAgentName, agentAddress: newSpv.registeredAgentAddress },
+          certOfFormation:      { complete: true, completedAt: newSpv.formationDate },
+          einObtained:          { complete: !!newSpv.ein, completedAt: newSpv.formationDate, ein: newSpv.ein },
+          foreignQualification: { complete: true, completedAt: newSpv.formationDate },
         }
         const deal: Deal = {
           ...s.data.deal,
