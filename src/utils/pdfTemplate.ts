@@ -211,6 +211,47 @@ export function generateOperatingAgreementHtml(values: Record<string, any>) {
   return html
 }
 
+export function generateOperatingAgreementWordHtml(values: Record<string, any>) {
+  const bodyText = generateOperatingAgreementText(values)
+  const title = values.ENTITY_NAME || 'Operating Agreement'
+  const escapedBody = escapeHtml(bodyText).replace(/\n/g, '<br/>')
+
+  return `<!doctype html>
+  <html xmlns:o="urn:schemas-microsoft-com:office:office"
+        xmlns:w="urn:schemas-microsoft-com:office:word"
+        xmlns="http://www.w3.org/TR/REC-html40">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="ProgId" content="Word.Document" />
+    <meta name="Generator" content="Microsoft Word 15" />
+    <meta name="Originator" content="Microsoft Word 15" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      @page WordSection1 { size:8.5in 11in; margin:0.9in; }
+      div.WordSection1 { page:WordSection1; }
+      p.MsoNormal {
+        margin:0 0 12pt 0;
+        line-height:170%;
+        font-size:11.5pt;
+        font-family:Georgia,"Times New Roman",serif;
+        color:#111;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="WordSection1">
+      <div style="text-align:center;padding-bottom:16px;margin-bottom:24px;border-bottom:2px solid #111;">
+        <div style="font-size:18pt;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">Operating Agreement</div>
+        <div style="margin-top:6px;font-size:13pt;font-weight:600;">${escapeHtml(values.ENTITY_NAME || '')}</div>
+        <div style="margin-top:4px;font-size:10.5pt;color:#444;">A ${escapeHtml(values.FORMATION_STATE || '')} Limited Liability Company</div>
+        <div style="margin-top:12px;font-size:10.5pt;"><strong>Effective Date:</strong> ${escapeHtml(values.EFFECTIVE_DATE || '')}</div>
+      </div>
+      <p class="MsoNormal">${escapedBody}</p>
+    </div>
+  </body>
+  </html>`
+}
+
 function escapeHtml(s: any) {
   if (s === null || s === undefined) return ''
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -306,6 +347,7 @@ export function generateAllSubscriptionTexts(values: Record<string, any>) {
 
 export default {
   generateOperatingAgreementText,
+  generateOperatingAgreementWordHtml,
   generateSubscriptionAgreementText,
   generateSubscriptionAgreementHtml,
   generateAllSubscriptionTexts,

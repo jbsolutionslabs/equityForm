@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useAppStore, canLockCapTable } from '../../state/store'
 import { HelpCard } from '../components/HelpCard'
 import { generatePlaceholders } from '../../utils/placeholders'
-import { generateOperatingAgreementHtml } from '../../utils/pdfTemplate'
+import { generateOperatingAgreementHtml, generateOperatingAgreementWordHtml } from '../../utils/pdfTemplate'
 import html2pdf from 'html2pdf.js'
 import ModuleProgress from '../components/ModuleProgress'
 
@@ -217,7 +217,8 @@ export const CapTable: React.FC = () => {
       notify('Lock the cap table first to generate the final OA with updated Exhibit A.', 'error')
       return
     }
-    const html = getUpdatedOaHtml()
+    const { values } = generatePlaceholders(data)
+    const html = generateOperatingAgreementWordHtml(values)
     const filename = `${(deal.entityName || 'operating-agreement').replace(/\s+/g, '-').toLowerCase()}-updated.doc`
     downloadOAAsDoc(html, filename)
   }

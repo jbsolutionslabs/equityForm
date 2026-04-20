@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { useAppStore, canGenerateOA, isSpvFormed } from '../../state/store'
 import { generatePlaceholders } from '../../utils/placeholders'
-import { generateOperatingAgreementHtml, generateOperatingAgreementText } from '../../utils/pdfTemplate'
+import { generateOperatingAgreementHtml, generateOperatingAgreementText, generateOperatingAgreementWordHtml } from '../../utils/pdfTemplate'
 import html2pdf from 'html2pdf.js'
 import { HelpCard } from '../components/HelpCard'
 import ModuleProgress from '../components/ModuleProgress'
@@ -112,7 +112,7 @@ export const OperatingAgreement: React.FC = () => {
   }
 
   const handleDownloadDoc = () => {
-    const html = generateOperatingAgreementHtml(values)
+    const html = generateOperatingAgreementWordHtml(values)
     const name = `${(String(values.ENTITY_NAME || 'operating-agreement')).replace(/\s+/g, '-').toLowerCase()}.doc`
     downloadOAAsDoc(html, name)
   }

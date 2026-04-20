@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useAppStore, type Investor, type Subscription } from '../../state/store'
 import { generatePlaceholders } from '../../utils/placeholders'
-import { generateOperatingAgreementHtml, generateOperatingAgreementText } from '../../utils/pdfTemplate'
+import { generateOperatingAgreementHtml, generateOperatingAgreementText, generateOperatingAgreementWordHtml } from '../../utils/pdfTemplate'
 import html2pdf from 'html2pdf.js'
 import PlaceholderCoverage from '../components/PlaceholderCoverage'
 import ModuleProgress from '../components/ModuleProgress'
@@ -182,7 +182,7 @@ export const Review: React.FC = () => {
   }
 
   const handleDownloadDoc = () => {
-    const html = generateOperatingAgreementHtml(values)
+    const html = generateOperatingAgreementWordHtml(values)
     const name = `${(String(values.ENTITY_NAME || 'operating-agreement')).replace(/\s+/g, '-').toLowerCase()}.doc`
     downloadOAAsDoc(html, name)
   }
