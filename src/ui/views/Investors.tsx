@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { useForm, useFieldArray, Controller } from 'react-hook-form'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useForm, useFieldArray, Controller, useWatch } from 'react-hook-form'
 import type { SubmitHandler } from 'react-hook-form'
+import type { FieldErrors } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useAppStore, Investor, canSendSubAgreements } from '../../state/store'
@@ -214,6 +215,30 @@ function fmtRuleValue(value?: string): string {
   return value
 }
 
+type BlueSkyChecklistStepKey = 'requirementsReviewed' | 'stateNoticeFiled' | 'stateFeePaid' | 'evidenceSaved'
+const blueSkyChecklistSteps: { key: BlueSkyChecklistStepKey; label: string; hint: string }[] = [
+  {
+    key: 'requirementsReviewed',
+    label: 'Review state-specific blue sky requirements',
+    hint: 'Confirm notice form type, deadlines, and exemptions for this jurisdiction.',
+  },
+  {
+    key: 'stateNoticeFiled',
+    label: 'File state notice (Form D notice filing)',
+    hint: 'Submit the required state notice filing after SEC Form D filing, per state rules.',
+  },
+  {
+    key: 'stateFeePaid',
+    label: 'Pay state filing fee',
+    hint: 'Record fee payment/waiver confirmation for this state filing.',
+  },
+  {
+    key: 'evidenceSaved',
+    label: 'Save evidence of filing and acceptance',
+    hint: 'Keep copy of submission, receipt, and acceptance confirmation in your deal records.',
+  },
+]
+
 /* ─── Status helpers ─────────────────────────────────────────────────────── */
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Generated',
@@ -237,6 +262,7 @@ export const Investors: React.FC = () => {
   const updateInvestor              = useAppStore((s) => s.updateInvestor)
   const removeInvestor              = useAppStore((s) => s.removeInvestor)
   const setBlueSkyFilingStep        = useAppStore((s) => s.setBlueSkyFilingStep)
+  const syncBlueSkyFilingsForStates = useAppStore((s) => s.syncBlueSkyFilingsForStates)
   const generateSubscriptionForInvestor = useAppStore((s) => s.generateSubscriptionForInvestor)
   const sendSubscriptionForSignature    = useAppStore((s) => s.sendSubscriptionForSignature)
   const markSubscriptionSigned          = useAppStore((s) => s.markSubscriptionSigned)
@@ -261,10 +287,96 @@ export const Investors: React.FC = () => {
   const [wireInput, setWireInput] = useState<Record<number, string>>({})
   const [showWire, setShowWire]   = useState<Record<number, boolean>>({})
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
+  const blueSkyRef = useRef<HTMLDivElement>(null)
 
   const notify = (msg: string, type: 'success' | 'error' = 'success') => {
     setNotification({ msg, type })
     window.setTimeout(() => setNotification(null), 4000)
+  }
+
+  const scrollToFirstError = (errors: FieldErrors<FormValues>) => {
+    const errs = errors.investors
+    if (!errs) return
+
+    // Find the lowest investor index that has errors
+    const numericKeys = (Object.keys(errs) as string[])
+      .filter((k) => !Number.isNaN(Number(k)))
+      .sort((a, b) => Number(a) - Number(b))
+    if (numericKeys.length === 0) return
+
+    const idx = Number(numericKeys[0])
+    const fieldErrs = (errs as Record<string, Record<string, unknown> | undefined>)[String(idx)]
+    if (!fieldErrs) return
+
+    // Expand the card so the fields become visible
+    setExpanded((prev) => ({ ...prev, [idx]: true }))
+
+    // Map field names → input IDs (must match the id= attributes in the JSX below)
+    const fieldIdMap: Record<string, string> = {
+      fullLegalName:           `investor-name-${idx}`,
+      entityLegalName:         `investor-entityname-${idx}`,
+      formationState:          `investor-formstate-${idx}`,
+      signerName:              `investor-signername-${idx}`,
+      signerTitle:             `investor-signertitle-${idx}`,
+      subscriptionAmount:      `investor-amount-${idx}`,
+      classAUnits:             `investor-units-${idx}`,
+      email:                   `investor-email-${idx}`,
+      streetAddress:           `investor-address-${idx}`,
+      city:                    `investor-city-${idx}`,
+      state:                   `investor-state-${idx}`,
+      zip:                     `investor-zip-${idx}`,
+      accreditedInvestorBasis: `investor-accredited-basis-${idx}`,
+    }
+
+    const firstField = Object.keys(fieldIdMap).find((f) => fieldErrs[f])
+    const targetId   = firstField ? fieldIdMap[firstField] : undefined
+
+    // Wait one tick for React to render the expanded card, then scroll + highlight
+    window.setTimeout(() => {
+      const el = targetId ? document.getElementById(targetId) : null
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.classList.remove('field-input--highlight')
+        el.classList.add('field-input--highlight')
+        window.setTimeout(() => el.classList.remove('field-input--highlight'), 2500)
+      }
+    }, 100)
+  }
+
+  const scrollToBlueSky = () => {
+    if (!blueSkyRef.current) return
+    blueSkyRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    blueSkyRef.current.classList.remove('card--highlight')
+    blueSkyRef.current.classList.add('card--highlight')
+    window.setTimeout(() => blueSkyRef.current?.classList.remove('card--highlight'), 2500)
+  }
+
+  const findFirstIncompleteBlueSkyState = (investors: FormInvestor[]): string | null => {
+    const states = Array.from(
+      new Set(
+        investors
+          .map((inv) => normalizeStateCode(inv.state))
+          .filter((stateCode): stateCode is string => Boolean(stateCode)),
+      ),
+    ).sort((a, b) => a.localeCompare(b))
+
+    for (const code of states) {
+      const rule = BLUE_SKY_RULE_506_BY_STATE[code]
+      const requiresNotice = rule?.requiresFormDNoticeFiling !== false
+      if (!requiresNotice) continue
+
+      const filing = blueSkyFilings[code] || {
+        requirementsReviewed: false,
+        stateNoticeFiled: false,
+        stateFeePaid: false,
+        evidenceSaved: false,
+      }
+
+      const isComplete = blueSkyChecklistSteps.every((step) => Boolean(filing[step.key]))
+      if (!isComplete) return code
+    }
+
+    return null
   }
 
   const toggleExpand = (idx: number) =>
@@ -314,9 +426,38 @@ export const Investors: React.FC = () => {
           'Under 506(c) all investors must be accredited and include whether they qualify by income or net worth.',
           'error',
         )
+        const firstBadIdx = vals.investors.findIndex(
+          (inv) => inv.accreditedInvestor !== true || !inv.accreditedInvestorBasis,
+        )
+        if (firstBadIdx >= 0) {
+          setExpanded((prev) => ({ ...prev, [firstBadIdx]: true }))
+          window.setTimeout(() => {
+            const el = document.getElementById(`investor-accredited-${firstBadIdx}`)
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+              const row = el.closest('.checkbox-row') as HTMLElement | null
+              if (row) {
+                row.classList.remove('field-input--highlight')
+                row.classList.add('field-input--highlight')
+                window.setTimeout(() => row.classList.remove('field-input--highlight'), 2500)
+              }
+            }
+          }, 100)
+        }
         return
       }
     }
+
+    const firstIncompleteBlueSkyState = findFirstIncompleteBlueSkyState(vals.investors)
+    if (firstIncompleteBlueSkyState) {
+      notify(
+        `Complete the blue sky filing checklist for ${stateDisplayLabel(firstIncompleteBlueSkyState)} before saving investors.`,
+        'error',
+      )
+      scrollToBlueSky()
+      return
+    }
+
     vals.investors.forEach((inv) => {
       const payload: Partial<Investor> = {
         ...inv,
@@ -343,8 +484,9 @@ export const Investors: React.FC = () => {
     notify('Investors saved. Deal saved.')
   }
 
-  const onInvalid = () => {
+  const onInvalid = (errors: FieldErrors<FormValues>) => {
     notify('Could not save investors. Please fix the required fields and try again.', 'error')
+    scrollToFirstError(errors)
   }
 
   const previewSubscription = (invId: string) => {
@@ -364,7 +506,7 @@ export const Investors: React.FC = () => {
   }
 
   const canGenerateSub = canSendSubAgreements(appData)
-  const watchedInvestors = form.watch('investors') || []
+  const watchedInvestors = useWatch({ control: form.control, name: 'investors' }) || []
   const blueSkyStates = useMemo(() => {
     const byState = new Map<string, number>()
     watchedInvestors.forEach((inv) => {
@@ -374,28 +516,10 @@ export const Investors: React.FC = () => {
     })
     return Array.from(byState.entries()).sort(([a], [b]) => a.localeCompare(b))
   }, [watchedInvestors])
-  const blueSkyChecklistSteps: { key: 'requirementsReviewed' | 'stateNoticeFiled' | 'stateFeePaid' | 'evidenceSaved'; label: string; hint: string }[] = [
-    {
-      key: 'requirementsReviewed',
-      label: 'Review state-specific blue sky requirements',
-      hint: 'Confirm notice form type, deadlines, and exemptions for this jurisdiction.',
-    },
-    {
-      key: 'stateNoticeFiled',
-      label: 'File state notice (Form D notice filing)',
-      hint: 'Submit the required state notice filing after SEC Form D filing, per state rules.',
-    },
-    {
-      key: 'stateFeePaid',
-      label: 'Pay state filing fee',
-      hint: 'Record fee payment/waiver confirmation for this state filing.',
-    },
-    {
-      key: 'evidenceSaved',
-      label: 'Save evidence of filing and acceptance',
-      hint: 'Keep copy of submission, receipt, and acceptance confirmation in your deal records.',
-    },
-  ]
+
+  useEffect(() => {
+    syncBlueSkyFilingsForStates(blueSkyStates.map(([code]) => code))
+  }, [blueSkyStates, syncBlueSkyFilingsForStates])
 
   const stateComplianceRows = blueSkyStates.map(([code, count]) => {
     const rule = BLUE_SKY_RULE_506_BY_STATE[code]
@@ -486,7 +610,7 @@ export const Investors: React.FC = () => {
             </div>
           </div>
 
-          <div className="card" style={{ marginBottom: 16 }}>
+          <div className="card" style={{ marginBottom: 16 }} ref={blueSkyRef}>
             <div className="card-header" style={{ fontSize: 15, marginBottom: 8 }}>
               State blue sky filings (based on investor addresses)
             </div>
