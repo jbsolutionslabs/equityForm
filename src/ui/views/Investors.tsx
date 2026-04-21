@@ -131,19 +131,22 @@ const mapInvestorToForm = (investor: Investor): FormInvestor => ({
       : null,
 })
 
-const createBlankFormInvestor = (id: string): FormInvestor => ({
+const createBlankFormInvestor = (
+  id: string,
+  defaults?: Partial<Pick<FormInvestor, 'state' | 'formationState'>>,
+): FormInvestor => ({
   id,
   fullLegalName: '',
   subscriberType: 'individual',
   entityLegalName: '',
-  formationState: '',
+  formationState: defaults?.formationState ?? '',
   signerName: '',
   signerTitle: '',
   subscriptionAmount: 0,
   classAUnits: 0,
   streetAddress: '',
   city: '',
-  state: '',
+  state: defaults?.state ?? '',
   zip: '',
   email: '',
   phone: '',
@@ -276,7 +279,12 @@ export const Investors: React.FC = () => {
 
   const onAdd = () => {
     const id = uuidv4()
-    const blankForm = createBlankFormInvestor(id)
+    const dealFormationState = appData.deal.formationState || ''
+    const defaultState = normalizeStateCode(dealFormationState) || dealFormationState
+    const blankForm = createBlankFormInvestor(id, {
+      state: defaultState,
+      formationState: defaultState,
+    })
     append(blankForm)
     const newIdx = fields.length
     setExpanded((prev) => ({ ...prev, [newIdx]: true }))
