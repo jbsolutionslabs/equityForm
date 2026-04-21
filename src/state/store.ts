@@ -80,6 +80,14 @@ export type Investor = {
   derivedLastName?: string
 }
 
+export type ActivityEvent = {
+  id:        string
+  timestamp: string
+  dealName:  string
+  action:    string
+  category:  'investor' | 'subscription' | 'distribution' | 'document' | 'spv' | 'financials' | 'valuation'
+}
+
 export type Deal = {
   entityName?: string
   formationState?: string
@@ -100,6 +108,8 @@ export type Deal = {
   propertyLegalDescription?: string
   capTableLockedAt?: string
   ein?: string
+  dealStatus?: 'Raising' | 'Active' | 'Exiting'
+  currentValuation?: number
 }
 
 export type Offering = {
@@ -197,6 +207,7 @@ export type AppData = {
   subscriptions:      Subscription[]
   investors:          Investor[]
   blueSkyFilings:     Record<string, BlueSkyFilingStatus>
+  activityFeed:       ActivityEvent[]
 }
 
 /* ─── Gate Functions (exported) ─────────────────────────────────────────── */
@@ -265,6 +276,7 @@ const defaultData: AppData = {
   subscriptions:      [],
   investors:          [],
   blueSkyFilings:     {},
+  activityFeed:       [],
 }
 
 /* ─── Seed data ──────────────────────────────────────────────────────────── */
@@ -350,6 +362,10 @@ function migrate(data: AppData): AppData {
     data.blueSkyFilings = {}
   }
 
+  if (!Array.isArray(data.activityFeed)) {
+    data.activityFeed = []
+  }
+
   return data
 }
 
@@ -364,6 +380,7 @@ type AppState = {
   updateInvestor:   (id: string, patch: Partial<Investor>) => void
   removeInvestor:   (id: string) => void
   setBlueSkyFilingStep: (stateCode: string, step: BlueSkyChecklistStep, completed: boolean) => void
+  syncBlueSkyFilingsForStates: (stateCodes: string[]) => void
   /** Stage 2: mark one checklist item as complete or incomplete */
   markSpvItem:      (item: keyof SpvFormation, data: Partial<SpvFormationItem>) => void
   /** Legacy one-shot SPV formation (kept for backward compat) */
@@ -383,6 +400,7 @@ type AppState = {
   markSubscriptionSigned:          (investorId: string) => void
   recordWirePayment:               (investorId: string, confirmation: string, amount?: number, date?: string) => void
   lockCapTable:     () => void
+  addActivity:      (event: Omit<ActivityEvent, 'id'>) => void
   reset:            () => void
 }
 
@@ -663,6 +681,53 @@ export const useAppStore = create<AppState>()(
           },
         }
       }, false, 'setBlueSkyFilingStep'),
+
+    syncBlueSkyFilingsForStates: (stateCodes) =>
+      set((s) => {
+        const normalizedActiveCodes = Array.from(
+          new Set(
+            stateCodes
+              .map((code) => code.trim().toUpperCase())
+              .filter((code) => code.length > 0),
+          ),
+        )
+
+        const current = s.data.blueSkyFilings || {}
+        const next: Record<string, BlueSkyFilingStatus> = {}
+
+        normalizedActiveCodes.forEach((code) => {
+          next[code] =
+            current[code] || {
+              requirementsReviewed: false,
+              stateNoticeFiled: false,
+              stateFeePaid: false,
+              evidenceSaved: false,
+            }
+        })
+
+        const unchanged =
+          Object.keys(current).length === Object.keys(next).length &&
+          Object.keys(next).every((code) => current[code] === next[code])
+
+        if (unchanged) return { data: s.data }
+
+        return {
+          data: {
+            ...s.data,
+            blueSkyFilings: next,
+          },
+        }
+      }, false, 'syncBlueSkyFilingsForStates'),
+
+    addActivity: (event) =>
+      set((s) => {
+        const e: ActivityEvent = {
+          ...event,
+          id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        }
+        const feed = [e, ...(s.data.activityFeed || [])].slice(0, 50)
+        return { data: { ...s.data, activityFeed: feed } }
+      }, false, 'addActivity'),
 
     reset: () => {
       save(defaultData)

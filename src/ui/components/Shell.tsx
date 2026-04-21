@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAppStore, isSpvFormed, canSendSubAgreements } from '../../state/store'
 
@@ -77,12 +77,38 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
   const reset    = useAppStore((s) => s.reset)
   const [confirmReset, setConfirmReset] = useState(false)
 
-  // Derive open module from current route — route is the source of truth
-  const openModule: 'legal' | 'accounting' = isAcctRoute(loc.pathname) ? 'accounting' : 'legal'
+  // Derive which section the current route belongs to
+  const isOnLegal = isLegalRoute(loc.pathname)
+  const isOnAcct  = isAcctRoute(loc.pathname)
+  const section   = isOnAcct ? 'acct' : isOnLegal ? 'legal' : 'none'
 
-  const handleModuleClick = (module: 'legal' | 'accounting') => {
-    if (module === openModule) return   // already open, do nothing
-    navigate(module === 'accounting' ? '/accounting' : '/deal')
+  // Explicit open/close overrides — null means "follow route default"
+  const [legalExplicit, setLegalExplicit] = useState<boolean | null>(null)
+  const [acctExplicit,  setAcctExplicit]  = useState<boolean | null>(null)
+  const prevSection = useRef(section)
+
+  // Reset overrides whenever the user moves between sections
+  useEffect(() => {
+    if (prevSection.current !== section) {
+      setLegalExplicit(null)
+      setAcctExplicit(null)
+      prevSection.current = section
+    }
+  }, [section])
+
+  const legalOpen = legalExplicit !== null ? legalExplicit : isOnLegal
+  const acctOpen  = acctExplicit  !== null ? acctExplicit  : isOnAcct
+
+  const handleLegalClick = () => {
+    const next = !legalOpen
+    setLegalExplicit(next)
+    if (next && !isOnLegal) navigate('/deal')
+  }
+
+  const handleAcctClick = () => {
+    const next = !acctOpen
+    setAcctExplicit(next)
+    if (next && !isOnAcct) navigate('/accounting')
   }
 
   // Legal completion summary for the module header badge
@@ -102,15 +128,31 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
 
         <nav className="sidebar-nav" aria-label="Modules">
 
+          {/* ══ GP Dashboard ══ */}
+          <Link
+            to="/dashboard"
+            className={[
+              'sidebar-dashboard-link',
+              loc.pathname === '/dashboard' ? 'sidebar-dashboard-link--active' : '',
+            ].filter(Boolean).join(' ')}
+            aria-current={loc.pathname === '/dashboard' ? 'page' : undefined}
+          >
+            <div className="sidebar-dashboard-icon" aria-hidden="true">⊞</div>
+            <div className="sidebar-dashboard-text">
+              <span className="sidebar-dashboard-title">GP Dashboard</span>
+              <span className="sidebar-dashboard-sub">Portfolio overview</span>
+            </div>
+          </Link>
+
           {/* ══ Legal module ══ */}
           <button
             type="button"
             className={[
               'sidebar-module-header',
-              openModule === 'legal' ? 'sidebar-module-header--open' : '',
+              legalOpen ? 'sidebar-module-header--open' : '',
             ].filter(Boolean).join(' ')}
-            onClick={() => handleModuleClick('legal')}
-            aria-expanded={openModule === 'legal'}
+            onClick={handleLegalClick}
+            aria-expanded={legalOpen}
           >
             <div className="sidebar-module-icon" aria-hidden="true">⚖</div>
             <div className="sidebar-module-text">
@@ -122,12 +164,12 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
                 <span className="sidebar-module-count">{legalDoneCount}/7</span>
               )}
               <span className="sidebar-module-chevron" aria-hidden="true">
-                {openModule === 'legal' ? '▾' : '▸'}
+                {legalOpen ? '▾' : '▸'}
               </span>
             </div>
           </button>
 
-          {openModule === 'legal' && (
+          {legalOpen && (
             <div className="sidebar-module-steps" aria-label="Legal steps">
               {STAGES.map((s) => {
                 const active  = loc.pathname === s.to
@@ -166,10 +208,10 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
             type="button"
             className={[
               'sidebar-module-header',
-              openModule === 'accounting' ? 'sidebar-module-header--open' : '',
+              acctOpen ? 'sidebar-module-header--open' : '',
             ].filter(Boolean).join(' ')}
-            onClick={() => handleModuleClick('accounting')}
-            aria-expanded={openModule === 'accounting'}
+            onClick={handleAcctClick}
+            aria-expanded={acctOpen}
           >
             <div className="sidebar-module-icon" aria-hidden="true">$</div>
             <div className="sidebar-module-text">
@@ -178,12 +220,12 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
             </div>
             <div className="sidebar-module-meta">
               <span className="sidebar-module-chevron" aria-hidden="true">
-                {openModule === 'accounting' ? '▾' : '▸'}
+                {acctOpen ? '▾' : '▸'}
               </span>
             </div>
           </button>
 
-          {openModule === 'accounting' && (
+          {acctOpen && (
             <div className="sidebar-module-steps" aria-label="Accounting steps">
               <Link
                 to="/accounting"
