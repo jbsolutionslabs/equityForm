@@ -607,9 +607,10 @@ export const GpDashboard: React.FC = () => {
 
   function dscrBadge(dscr: number | null) {
     if (dscr === null) return <span className="status-badge status-badge--grey">No data</span>
-    if (dscr >= 1.25)  return <span className="status-badge status-badge--green">{dscr.toFixed(2)}</span>
-    if (dscr >= 1.0)   return <span className="status-badge status-badge--yellow">{dscr.toFixed(2)}</span>
-    return <span className="status-badge status-badge--red">{dscr.toFixed(2)}</span>
+    const label = `${dscr.toFixed(2)}x`
+    if (dscr > 1.25)   return <span className="status-badge status-badge--green">{label}</span>
+    if (dscr >= 1.0)   return <span className="status-badge status-badge--yellow">{label}</span>
+    return <span className="status-badge status-badge--red">{label}</span>
   }
 
   function debtYieldBadge(dy: number | null) {
