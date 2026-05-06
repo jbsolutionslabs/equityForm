@@ -190,8 +190,14 @@ export function generatePlaceholders(data: AppData) {
   placeholders.CLOSING_DATE = data.offering.closingDate || ''
   map.CLOSING_DATE = placeholders.CLOSING_DATE ? { type: 'input', path: 'offering.closingDate' } : { type: 'missing' }
 
-  placeholders.PREFERRED_RETURN_RATE = data.offering.preferredReturnRate ?? null
-  map.PREFERRED_RETURN_RATE = data.offering.preferredReturnEnabled ? { type: 'input', path: 'offering.preferredReturnRate' } : { type: 'derived', formula: 'preferred return disabled' }
+  placeholders.PREFERRED_RETURN_RATE =
+    data.offering.preferredReturnEnabled && data.offering.preferredReturnType !== 'IRR-based'
+      ? data.offering.preferredReturnRate ?? null
+      : null
+  map.PREFERRED_RETURN_RATE =
+    data.offering.preferredReturnEnabled && data.offering.preferredReturnType !== 'IRR-based'
+      ? { type: 'input', path: 'offering.preferredReturnRate' }
+      : { type: 'derived', formula: 'not used when preferred return is disabled or IRR-based' }
 
   placeholders.PREFERRED_RETURN_ENABLED = data.offering.preferredReturnEnabled ?? false
   map.PREFERRED_RETURN_ENABLED = placeholders.PREFERRED_RETURN_ENABLED ? { type: 'input', path: 'offering.preferredReturnEnabled' } : { type: 'derived', formula: 'preferred return disabled' }

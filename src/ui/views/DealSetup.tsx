@@ -59,11 +59,11 @@ const schema = z.object({
       })
     }
   }
-  if (vals.preferredReturnEnabled) {
+  if (vals.preferredReturnEnabled && vals.preferredReturnType !== 'IRR-based') {
     if (vals.preferredReturnRate === null || vals.preferredReturnRate === undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Preferred return rate is required when preferred return is enabled.',
+        message: 'Preferred return rate is required unless IRR-based preferred return is selected.',
         path: ['preferredReturnRate'],
       })
     }
@@ -109,7 +109,7 @@ export const DealSetup: React.FC = () => {
   const gpPromoteVal      = watch('gpPromote')
   const lpResidual        = gpPromoteVal != null && !isNaN(Number(gpPromoteVal)) ? 100 - Number(gpPromoteVal) : null
   const prefRateRequired  = Boolean(
-    prefEnabled && (
+    prefEnabled && prefType !== 'IRR-based' && (
       prefReturnRateRaw === null    ||
       prefReturnRateRaw === undefined ||
       prefReturnRateRaw === ''      ||
@@ -701,25 +701,27 @@ export const DealSetup: React.FC = () => {
               {prefEnabled && (
                 <>
                   <div className="form-row" style={{ marginTop: 16 }}>
-                    <div className="field-group">
-                      <div className="field-label-row">
-                        <label className="field-label" htmlFor="preferredReturnRate">
-                          Preferred Return Rate (%)
-                        </label>
+                    {prefType !== 'IRR-based' && (
+                      <div className="field-group">
+                        <div className="field-label-row">
+                          <label className="field-label" htmlFor="preferredReturnRate">
+                            Preferred Return Rate (%)
+                          </label>
+                        </div>
+                        <FieldHelp text="Annual percentage LPs earn before GP promote kicks in. 6–8% is common." />
+                        <input
+                          id="preferredReturnRate"
+                          type="number"
+                          className={`field-input${prefRateRequired ? ' field-input--error' : ''}`}
+                          placeholder="e.g. 8"
+                          min={0}
+                          max={100}
+                          step={0.5}
+                          aria-invalid={prefRateRequired}
+                          {...form.register('preferredReturnRate', { valueAsNumber: true })}
+                        />
                       </div>
-                      <FieldHelp text="Annual percentage LPs earn before GP promote kicks in. 6–8% is common." />
-                      <input
-                        id="preferredReturnRate"
-                        type="number"
-                        className={`field-input${prefRateRequired ? ' field-input--error' : ''}`}
-                        placeholder="e.g. 8"
-                        min={0}
-                        max={100}
-                        step={0.5}
-                        aria-invalid={prefRateRequired}
-                        {...form.register('preferredReturnRate', { valueAsNumber: true })}
-                      />
-                    </div>
+                    )}
 
                     <div className="field-group">
                       <label className="field-label" htmlFor="preferredReturnType">Preferred Return Type</label>

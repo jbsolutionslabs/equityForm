@@ -6,6 +6,32 @@ import html2pdf from 'html2pdf.js'
 import PlaceholderCoverage from '../components/PlaceholderCoverage'
 import ModuleProgress from '../components/ModuleProgress'
 
+function toLegalStateName(state: string) {
+  const raw = String(state || '').trim()
+  const upper = raw.toUpperCase()
+  const map: Record<string, string> = {
+    AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California', CO: 'Colorado',
+    CT: 'Connecticut', DE: 'Delaware', FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho',
+    IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana',
+    ME: 'Maine', MD: 'Maryland', MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota',
+    MS: 'Mississippi', MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada',
+    NH: 'New Hampshire', NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York', NC: 'North Carolina',
+    ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania',
+    RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas',
+    UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington', WV: 'West Virginia',
+    WI: 'Wisconsin', WY: 'Wyoming', DC: 'District of Columbia', PR: 'Puerto Rico',
+  }
+  return map[upper] || raw
+}
+
+function toLongDate(dateLike: string) {
+  const raw = String(dateLike || '').trim()
+  if (!raw) return raw
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return raw
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
 function fmtCurrency(n: unknown): string {
   if (n === null || n === undefined || n === '') return '—'
@@ -129,8 +155,8 @@ export const Review: React.FC = () => {
   const ph     = generatePlaceholders(data)
   const values = ph.values
   const entityName = data.deal.entityName || '—'
-  const formationState = data.deal.formationState || '—'
-  const effectiveDate = data.deal.effectiveDate || '—'
+  const formationState = toLegalStateName(data.deal.formationState || '—')
+  const effectiveDate = toLongDate(data.deal.effectiveDate || '—')
 
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
   const [showFullDoc, setShowFullDoc]   = useState(false)
@@ -342,7 +368,11 @@ export const Review: React.FC = () => {
             rows={[
               ['Exemption',          fmtVal(data.offering.offeringExemption)],
               ['Minimum investment', fmtCurrency(data.offering.minimumInvestment)],
-              ['Preferred return',   data.offering.preferredReturnEnabled ? `${data.offering.preferredReturnRate ?? '—'}% (${data.offering.preferredReturnType ?? '—'})` : 'None'],
+              ['Preferred return', data.offering.preferredReturnEnabled
+                ? data.offering.preferredReturnType === 'IRR-based'
+                  ? `IRR-based (${data.offering.irrRate ?? '—'}% hurdle)`
+                  : `${data.offering.preferredReturnRate ?? '—'}% (${data.offering.preferredReturnType ?? '—'})`
+                : 'None'],
               ['GP promote',        data.offering.gpPromote != null ? `${data.offering.gpPromote}%` : '—'],
               ['LP residual',       data.offering.lpResidual != null ? `${data.offering.lpResidual}%` : '—'],
               ['Solicitation',      fmtVal(data.offering.solicitationMethod)],
