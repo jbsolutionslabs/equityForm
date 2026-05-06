@@ -8,6 +8,32 @@ import ModuleProgress from '../components/ModuleProgress'
 
 type SubStep = 1 | 2 | 3
 
+function toLegalStateName(state: string) {
+  const raw = String(state || '').trim()
+  const upper = raw.toUpperCase()
+  const map: Record<string, string> = {
+    AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California', CO: 'Colorado',
+    CT: 'Connecticut', DE: 'Delaware', FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho',
+    IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana',
+    ME: 'Maine', MD: 'Maryland', MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota',
+    MS: 'Mississippi', MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada',
+    NH: 'New Hampshire', NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York', NC: 'North Carolina',
+    ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania',
+    RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas',
+    UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington', WV: 'West Virginia',
+    WI: 'Wisconsin', WY: 'Wyoming', DC: 'District of Columbia', PR: 'Puerto Rico',
+  }
+  return map[upper] || raw
+}
+
+function toLongDate(dateLike: string) {
+  const raw = String(dateLike || '').trim()
+  if (!raw) return raw
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return raw
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
 const TOC_SECTIONS = [
   { id: 'formation',    label: 'Article I — Formation' },
   { id: 'members',      label: 'Article II — Members' },
@@ -50,8 +76,8 @@ export const OperatingAgreement: React.FC = () => {
   }
 
   const entityName = data.deal.entityName || '—'
-  const formationState = data.deal.formationState || '—'
-  const effectiveDate = data.deal.effectiveDate || '—'
+  const formationState = toLegalStateName(data.deal.formationState || '—')
+  const effectiveDate = toLongDate(data.deal.effectiveDate || '—')
   const preferredReturnPct = data.offering.preferredReturnEnabled
     ? data.offering.preferredReturnRate != null
       ? `${data.offering.preferredReturnRate}%`

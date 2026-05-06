@@ -71,7 +71,51 @@ function buildWaterfallSection(values: Record<string, any>) {
 (b)  Promote Split: Thereafter, [GP_PROMOTE]% to the Class B Members, pro rata based on Class B Units held, and [LP_RESIDUAL]% to the Class A Members, pro rata based on Class A Units held.`
 }
 
+function toLegalStateName(state: any) {
+  const raw = String(state || '').trim()
+  const upper = raw.toUpperCase()
+  const map: Record<string, string> = {
+    AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California', CO: 'Colorado',
+    CT: 'Connecticut', DE: 'Delaware', FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho',
+    IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana',
+    ME: 'Maine', MD: 'Maryland', MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota',
+    MS: 'Mississippi', MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada',
+    NH: 'New Hampshire', NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York', NC: 'North Carolina',
+    ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania',
+    RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas',
+    UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington', WV: 'West Virginia',
+    WI: 'Wisconsin', WY: 'Wyoming', DC: 'District of Columbia', PR: 'Puerto Rico',
+  }
+  return map[upper] || raw
+}
+
+function toLongDate(dateLike: any) {
+  const raw = String(dateLike || '').trim()
+  if (!raw) return ''
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return raw
+  return d.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
 export function generateOperatingAgreementText(values: Record<string, any>) {
+  const hasDealPurpose = !!String(values.DEAL_PURPOSE || '').trim()
+  const purposeSection = hasDealPurpose
+    ? `1.4  Purpose.
+
+The purpose of the company is to [DEAL_PURPOSE], and to engage in any and all activities necessary, convenient, or incidental thereto, including without limitation the acquisition, ownership, financing, development, improvement, leasing, operation, maintenance, and ultimate sale or disposition of the Property (as defined herein).
+
+`
+    : ''
+  const legalValues = {
+    ...values,
+    FORMATION_STATE_LEGAL: toLegalStateName(values.FORMATION_STATE),
+    GP_ENTITY_STATE_LEGAL: toLegalStateName(values.GP_ENTITY_STATE),
+    EFFECTIVE_DATE_LONG: toLongDate(values.EFFECTIVE_DATE),
+  }
   const prefDefinition = buildPreferredReturnDefinition(values)
   const prefDefinitionBlock = prefDefinition ? `${prefDefinition}
 
@@ -79,33 +123,29 @@ export function generateOperatingAgreementText(values: Record<string, any>) {
   const waterfallSection = buildWaterfallSection(values)
   const template = `THE MEMBERSHIP INTERESTS EVIDENCED BY THIS AGREEMENT HAVE NOT BEEN REGISTERED WITH THE SECURITIES AND EXCHANGE COMMISSION, BUT HAVE BEEN ISSUED PURSUANT TO EXEMPTIONS UNDER THE FEDERAL SECURITIES ACT OF 1933, AS AMENDED. THE SALE, TRANSFER, PLEDGE, HYPOTHECATION, OR OTHER DISPOSITION OF ANY OF THESE MEMBERSHIP INTERESTS IS RESTRICTED AND MAY NOT BE ACCOMPLISHED EXCEPT IN ACCORDANCE WITH THIS AGREEMENT, AND AN APPLICABLE REGISTRATION STATEMENT OR AN OPINION OF COUNSEL SATISFACTORY TO THE COMPANY THAT A REGISTRATION STATEMENT IS NOT NECESSARY.
 
-THIS OPERATING AGREEMENT (this "Agreement") is entered into and effective as of [EFFECTIVE_DATE], by and among [GP_ENTITY_NAME], a [GP_ENTITY_STATE] limited liability company (the "Managing Member" or "General Partner"), and each of the persons or entities who execute a Subscription Agreement and are listed on Exhibit A attached hereto (collectively, the "Members").
+THIS OPERATING AGREEMENT (this "Agreement") is entered into and effective as of [EFFECTIVE_DATE_LONG], by and among [GP_ENTITY_NAME], a [GP_ENTITY_STATE_LEGAL] limited liability company (the "Managing Member" or "General Partner"), and each of the persons or entities who execute a Subscription Agreement and are listed on Exhibit A attached hereto (collectively, the "Members").
 
 ARTICLE I — FORMATION
 
 1.1  Formation.
 
-The Members hereby form a limited liability company (the "Company") pursuant to the laws of the State of [FORMATION_STATE] upon the terms and conditions set forth in this Agreement. The rights and obligations of the Members shall be as provided in the applicable laws of [FORMATION_STATE] governing limited liability companies, except as otherwise expressly provided herein.
+The Members hereby form a limited liability company (the "company") pursuant to the laws of the State of [FORMATION_STATE_LEGAL] upon the terms and conditions set forth in this Agreement. The rights and obligations of the Members shall be as provided in the applicable laws of [FORMATION_STATE_LEGAL] governing limited liability companies, except as otherwise expressly provided herein.
 
 1.2  Name.
 
-The name of the Company shall be [ENTITY_NAME], or such other name as the Managing Member may select from time to time in compliance with applicable law.
+The name of the company shall be [ENTITY_NAME], or such other name as the Managing Member may select from time to time in compliance with applicable law.
 
 1.3  Principal Place of Business; Registered Agent.
 
-The principal place of business of the Company shall be [PRINCIPAL_ADDRESS]. The Company's registered agent and registered office in [FORMATION_STATE] shall be [REGISTERED_AGENT_NAME] at [REGISTERED_AGENT_ADDRESS].
+The principal place of business of the company shall be [PRINCIPAL_ADDRESS]. The company's registered agent and registered office in [FORMATION_STATE_LEGAL] shall be [REGISTERED_AGENT_NAME] at [REGISTERED_AGENT_ADDRESS].
+${purposeSection} 1.5  Term.
 
-1.4  Purpose.
 
-The purpose of the Company is to [DEAL_PURPOSE], and to engage in any and all activities necessary, convenient, or incidental thereto, including without limitation the acquisition, ownership, financing, development, improvement, leasing, operation, maintenance, and ultimate sale or disposition of the Property (as defined herein).
-
-1.5  Term.
-
-The Company shall continue in existence until dissolved in accordance with the provisions of this Agreement or as required by applicable law.
+The company shall continue in existence until dissolved in accordance with the provisions of this Agreement or as required by applicable law.
 
 1.6  Fiscal Year.
 
-The fiscal year of the Company shall end on December 31 of each year, or such other date as determined by the Managing Member with consent of the Members.
+The fiscal year of the company shall end on December 31 of each year, or such other date as determined by the Managing Member with consent of the Members.
 
 ARTICLE II — DEFINITIONS
 
@@ -119,7 +159,7 @@ means the real property located at [PROPERTY_ADDRESS], [PROPERTY_CITY], [PROPERT
 
 6.4  Distributions of Net Cash Flow.
 
-Subject to Section 6.6 and any applicable restrictions imposed by lenders, the Managing Member shall cause the Company to distribute Net Cash Flow, to the extent available, in the following order and priority:
+Subject to Section 6.6 and any applicable restrictions imposed by lenders, the Managing Member shall cause the company to distribute Net Cash Flow, to the extent available, in the following order and priority:
 
 ${waterfallSection}
 
@@ -127,11 +167,11 @@ ARTICLE IX — MISCELLANEOUS
 
 9.2  Governing Law.
 
-This Agreement shall be governed by and construed in accordance with the laws of the State of [FORMATION_STATE], without regard to its conflicts of laws principles.
+This Agreement shall be governed by and construed in accordance with the laws of the State of [FORMATION_STATE_LEGAL], without regard to its conflicts of laws principles.
 
 9.3  Dispute Resolution.
 
-Any dispute arising out of or relating to this Agreement shall be resolved by [DISPUTE_RESOLUTION_METHOD] in [DISPUTE_RESOLUTION_VENUE]. The prevailing party shall be entitled to recover its reasonable attorneys' fees and costs.
+Any dispute arising out of or relating to this Agreement shall be resolved by binding arbitration administered by JAMS in New York, New York. The prevailing party shall be entitled to recover its reasonable attorneys' fees and costs.
 
 EXHIBIT A
 
@@ -145,7 +185,7 @@ LEGAL DESCRIPTION OF PROPERTY
 
 [PROPERTY_LEGAL_DESCRIPTION]
 `
-  return replaceTokens(template, values)
+  return replaceTokens(template, legalValues)
 }
 
 export function generateOperatingAgreementHtml(values: Record<string, any>) {
@@ -201,8 +241,8 @@ export function generateOperatingAgreementHtml(values: Record<string, any>) {
     <div class="doc-cover">
       <div class="doc-title">Operating Agreement</div>
       <div class="doc-entity">${escapeHtml(values.ENTITY_NAME || '')}</div>
-      <div class="doc-subtitle">A ${escapeHtml(values.FORMATION_STATE || '')} Limited Liability Company</div>
-      <div class="doc-meta"><strong>Effective Date:</strong> ${escapeHtml(values.EFFECTIVE_DATE || '')}</div>
+      <div class="doc-subtitle">A ${escapeHtml(toLegalStateName(values.FORMATION_STATE) || '')} Limited Liability Company</div>
+      <div class="doc-meta"><strong>Effective Date:</strong> ${escapeHtml(toLongDate(values.EFFECTIVE_DATE) || '')}</div>
     </div>
     <div class="doc-body">${escapeHtml(bodyText)}</div>
   </body>
@@ -243,8 +283,8 @@ export function generateOperatingAgreementWordHtml(values: Record<string, any>) 
       <div style="text-align:center;padding-bottom:16px;margin-bottom:24px;border-bottom:2px solid #111;">
         <div style="font-size:18pt;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">Operating Agreement</div>
         <div style="margin-top:6px;font-size:13pt;font-weight:600;">${escapeHtml(values.ENTITY_NAME || '')}</div>
-        <div style="margin-top:4px;font-size:10.5pt;color:#444;">A ${escapeHtml(values.FORMATION_STATE || '')} Limited Liability Company</div>
-        <div style="margin-top:12px;font-size:10.5pt;"><strong>Effective Date:</strong> ${escapeHtml(values.EFFECTIVE_DATE || '')}</div>
+        <div style="margin-top:4px;font-size:10.5pt;color:#444;">A ${escapeHtml(toLegalStateName(values.FORMATION_STATE) || '')} Limited Liability Company</div>
+        <div style="margin-top:12px;font-size:10.5pt;"><strong>Effective Date:</strong> ${escapeHtml(toLongDate(values.EFFECTIVE_DATE) || '')}</div>
       </div>
       <p class="MsoNormal">${escapedBody}</p>
     </div>
@@ -258,9 +298,14 @@ function escapeHtml(s: any) {
 }
 
 export function generateSubscriptionAgreementText(values: Record<string, any>, investor: Record<string, any>) {
+  const legalValues = {
+    ...values,
+    FORMATION_STATE_LEGAL: toLegalStateName(values.FORMATION_STATE),
+  }
   const template = `THIS SUBSCRIPTION AND PARTICIPATION AGREEMENT (this "Agreement") is entered into as of the date indicated on the signature page by and between [ENTITY_NAME], a [FORMATION_STATE] limited liability company (the "Company"), managed by [GP_ENTITY_NAME] (the "Managing Member"), and the undersigned subscriber (the "Subscriber").\n\nARTICLE I — SUBSCRIPTION\n\n1.1  Subscription for Units.\n\nSubject to the terms and conditions of this Agreement and the Operating Agreement of the Company (the "Operating Agreement"), Subscriber hereby irrevocably subscribes for and agrees to purchase Class A Units of the Company representing a [SUBSCRIBER_OWNERSHIP_PCT]% membership interest in the Company, in exchange for a Capital Contribution of $[SUBSCRIBER_CONTRIBUTION] (the "Subscription Amount").\n\n1.2  Payment of Subscription Amount.\n\nSubscriber shall pay the Subscription Amount by wire transfer or ACH transfer to the following account:\n\nBank Name:  [BANK_NAME]\nAccount Name:  [ACCOUNT_NAME]\nAccount Number:  [ACCOUNT_NUMBER]\nRouting Number:  [ROUTING_NUMBER]\nReference:  [ENTITY_NAME] — [SUBSCRIBER_LAST_NAME]\n\nPayment shall be made no later than [CLOSING_DATE]. The Company shall have no obligation to admit Subscriber as a Member until the Subscription Amount has been received in full in immediately available funds.\n\nSUBSCRIBER INFORMATION\n\nFull Legal Name of Subscriber:  ___________________________________\n\nSubscription Amount: $  [SUBSCRIBER_CONTRIBUTION]\n\nClass A Units Subscribed:  [SUBSCRIBER_OWNERSHIP_PCT]\n\nSUBSCRIBER SIGNATURE\n\nBy executing below, Subscriber agrees to be bound by the terms of this Agreement and the Operating Agreement.\n`;
 
-  return replaceTokens(template, values, investor)
+  const legalTemplate = template.replace('[FORMATION_STATE]', '[FORMATION_STATE_LEGAL]')
+  return replaceTokens(legalTemplate, legalValues, investor)
 }
 
 export function generateSubscriptionAgreementHtml(values: Record<string, any>, investor: Record<string, any>) {
@@ -322,7 +367,7 @@ export function generateSubscriptionAgreementHtml(values: Record<string, any>, i
     <div class="doc-cover">
       <div class="doc-title">Subscription Agreement</div>
       <div class="doc-entity">${escapeHtml(values.ENTITY_NAME || '')},</div>
-      <div class="doc-subtitle">A ${escapeHtml(values.FORMATION_STATE || '')} Limited Liability Company</div>
+      <div class="doc-subtitle">A ${escapeHtml(toLegalStateName(values.FORMATION_STATE) || '')} Limited Liability Company</div>
       <div class="doc-meta-grid">
         <div><span class="doc-meta-label">Subscriber:</span> ${escapeHtml(subscriberName)}</div>
         <div><span class="doc-meta-label">Offering Exemption:</span> ${escapeHtml(values.OFFERING_EXEMPTION || '')}</div>
