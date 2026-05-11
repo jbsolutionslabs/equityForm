@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAppStore, isSpvFormed, canSendSubAgreements } from '../../state/store'
-import { useEconomicsStore, isEconomicsLocked, isEconomicsComplete } from '../../state/economicsStore'
+import { useEconomicsStore, isEconomicsLocked } from '../../state/economicsStore'
 import { DEAL_ID } from '../views/economics/Economics'
 
 type StageConfig = {
@@ -17,33 +17,40 @@ const STAGES: StageConfig[] = [
     to:       '/deal',
     step:     1,
     title:    'Questionnaire',
-    subtitle: 'Entity, property & economics',
+    subtitle: 'Entity, property & offering',
     done:     (d) => !!(d.deal.entityName && d.offering.offeringExemption),
   },
   {
-    to:       '/spv',
+    to:       '/economics',
     step:     2,
+    title:    'Deal Economics',
+    subtitle: 'Capital stack, pref & fees',
+    done:     () => false, // econLocked handled separately in render
+  },
+  {
+    to:       '/spv',
+    step:     3,
     title:    'SPV Formation',
     subtitle: 'LLC filing, EIN & agent',
     done:     (d) => isSpvFormed(d),
   },
   {
     to:       '/oa',
-    step:     3,
+    step:     4,
     title:    'Operating Agreement',
     subtitle: 'Generate, review & sign',
     done:     (d) => d.operatingAgreement?.status === 'signed',
   },
   {
     to:       '/investors',
-    step:     4,
+    step:     5,
     title:    'Investor Intake',
     subtitle: 'Add investors & sub agreements',
     done:     (d) => d.investors.length > 0 && d.subscriptions.some((s) => s.status !== 'pending'),
   },
   {
     to:       '/signatures',
-    step:     5,
+    step:     6,
     title:    'E-Signatures',
     subtitle: 'Send & track investor signing',
     done:     (d) =>
@@ -52,7 +59,7 @@ const STAGES: StageConfig[] = [
   },
   {
     to:       '/wires',
-    step:     6,
+    step:     7,
     title:    'Wire Tracking',
     subtitle: 'Confirm capital received',
     done:     (d) =>
@@ -61,7 +68,7 @@ const STAGES: StageConfig[] = [
   },
   {
     to:       '/captable',
-    step:     7,
+    step:     8,
     title:    'Cap Table Lock',
     subtitle: 'Finalize & lock',
     done:     (d) => !!d.deal.capTableLockedAt,
@@ -71,7 +78,6 @@ const STAGES: StageConfig[] = [
 const LEGAL_ROUTES  = STAGES.map((s) => s.to)
 const isLegalRoute  = (path: string) => LEGAL_ROUTES.includes(path) || path === '/'
 const isAcctRoute   = (path: string) => path.startsWith('/accounting')
-const isEconRoute   = (path: string) => path.startsWith('/economics')
 
 export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
   const loc      = useLocation()
@@ -84,13 +90,11 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
   // Derive which section the current route belongs to
   const isOnLegal = isLegalRoute(loc.pathname)
   const isOnAcct  = isAcctRoute(loc.pathname)
-  const isOnEcon  = isEconRoute(loc.pathname)
-  const section   = isOnAcct ? 'acct' : isOnEcon ? 'econ' : isOnLegal ? 'legal' : 'none'
+  const section   = isOnAcct ? 'acct' : isOnLegal ? 'legal' : 'none'
 
   // Explicit open/close overrides — null means "follow route default"
   const [legalExplicit, setLegalExplicit] = useState<boolean | null>(null)
   const [acctExplicit,  setAcctExplicit]  = useState<boolean | null>(null)
-  const [econExplicit,  setEconExplicit]  = useState<boolean | null>(null)
   const prevSection = useRef(section)
 
   // Reset overrides whenever the user moves between sections
@@ -98,14 +102,12 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
     if (prevSection.current !== section) {
       setLegalExplicit(null)
       setAcctExplicit(null)
-      setEconExplicit(null)
       prevSection.current = section
     }
   }, [section])
 
   const legalOpen = legalExplicit !== null ? legalExplicit : isOnLegal
   const acctOpen  = acctExplicit  !== null ? acctExplicit  : isOnAcct
-  const econOpen  = econExplicit  !== null ? econExplicit  : isOnEcon
 
   const handleLegalClick = () => {
     const next = !legalOpen
@@ -119,18 +121,13 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
     if (next && !isOnAcct) navigate('/accounting')
   }
 
-  const handleEconClick = () => {
-    const next = !econOpen
-    setEconExplicit(next)
-    if (next && !isOnEcon) navigate('/economics')
-  }
-
   // Economics status
-  const econLocked   = isEconomicsLocked(econDeal)
-  const econComplete = isEconomicsComplete(econDeal)
+  const econLocked = isEconomicsLocked(econDeal)
 
   // Legal completion summary for the module header badge
-  const legalDoneCount = STAGES.filter((s) => s.done(data)).length
+  const legalDoneCount = STAGES.filter((s) =>
+    s.to === '/economics' ? econLocked : s.done(data)
+  ).length
 
   return (
     <div className="app-root">
@@ -162,60 +159,6 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
             </div>
           </Link>
 
-          {/* ══ Economics module ══ */}
-          <button
-            type="button"
-            className={[
-              'sidebar-module-header',
-              econOpen ? 'sidebar-module-header--open' : '',
-            ].filter(Boolean).join(' ')}
-            onClick={handleEconClick}
-            aria-expanded={econOpen}
-          >
-            <div className="sidebar-module-icon" aria-hidden="true">◈</div>
-            <div className="sidebar-module-text">
-              <span className="sidebar-module-title">Economics</span>
-              <span className="sidebar-module-subtitle">Capital stack &amp; waterfall</span>
-            </div>
-            <div className="sidebar-module-meta">
-              {econLocked && <span className="sidebar-module-count">🔒</span>}
-              {!econLocked && econComplete && <span className="sidebar-module-count">✓</span>}
-              <span className="sidebar-module-chevron" aria-hidden="true">
-                {econOpen ? '▾' : '▸'}
-              </span>
-            </div>
-          </button>
-
-          {econOpen && (
-            <div className="sidebar-module-steps" aria-label="Economics steps">
-              <Link
-                to="/economics"
-                className={[
-                  'sidebar-step',
-                  isOnEcon ? 'sidebar-step--active' : '',
-                ].filter(Boolean).join(' ')}
-                aria-current={isOnEcon ? 'step' : undefined}
-              >
-                <div
-                  className={[
-                    'sidebar-step-indicator',
-                    econLocked   ? 'sidebar-step-indicator--done'
-                    : econComplete ? 'sidebar-step-indicator--done'
-                    : isOnEcon   ? 'sidebar-step-indicator--active'
-                    : 'sidebar-step-indicator--accessible',
-                  ].filter(Boolean).join(' ')}
-                  aria-hidden="true"
-                >
-                  {econLocked || econComplete ? '✓' : 'E'}
-                </div>
-                <div className="sidebar-step-text">
-                  <span className="sidebar-step-title">Deal Economics</span>
-                  <span className="sidebar-step-subtitle">Stack, pref &amp; fees</span>
-                </div>
-              </Link>
-            </div>
-          )}
-
           {/* ══ Legal module ══ */}
           <button
             type="button"
@@ -233,7 +176,7 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
             </div>
             <div className="sidebar-module-meta">
               {legalDoneCount > 0 && (
-                <span className="sidebar-module-count">{legalDoneCount}/7</span>
+                <span className="sidebar-module-count">{legalDoneCount}/8</span>
               )}
               <span className="sidebar-module-chevron" aria-hidden="true">
                 {legalOpen ? '▾' : '▸'}
@@ -245,7 +188,7 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
             <div className="sidebar-module-steps" aria-label="Legal steps">
               {STAGES.map((s) => {
                 const active  = loc.pathname === s.to
-                const isDone  = s.done(data) && !active
+                const isDone  = (s.to === '/economics' ? econLocked : s.done(data)) && !active
                 const indicatorClass = isDone
                   ? 'sidebar-step-indicator--done'
                   : active
