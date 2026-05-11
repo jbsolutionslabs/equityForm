@@ -10,12 +10,14 @@ import { ESignature }           from './views/ESignature'
 import { WireTracking }         from './views/WireTracking'
 import { CapTable }             from './views/CapTable'
 import { AccountingDashboard }  from './views/accounting/AccountingDashboard'
+import { Economics }            from './views/economics/Economics'
 
 export const App: React.FC = () => (
   <Shell>
     <Routes>
       <Route path="/"           element={<Navigate to="/dashboard" replace />} />
       <Route path="/dashboard"  element={<GpDashboard />} />
+      <Route path="/economics"  element={<Economics />} />
       <Route path="/deal"       element={<DealSetup />} />
       <Route path="/offering"   element={<Navigate to="/deal" replace />} />
       <Route path="/spv"        element={<SpvFormation />} />
