@@ -31,17 +31,11 @@ const schema = z.object({
   propertyState:            z.string().optional(),
   propertyZip:              z.string().optional(),
   propertyLegalDescription: z.string().optional(),
-  // ── Offering / Economics fields ───────────────────────────────────────
+  // ── Offering fields ───────────────────────────────────────────────────
   offeringExemption:        z.enum(['506(b)', '506(c)', '']).optional(),
   minimumInvestment:        z.number().nullable().optional(),
   closingDate:              z.string().optional(),
   solicitationMethod:       z.string().optional(),
-  preferredReturnEnabled:   z.boolean().optional(),
-  preferredReturnRate:      z.number().nullable().optional(),
-  preferredReturnType:      z.enum(['cumulative', 'non-cumulative', 'IRR-based', '']).optional(),
-  irrRate:                  z.number().nullable().optional(),
-  gpPromote:                z.number().nullable().optional(),
-  assetManagementFeeDescription: z.string().optional(),
 }).superRefine((vals, ctx) => {
   if (vals.offeringExemption === '506(b)' && !vals.solicitationMethod) {
     ctx.addIssue({
@@ -49,24 +43,6 @@ const schema = z.object({
       message: 'Solicitation method is required for 506(b) — general solicitation is not permitted.',
       path: ['solicitationMethod'],
     })
-  }
-  if (vals.preferredReturnEnabled && vals.preferredReturnType === 'IRR-based') {
-    if (vals.irrRate === null || vals.irrRate === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'IRR hurdle rate is required when using IRR-based preferred return.',
-        path: ['irrRate'],
-      })
-    }
-  }
-  if (vals.preferredReturnEnabled && vals.preferredReturnType !== 'IRR-based') {
-    if (vals.preferredReturnRate === null || vals.preferredReturnRate === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Preferred return rate is required unless IRR-based preferred return is selected.',
-        path: ['preferredReturnRate'],
-      })
-    }
   }
 })
 
@@ -98,36 +74,10 @@ export const DealSetup: React.FC = () => {
     mode: 'onBlur',
   })
 
-  const { formState: { errors }, watch, setValue, getValues } = form
+  const { formState: { errors }, watch } = form
 
   // ── Offering field watchers ───────────────────────────────────────────────
-  const exemption         = watch('offeringExemption')
-  const prefEnabled       = watch('preferredReturnEnabled')
-  const prefType          = watch('preferredReturnType')
-  const prefReturnRateRaw = watch('preferredReturnRate') as number | string | null | undefined
-  const irrFieldVisible   = prefEnabled && prefType === 'IRR-based'
-  const gpPromoteVal      = watch('gpPromote')
-  const lpResidual        = gpPromoteVal != null && !isNaN(Number(gpPromoteVal)) ? 100 - Number(gpPromoteVal) : null
-  const prefRateRequired  = Boolean(
-    prefEnabled && prefType !== 'IRR-based' && (
-      prefReturnRateRaw === null    ||
-      prefReturnRateRaw === undefined ||
-      prefReturnRateRaw === ''      ||
-      Number.isNaN(prefReturnRateRaw as number)
-    )
-  )
-
-  useEffect(() => {
-    if (prefEnabled && !prefType) setValue('preferredReturnType', 'cumulative')
-    if (!prefEnabled && prefType)  setValue('preferredReturnType', '')
-  }, [prefEnabled, prefType, setValue])
-
-  useEffect(() => {
-    if (!irrFieldVisible) {
-      const current = getValues('irrRate')
-      if (current !== null && current !== undefined) setValue('irrRate', null)
-    }
-  }, [irrFieldVisible, getValues, setValue])
+  const exemption = watch('offeringExemption')
 
   // ── Save helpers ─────────────────────────────────────────────────────────
 
@@ -163,19 +113,11 @@ export const DealSetup: React.FC = () => {
       propertyLegalDescription: vals.propertyLegalDescription,
     })
 
-    const gp = vals.gpPromote ?? null
     setOffering({
-      offeringExemption:             vals.offeringExemption,
-      minimumInvestment:             vals.minimumInvestment,
-      closingDate:                   vals.closingDate,
-      solicitationMethod:            vals.solicitationMethod,
-      preferredReturnEnabled:        vals.preferredReturnEnabled,
-      preferredReturnRate:           vals.preferredReturnRate,
-      preferredReturnType:           vals.preferredReturnType,
-      irrRate:                       vals.preferredReturnType === 'IRR-based' ? vals.irrRate ?? null : null,
-      gpPromote:                     vals.gpPromote,
-      assetManagementFeeDescription: vals.assetManagementFeeDescription,
-      lpResidual:                    gp !== null ? 100 - gp : null,
+      offeringExemption:  vals.offeringExemption,
+      minimumInvestment:  vals.minimumInvestment,
+      closingDate:        vals.closingDate,
+      solicitationMethod: vals.solicitationMethod,
     })
   }
 
@@ -205,7 +147,7 @@ export const DealSetup: React.FC = () => {
         return
       }
       doSave(vals)
-      navigate('/spv')
+      navigate('/economics')
     })()
   }
 
@@ -216,14 +158,14 @@ export const DealSetup: React.FC = () => {
         <ModuleProgress
           moduleLabel="Legal"
           step={1}
-          totalSteps={7}
+          totalSteps={8}
           stepTitle="Questionnaire"
-          detail="Entity, property & economics"
+          detail="Entity, property & offering"
         />
         <h1>Let's set up your deal.</h1>
         <p className="page-header-subtitle">
           We'll walk through your entity, property, managing partner, and offering
-          economics — one section at a time, all at your pace.
+          structure — one section at a time, all at your pace.
         </p>
       </div>
 
@@ -237,8 +179,7 @@ export const DealSetup: React.FC = () => {
       <div className="card">
         <Stepper
           onFinish={onFinish}
-          finishLabel="Save & Continue to SPV Formation →"
-          nextDisabled={(index) => index === 7 ? prefRateRequired : false}
+          finishLabel="Save & Continue to Deal Economics →"
           scopeLabel="Questionnaire section"
         >
 
@@ -521,21 +462,22 @@ export const DealSetup: React.FC = () => {
             </div>
           </Step>
 
-          {/* ── Step 5: Bridge to economics ── */}
+          {/* ── Step 5: Bridge to offering ── */}
           <Step>
             <div className="form-section">
               <div className="form-section-title">Entity Setup Complete.</div>
               <p className="form-section-desc">
                 Your entity and property details are ready. Now let's configure the offering
-                structure — exemption type, LP returns, and the GP promote.
+                structure — exemption type, minimum investment, and closing timeline.
               </p>
 
               <div className="info-box">
                 <div className="info-box-title">What comes next</div>
                 <p>
-                  The next 5 sections configure how you're raising capital and how
-                  returns are distributed between LPs and the GP. This data flows
+                  The next 2 sections configure how you're raising capital. This data flows
                   directly into your Operating Agreement and subscription documents.
+                  Deal economics (capital stack, preferred return, GP promote, and fees)
+                  will be set up in the Deal Economics step.
                   You can also save your progress at any time using the button below.
                 </p>
               </div>
@@ -669,175 +611,10 @@ export const DealSetup: React.FC = () => {
             </div>
           </Step>
 
-          {/* ── Step 8: Preferred return ── */}
-          <Step>
-            <div className="form-section">
-              <div className="form-section-title">Structure The LP Preferred Return.</div>
-              <p className="form-section-desc">
-                A preferred return gives LPs priority on distributions before the GP earns a promote.
-                It aligns incentives and is standard in most real estate deals.
-              </p>
-
-              <div className="info-box">
-                <div className="info-box-title">Preferred return explained</div>
-                <p>
-                  LPs receive distributions equal to their preferred return percentage before the GP
-                  takes any promote. A <em>cumulative</em> preferred return accrues unpaid amounts;
-                  a <em>non-cumulative</em> return does not. IRR-based structures use a hurdle rate.
-                </p>
-              </div>
-
-              <div className="checkbox-row">
-                <input
-                  type="checkbox"
-                  id="preferredReturnEnabled"
-                  {...form.register('preferredReturnEnabled')}
-                />
-                <label className="checkbox-label" htmlFor="preferredReturnEnabled">
-                  Enable LP preferred return
-                </label>
-              </div>
-
-              {prefEnabled && (
-                <>
-                  <div className="form-row" style={{ marginTop: 16 }}>
-                    {prefType !== 'IRR-based' && (
-                      <div className="field-group">
-                        <div className="field-label-row">
-                          <label className="field-label" htmlFor="preferredReturnRate">
-                            Preferred Return Rate (%)
-                          </label>
-                        </div>
-                        <FieldHelp text="Annual percentage LPs earn before GP promote kicks in. 6–8% is common." />
-                        <input
-                          id="preferredReturnRate"
-                          type="number"
-                          className={`field-input${prefRateRequired ? ' field-input--error' : ''}`}
-                          placeholder="e.g. 8"
-                          min={0}
-                          max={100}
-                          step={0.5}
-                          aria-invalid={prefRateRequired}
-                          {...form.register('preferredReturnRate', { valueAsNumber: true })}
-                        />
-                      </div>
-                    )}
-
-                    <div className="field-group">
-                      <label className="field-label" htmlFor="preferredReturnType">Preferred Return Type</label>
-                      <FieldHelp text="How unpaid preferred return is treated over time." />
-                      <select
-                        id="preferredReturnType"
-                        className="field-input"
-                        {...form.register('preferredReturnType')}
-                      >
-                        <option value="">Select type</option>
-                        <option value="cumulative">Cumulative</option>
-                        <option value="non-cumulative">Non-cumulative</option>
-                        <option value="IRR-based">IRR-based</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {prefType === 'IRR-based' && (
-                    <div className="field-group">
-                      <div className="field-label-row">
-                        <label className="field-label" htmlFor="irrRate">
-                          IRR Hurdle Rate (%) <span className="field-required">*</span>
-                        </label>
-                      </div>
-                      <FieldHelp text="The minimum IRR investors must receive before the GP earns any promote." />
-                      <input
-                        id="irrRate"
-                        type="number"
-                        className={`field-input${errors.irrRate ? ' field-input--error' : ''}`}
-                        placeholder="e.g. 10"
-                        min={0}
-                        step={0.5}
-                        style={{ maxWidth: 160 }}
-                        aria-invalid={!!errors.irrRate}
-                        {...form.register('irrRate', { valueAsNumber: true })}
-                      />
-                      {errors.irrRate && (
-                        <div className="field-error-msg" role="alert">
-                          ⚠ {errors.irrRate.message}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </Step>
-
-          {/* ── Step 9: GP promote & LP split ── */}
-          <Step>
-            <div className="form-section">
-              <div className="form-section-title">What's The GP Promote?</div>
-              <p className="form-section-desc">
-                The promote is the GP's share of profits above the preferred return.
-                The LP residual is calculated automatically.
-              </p>
-
-              <div className="field-group" style={{ maxWidth: 280 }}>
-                <div className="field-label-row">
-                  <label className="field-label" htmlFor="gpPromote">GP Promote (%)</label>
-                  <Tooltip
-                    title="GP Promote / Carried Interest"
-                    content="The percentage of profits above the preferred return that the GP keeps. 20% is the industry standard — sometimes called '2 and 20' with a 2% management fee."
-                  />
-                </div>
-                <FieldHelp text="Enter the GP's share of profits after the preferred return. 20% is standard." />
-                <input
-                  id="gpPromote"
-                  type="number"
-                  className="field-input"
-                  placeholder="e.g. 20"
-                  min={0}
-                  max={100}
-                  step={1}
-                  {...form.register('gpPromote', { valueAsNumber: true })}
-                />
-              </div>
-
-              {lpResidual !== null && (
-                <div className="info-box" style={{ marginTop: 16, maxWidth: 320 }}>
-                  <div className="info-box-title">LP residual: {lpResidual}%</div>
-                  <p>LPs will receive {lpResidual}% of profits above the preferred return.</p>
-                </div>
-              )}
-            </div>
-          </Step>
-
-          {/* ── Step 10: Fees & asset management ── */}
-          <Step>
-            <div className="form-section">
-              <div className="form-section-title">Optional: Fees &amp; Asset Management.</div>
-              <p className="form-section-desc">
-                Describe any management or transaction fees the GP will charge. These appear in the
-                Operating Agreement. Leave blank if not applicable.
-              </p>
-
-              <div className="field-group">
-                <label className="field-label" htmlFor="assetManagementFeeDescription">
-                  Asset Management Fee Description
-                </label>
-                <FieldHelp text='e.g. "1% per annum of invested equity, charged quarterly from operating cash flow."' />
-                <textarea
-                  id="assetManagementFeeDescription"
-                  className="field-input"
-                  rows={2}
-                  placeholder="Describe the asset management fee structure, if any"
-                  {...form.register('assetManagementFeeDescription')}
-                />
-              </div>
-            </div>
-          </Step>
-
         </Stepper>
       </div>
 
-      <HelpCard text="Our team can help you verify entity details, choose an exemption, structure the preferred return, or review your GP promote. Don't hesitate to reach out." />
+      <HelpCard text="Our team can help you verify entity details, choose an offering exemption, or review your legal formation documents. Don't hesitate to reach out." />
 
       {/* Change warning modal */}
       {pendingVals && (

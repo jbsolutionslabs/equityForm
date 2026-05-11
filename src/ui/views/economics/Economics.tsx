@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   useEconomicsStore,
   canLockEconomics,
@@ -26,6 +27,7 @@ const TABS: { id: Tab; label: string; sub: string }[] = [
 
 export const Economics: React.FC = () => {
   const [tab, setTab] = useState<Tab>('A')
+  const navigate = useNavigate()
 
   const getOrCreateDeal = useEconomicsStore(s => s.getOrCreateDeal)
   const lockEconomics   = useEconomicsStore(s => s.lockEconomics)
@@ -143,7 +145,7 @@ export const Economics: React.FC = () => {
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => lockEconomics(DEAL_ID, 'GP')}
+              onClick={() => { lockEconomics(DEAL_ID, 'GP'); navigate('/spv') }}
             >
               Lock Economics
             </button>
