@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAppStore, isSpvFormed, canSendSubAgreements } from '../../state/store'
+import { useEconomicsStore, isEconomicsLocked, isEconomicsComplete } from '../../state/economicsStore'
+import { DEAL_ID } from '../views/economics/Economics'
 
 type StageConfig = {
   to:       string
@@ -69,22 +71,26 @@ const STAGES: StageConfig[] = [
 const LEGAL_ROUTES  = STAGES.map((s) => s.to)
 const isLegalRoute  = (path: string) => LEGAL_ROUTES.includes(path) || path === '/'
 const isAcctRoute   = (path: string) => path.startsWith('/accounting')
+const isEconRoute   = (path: string) => path.startsWith('/economics')
 
 export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
   const loc      = useLocation()
   const navigate = useNavigate()
   const data     = useAppStore((s) => s.data)
   const reset    = useAppStore((s) => s.reset)
+  const econDeal = useEconomicsStore((s) => s.deals.find(d => d.dealId === DEAL_ID))
   const [confirmReset, setConfirmReset] = useState(false)
 
   // Derive which section the current route belongs to
   const isOnLegal = isLegalRoute(loc.pathname)
   const isOnAcct  = isAcctRoute(loc.pathname)
-  const section   = isOnAcct ? 'acct' : isOnLegal ? 'legal' : 'none'
+  const isOnEcon  = isEconRoute(loc.pathname)
+  const section   = isOnAcct ? 'acct' : isOnEcon ? 'econ' : isOnLegal ? 'legal' : 'none'
 
   // Explicit open/close overrides — null means "follow route default"
   const [legalExplicit, setLegalExplicit] = useState<boolean | null>(null)
   const [acctExplicit,  setAcctExplicit]  = useState<boolean | null>(null)
+  const [econExplicit,  setEconExplicit]  = useState<boolean | null>(null)
   const prevSection = useRef(section)
 
   // Reset overrides whenever the user moves between sections
@@ -92,12 +98,14 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
     if (prevSection.current !== section) {
       setLegalExplicit(null)
       setAcctExplicit(null)
+      setEconExplicit(null)
       prevSection.current = section
     }
   }, [section])
 
   const legalOpen = legalExplicit !== null ? legalExplicit : isOnLegal
   const acctOpen  = acctExplicit  !== null ? acctExplicit  : isOnAcct
+  const econOpen  = econExplicit  !== null ? econExplicit  : isOnEcon
 
   const handleLegalClick = () => {
     const next = !legalOpen
@@ -110,6 +118,16 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
     setAcctExplicit(next)
     if (next && !isOnAcct) navigate('/accounting')
   }
+
+  const handleEconClick = () => {
+    const next = !econOpen
+    setEconExplicit(next)
+    if (next && !isOnEcon) navigate('/economics')
+  }
+
+  // Economics status
+  const econLocked   = isEconomicsLocked(econDeal)
+  const econComplete = isEconomicsComplete(econDeal)
 
   // Legal completion summary for the module header badge
   const legalDoneCount = STAGES.filter((s) => s.done(data)).length
@@ -143,6 +161,60 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
               <span className="sidebar-dashboard-sub">Portfolio overview</span>
             </div>
           </Link>
+
+          {/* ══ Economics module ══ */}
+          <button
+            type="button"
+            className={[
+              'sidebar-module-header',
+              econOpen ? 'sidebar-module-header--open' : '',
+            ].filter(Boolean).join(' ')}
+            onClick={handleEconClick}
+            aria-expanded={econOpen}
+          >
+            <div className="sidebar-module-icon" aria-hidden="true">◈</div>
+            <div className="sidebar-module-text">
+              <span className="sidebar-module-title">Economics</span>
+              <span className="sidebar-module-subtitle">Capital stack &amp; waterfall</span>
+            </div>
+            <div className="sidebar-module-meta">
+              {econLocked && <span className="sidebar-module-count">🔒</span>}
+              {!econLocked && econComplete && <span className="sidebar-module-count">✓</span>}
+              <span className="sidebar-module-chevron" aria-hidden="true">
+                {econOpen ? '▾' : '▸'}
+              </span>
+            </div>
+          </button>
+
+          {econOpen && (
+            <div className="sidebar-module-steps" aria-label="Economics steps">
+              <Link
+                to="/economics"
+                className={[
+                  'sidebar-step',
+                  isOnEcon ? 'sidebar-step--active' : '',
+                ].filter(Boolean).join(' ')}
+                aria-current={isOnEcon ? 'step' : undefined}
+              >
+                <div
+                  className={[
+                    'sidebar-step-indicator',
+                    econLocked   ? 'sidebar-step-indicator--done'
+                    : econComplete ? 'sidebar-step-indicator--done'
+                    : isOnEcon   ? 'sidebar-step-indicator--active'
+                    : 'sidebar-step-indicator--accessible',
+                  ].filter(Boolean).join(' ')}
+                  aria-hidden="true"
+                >
+                  {econLocked || econComplete ? '✓' : 'E'}
+                </div>
+                <div className="sidebar-step-text">
+                  <span className="sidebar-step-title">Deal Economics</span>
+                  <span className="sidebar-step-subtitle">Stack, pref &amp; fees</span>
+                </div>
+              </Link>
+            </div>
+          )}
 
           {/* ══ Legal module ══ */}
           <button
