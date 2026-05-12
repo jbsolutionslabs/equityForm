@@ -1,55 +1,54 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { useAppStore, isSpvFormed, canSendSubAgreements } from '../../state/store'
+import React, { useState } from 'react'
+import { Link, useLocation, useNavigate, useParams, useMatch } from 'react-router-dom'
+import { useAppStore, isSpvFormed } from '../../state/store'
 import { useEconomicsStore, isEconomicsLocked } from '../../state/economicsStore'
-import { DEAL_ID } from '../views/economics/Economics'
 
 type StageConfig = {
-  to:       string
+  path:     string
   step:     number
   title:    string
   subtitle: string
-  done:     (data: ReturnType<typeof useAppStore.getState>['data']) => boolean
+  done:     (data: ReturnType<typeof useAppStore.getState>['deals'][string]['data'], econLocked: boolean) => boolean
 }
 
 const STAGES: StageConfig[] = [
   {
-    to:       '/deal',
+    path:     'questionnaire',
     step:     1,
     title:    'Questionnaire',
     subtitle: 'Entity, property & offering',
     done:     (d) => !!(d.deal.entityName && d.offering.offeringExemption),
   },
   {
-    to:       '/economics',
+    path:     'economics',
     step:     2,
     title:    'Deal Economics',
     subtitle: 'Capital stack, pref & fees',
-    done:     () => false, // econLocked handled separately in render
+    done:     (_d, econLocked) => econLocked,
   },
   {
-    to:       '/spv',
+    path:     'spv',
     step:     3,
     title:    'SPV Formation',
     subtitle: 'LLC filing, EIN & agent',
     done:     (d) => isSpvFormed(d),
   },
   {
-    to:       '/oa',
+    path:     'oa',
     step:     4,
     title:    'Operating Agreement',
     subtitle: 'Generate, review & sign',
     done:     (d) => d.operatingAgreement?.status === 'signed',
   },
   {
-    to:       '/investors',
+    path:     'investors',
     step:     5,
     title:    'Investor Intake',
     subtitle: 'Add investors & sub agreements',
     done:     (d) => d.investors.length > 0 && d.subscriptions.some((s) => s.status !== 'pending'),
   },
   {
-    to:       '/signatures',
+    path:     'signatures',
     step:     6,
     title:    'E-Signatures',
     subtitle: 'Send & track investor signing',
@@ -58,7 +57,7 @@ const STAGES: StageConfig[] = [
       d.subscriptions.every((s) => s.status === 'signed' || s.status === 'paid'),
   },
   {
-    to:       '/wires',
+    path:     'wires',
     step:     7,
     title:    'Wire Tracking',
     subtitle: 'Confirm capital received',
@@ -67,7 +66,7 @@ const STAGES: StageConfig[] = [
       d.subscriptions.every((s) => s.status === 'paid'),
   },
   {
-    to:       '/captable',
+    path:     'captable',
     step:     8,
     title:    'Cap Table Lock',
     subtitle: 'Finalize & lock',
@@ -75,59 +74,247 @@ const STAGES: StageConfig[] = [
   },
 ]
 
-const LEGAL_ROUTES  = STAGES.map((s) => s.to)
-const isLegalRoute  = (path: string) => LEGAL_ROUTES.includes(path) || path === '/'
-const isAcctRoute   = (path: string) => path.startsWith('/accounting')
-
-export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
-  const loc      = useLocation()
-  const navigate = useNavigate()
-  const data     = useAppStore((s) => s.data)
-  const reset    = useAppStore((s) => s.reset)
-  const econDeal = useEconomicsStore((s) => s.deals.find(d => d.dealId === DEAL_ID))
+/* ─── Inner sidebar for deal context ────────────────────────────────────── */
+function DealSidebar({ dealId }: { dealId: string }) {
+  const loc     = useLocation()
+  const deals   = useAppStore((s) => s.deals)
+  const reset   = useAppStore((s) => s.reset)
+  const econDeal = useEconomicsStore((s) => s.deals.find((d) => d.dealId === dealId))
   const [confirmReset, setConfirmReset] = useState(false)
 
-  // Derive which section the current route belongs to
-  const isOnLegal = isLegalRoute(loc.pathname)
-  const isOnAcct  = isAcctRoute(loc.pathname)
-  const section   = isOnAcct ? 'acct' : isOnLegal ? 'legal' : 'none'
+  const entry = deals[dealId]
+  const data  = entry?.data
 
-  // Explicit open/close overrides — null means "follow route default"
-  const [legalExplicit, setLegalExplicit] = useState<boolean | null>(null)
-  const [acctExplicit,  setAcctExplicit]  = useState<boolean | null>(null)
-  const prevSection = useRef(section)
+  const econLocked  = isEconomicsLocked(econDeal)
+  const dealName    = data?.deal?.entityName || 'New Deal'
+  const legalDoneCount = data ? STAGES.filter((s) => s.done(data, econLocked)).length : 0
 
-  // Reset overrides whenever the user moves between sections
-  useEffect(() => {
-    if (prevSection.current !== section) {
-      setLegalExplicit(null)
-      setAcctExplicit(null)
-      prevSection.current = section
-    }
-  }, [section])
+  return (
+    <>
+      <div className="sidebar-back-row">
+        <Link to="/deals" className="sidebar-back-link">
+          ← All Deals
+        </Link>
+      </div>
 
-  const legalOpen = legalExplicit !== null ? legalExplicit : isOnLegal
-  const acctOpen  = acctExplicit  !== null ? acctExplicit  : isOnAcct
+      <div className="sidebar-deal-name">{dealName}</div>
 
-  const handleLegalClick = () => {
-    const next = !legalOpen
-    setLegalExplicit(next)
-    if (next && !isOnLegal) navigate('/deal')
-  }
+      <div className="sidebar-module-steps" aria-label="Deal stages" style={{ padding: '0 8px' }}>
+        {STAGES.map((s) => {
+          const to     = `/deals/${dealId}/${s.path}`
+          const active = loc.pathname === to
+          const isDone = data ? s.done(data, econLocked) && !active : false
+          const indicatorClass = isDone
+            ? 'sidebar-step-indicator--done'
+            : active
+            ? 'sidebar-step-indicator--active'
+            : 'sidebar-step-indicator--accessible'
+
+          return (
+            <Link
+              key={s.path}
+              to={to}
+              className={['sidebar-step', active ? 'sidebar-step--active' : ''].filter(Boolean).join(' ')}
+              aria-current={active ? 'step' : undefined}
+            >
+              <div className={`sidebar-step-indicator ${indicatorClass}`} aria-hidden="true">
+                {isDone ? '✓' : s.step}
+              </div>
+              <div className="sidebar-step-text">
+                <span className="sidebar-step-title">{s.title}</span>
+                <span className="sidebar-step-subtitle">{s.subtitle}</span>
+              </div>
+            </Link>
+          )
+        })}
+      </div>
+
+      <div className="sidebar-module-count-row">
+        {legalDoneCount > 0 && (
+          <span className="sidebar-module-count">{legalDoneCount}/8 stages</span>
+        )}
+      </div>
+
+      <div className="sidebar-footer">
+        <a href="mailto:support@equityform.com" className="sidebar-help-link">
+          <span className="sidebar-help-icon" aria-hidden="true">?</span>
+          Need help?
+        </a>
+        {confirmReset ? (
+          <div className="sidebar-reset-confirm">
+            <span className="sidebar-reset-confirm-label">Clear all data?</span>
+            <div className="sidebar-reset-confirm-actions">
+              <button
+                type="button"
+                className="sidebar-reset-btn sidebar-reset-btn--danger"
+                onClick={() => { reset(); setConfirmReset(false) }}
+              >
+                Yes, reset
+              </button>
+              <button
+                type="button"
+                className="sidebar-reset-btn sidebar-reset-btn--cancel"
+                onClick={() => setConfirmReset(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="sidebar-reset-trigger"
+            onClick={() => setConfirmReset(true)}
+          >
+            Reset demo data
+          </button>
+        )}
+      </div>
+    </>
+  )
+}
+
+/* ─── Top-level nav sidebar ─────────────────────────────────────────────── */
+function TopLevelSidebar() {
+  const loc      = useLocation()
+  const navigate = useNavigate()
+  const reset    = useAppStore((s) => s.reset)
+  const [confirmReset, setConfirmReset] = useState(false)
+  const [acctOpen, setAcctOpen]         = useState(loc.pathname.startsWith('/accounting'))
 
   const handleAcctClick = () => {
     const next = !acctOpen
-    setAcctExplicit(next)
-    if (next && !isOnAcct) navigate('/accounting')
+    setAcctOpen(next)
+    if (next && !loc.pathname.startsWith('/accounting')) navigate('/accounting')
   }
 
-  // Economics status
-  const econLocked = isEconomicsLocked(econDeal)
+  return (
+    <>
+      <nav className="sidebar-nav" aria-label="Modules">
 
-  // Legal completion summary for the module header badge
-  const legalDoneCount = STAGES.filter((s) =>
-    s.to === '/economics' ? econLocked : s.done(data)
-  ).length
+        {/* ══ GP Dashboard ══ */}
+        <Link
+          to="/dashboard"
+          className={[
+            'sidebar-dashboard-link',
+            loc.pathname === '/dashboard' ? 'sidebar-dashboard-link--active' : '',
+          ].filter(Boolean).join(' ')}
+          aria-current={loc.pathname === '/dashboard' ? 'page' : undefined}
+        >
+          <div className="sidebar-dashboard-icon" aria-hidden="true">⊞</div>
+          <div className="sidebar-dashboard-text">
+            <span className="sidebar-dashboard-title">GP Dashboard</span>
+            <span className="sidebar-dashboard-sub">Portfolio overview</span>
+          </div>
+        </Link>
+
+        {/* ══ Deals ══ */}
+        <Link
+          to="/deals"
+          className={[
+            'sidebar-dashboard-link',
+            loc.pathname === '/deals' ? 'sidebar-dashboard-link--active' : '',
+          ].filter(Boolean).join(' ')}
+          aria-current={loc.pathname === '/deals' ? 'page' : undefined}
+        >
+          <div className="sidebar-dashboard-icon" aria-hidden="true">⚖</div>
+          <div className="sidebar-dashboard-text">
+            <span className="sidebar-dashboard-title">Deals</span>
+            <span className="sidebar-dashboard-sub">Deal formation &amp; legal</span>
+          </div>
+        </Link>
+
+        {/* ══ Accounting module ══ */}
+        <button
+          type="button"
+          className={[
+            'sidebar-module-header',
+            acctOpen ? 'sidebar-module-header--open' : '',
+          ].filter(Boolean).join(' ')}
+          onClick={handleAcctClick}
+          aria-expanded={acctOpen}
+        >
+          <div className="sidebar-module-icon" aria-hidden="true">$</div>
+          <div className="sidebar-module-text">
+            <span className="sidebar-module-title">Accounting</span>
+            <span className="sidebar-module-subtitle">Monthly financials &amp; statements</span>
+          </div>
+          <div className="sidebar-module-meta">
+            <span className="sidebar-module-chevron" aria-hidden="true">
+              {acctOpen ? '▾' : '▸'}
+            </span>
+          </div>
+        </button>
+
+        {acctOpen && (
+          <div className="sidebar-module-steps" aria-label="Accounting steps">
+            <Link
+              to="/accounting"
+              className={[
+                'sidebar-step',
+                loc.pathname.startsWith('/accounting') ? 'sidebar-step--active' : '',
+              ].filter(Boolean).join(' ')}
+              aria-current={loc.pathname.startsWith('/accounting') ? 'step' : undefined}
+            >
+              <div
+                className={`sidebar-step-indicator ${loc.pathname.startsWith('/accounting') ? 'sidebar-step-indicator--active' : 'sidebar-step-indicator--accessible'}`}
+                aria-hidden="true"
+              >
+                1
+              </div>
+              <div className="sidebar-step-text">
+                <span className="sidebar-step-title">Properties</span>
+                <span className="sidebar-step-subtitle">P&amp;L entry &amp; statements</span>
+              </div>
+            </Link>
+          </div>
+        )}
+
+      </nav>
+
+      <div className="sidebar-footer">
+        <a href="mailto:support@equityform.com" className="sidebar-help-link">
+          <span className="sidebar-help-icon" aria-hidden="true">?</span>
+          Need help?
+        </a>
+        {confirmReset ? (
+          <div className="sidebar-reset-confirm">
+            <span className="sidebar-reset-confirm-label">Clear all data?</span>
+            <div className="sidebar-reset-confirm-actions">
+              <button
+                type="button"
+                className="sidebar-reset-btn sidebar-reset-btn--danger"
+                onClick={() => { reset(); setConfirmReset(false) }}
+              >
+                Yes, reset
+              </button>
+              <button
+                type="button"
+                className="sidebar-reset-btn sidebar-reset-btn--cancel"
+                onClick={() => setConfirmReset(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="sidebar-reset-trigger"
+            onClick={() => setConfirmReset(true)}
+          >
+            Reset demo data
+          </button>
+        )}
+      </div>
+    </>
+  )
+}
+
+/* ─── Shell ──────────────────────────────────────────────────────────────── */
+export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
+  const dealMatch = useMatch('/deals/:dealId/*')
+  const dealId    = dealMatch?.params?.dealId
 
   return (
     <div className="app-root">
@@ -141,166 +328,11 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
           <p className="sidebar-tagline">Guided Deal Setup</p>
         </div>
 
-        <nav className="sidebar-nav" aria-label="Modules">
-
-          {/* ══ GP Dashboard ══ */}
-          <Link
-            to="/dashboard"
-            className={[
-              'sidebar-dashboard-link',
-              loc.pathname === '/dashboard' ? 'sidebar-dashboard-link--active' : '',
-            ].filter(Boolean).join(' ')}
-            aria-current={loc.pathname === '/dashboard' ? 'page' : undefined}
-          >
-            <div className="sidebar-dashboard-icon" aria-hidden="true">⊞</div>
-            <div className="sidebar-dashboard-text">
-              <span className="sidebar-dashboard-title">GP Dashboard</span>
-              <span className="sidebar-dashboard-sub">Portfolio overview</span>
-            </div>
-          </Link>
-
-          {/* ══ Legal module ══ */}
-          <button
-            type="button"
-            className={[
-              'sidebar-module-header',
-              legalOpen ? 'sidebar-module-header--open' : '',
-            ].filter(Boolean).join(' ')}
-            onClick={handleLegalClick}
-            aria-expanded={legalOpen}
-          >
-            <div className="sidebar-module-icon" aria-hidden="true">⚖</div>
-            <div className="sidebar-module-text">
-              <span className="sidebar-module-title">Legal</span>
-              <span className="sidebar-module-subtitle">Deal setup &amp; formation</span>
-            </div>
-            <div className="sidebar-module-meta">
-              {legalDoneCount > 0 && (
-                <span className="sidebar-module-count">{legalDoneCount}/8</span>
-              )}
-              <span className="sidebar-module-chevron" aria-hidden="true">
-                {legalOpen ? '▾' : '▸'}
-              </span>
-            </div>
-          </button>
-
-          {legalOpen && (
-            <div className="sidebar-module-steps" aria-label="Legal steps">
-              {STAGES.map((s) => {
-                const active  = loc.pathname === s.to
-                const isDone  = (s.to === '/economics' ? econLocked : s.done(data)) && !active
-                const indicatorClass = isDone
-                  ? 'sidebar-step-indicator--done'
-                  : active
-                  ? 'sidebar-step-indicator--active'
-                  : 'sidebar-step-indicator--accessible'
-
-                return (
-                  <Link
-                    key={s.to}
-                    to={s.to}
-                    className={[
-                      'sidebar-step',
-                      active ? 'sidebar-step--active' : '',
-                    ].filter(Boolean).join(' ')}
-                    aria-current={active ? 'step' : undefined}
-                  >
-                    <div className={`sidebar-step-indicator ${indicatorClass}`} aria-hidden="true">
-                      {isDone ? '✓' : s.step}
-                    </div>
-                    <div className="sidebar-step-text">
-                      <span className="sidebar-step-title">{s.title}</span>
-                      <span className="sidebar-step-subtitle">{s.subtitle}</span>
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-          )}
-
-          {/* ══ Accounting module ══ */}
-          <button
-            type="button"
-            className={[
-              'sidebar-module-header',
-              acctOpen ? 'sidebar-module-header--open' : '',
-            ].filter(Boolean).join(' ')}
-            onClick={handleAcctClick}
-            aria-expanded={acctOpen}
-          >
-            <div className="sidebar-module-icon" aria-hidden="true">$</div>
-            <div className="sidebar-module-text">
-              <span className="sidebar-module-title">Accounting</span>
-              <span className="sidebar-module-subtitle">Monthly financials &amp; statements</span>
-            </div>
-            <div className="sidebar-module-meta">
-              <span className="sidebar-module-chevron" aria-hidden="true">
-                {acctOpen ? '▾' : '▸'}
-              </span>
-            </div>
-          </button>
-
-          {acctOpen && (
-            <div className="sidebar-module-steps" aria-label="Accounting steps">
-              <Link
-                to="/accounting"
-                className={[
-                  'sidebar-step',
-                  loc.pathname.startsWith('/accounting') ? 'sidebar-step--active' : '',
-                ].filter(Boolean).join(' ')}
-                aria-current={loc.pathname.startsWith('/accounting') ? 'step' : undefined}
-              >
-                <div
-                  className={`sidebar-step-indicator ${loc.pathname.startsWith('/accounting') ? 'sidebar-step-indicator--active' : 'sidebar-step-indicator--accessible'}`}
-                  aria-hidden="true"
-                >
-                  1
-                </div>
-                <div className="sidebar-step-text">
-                  <span className="sidebar-step-title">Properties</span>
-                  <span className="sidebar-step-subtitle">P&amp;L entry &amp; statements</span>
-                </div>
-              </Link>
-            </div>
-          )}
-
-        </nav>
-
-        <div className="sidebar-footer">
-          <a href="mailto:support@equityform.com" className="sidebar-help-link">
-            <span className="sidebar-help-icon" aria-hidden="true">?</span>
-            Need help?
-          </a>
-          {confirmReset ? (
-            <div className="sidebar-reset-confirm">
-              <span className="sidebar-reset-confirm-label">Clear all data?</span>
-              <div className="sidebar-reset-confirm-actions">
-                <button
-                  type="button"
-                  className="sidebar-reset-btn sidebar-reset-btn--danger"
-                  onClick={() => { reset(); setConfirmReset(false) }}
-                >
-                  Yes, reset
-                </button>
-                <button
-                  type="button"
-                  className="sidebar-reset-btn sidebar-reset-btn--cancel"
-                  onClick={() => setConfirmReset(false)}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="sidebar-reset-trigger"
-              onClick={() => setConfirmReset(true)}
-            >
-              Reset demo data
-            </button>
-          )}
-        </div>
+        {dealId ? (
+          <DealSidebar dealId={dealId} />
+        ) : (
+          <TopLevelSidebar />
+        )}
       </aside>
 
       {/* ── Main ── */}

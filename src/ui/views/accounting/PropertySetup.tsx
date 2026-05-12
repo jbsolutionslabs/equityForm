@@ -167,35 +167,37 @@ function buildProperty(
 
 type Props = {
   existingProperty?: AccountingProperty
+  availableDeals:    { id: string; label: string }[]
+  prefillDealId?:    string
   onSaved: (propertyId: string) => void
   onCancel?: () => void
 }
 
 /* ─── Component ── */
 
-export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCancel }) => {
+export const PropertySetup: React.FC<Props> = ({ existingProperty, availableDeals, prefillDealId, onSaved, onCancel }) => {
   const addProperty    = useAccountingStore((s) => s.addProperty)
   const updateProperty = useAccountingStore((s) => s.updateProperty)
   const upsertEntry    = useAccountingStore((s) => s.upsertEntry)
-  const appData        = useAppStore((s) => s.data)
-  const oaLpPrefRateAnnual = getAnnualLpPrefRateFromOA(
-    appData.offering.preferredReturnEnabled,
-    appData.offering.preferredReturnRate,
-  )
+  const allDeals       = useAppStore((s) => s.deals)
 
-  // Phase 1 deals — single deal for now
-  const phase1Deal = useAppStore((s) => s.data.deal)
-  const availableDeals = phase1Deal.entityName
-    ? [{ id: phase1Deal.entityName, label: phase1Deal.entityName }]
-    : []
+  // Derive LP pref rate from whichever deal is selected (or first available)
+  const getOaPrefRate = (dealId: string) => {
+    const entry = allDeals[dealId] ?? Object.values(allDeals)[0]
+    return getAnnualLpPrefRateFromOA(
+      entry?.data.offering.preferredReturnEnabled,
+      entry?.data.offering.preferredReturnRate,
+    )
+  }
 
   // Hydrate from existing property if editing
   const initCore = (): CoreForm => {
     if (!existingProperty) {
+      const defaultDealId = prefillDealId ?? availableDeals[0]?.id ?? ''
       return {
         ...defaultCore(),
-        dealId: availableDeals[0]?.id ?? '',
-        lpPrefRateAnnual: oaLpPrefRateAnnual,
+        dealId:           defaultDealId,
+        lpPrefRateAnnual: getOaPrefRate(defaultDealId),
       }
     }
     return {
@@ -270,11 +272,12 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
   const patchAdv = <K extends keyof AdvancedForm>(k: K, v: AdvancedForm[K]) =>
     setAdv((f) => ({ ...f, [k]: v }))
 
+  const selectedDealData = allDeals[core.dealId]?.data
   const paidInvestorIds = new Set(
-    appData.subscriptions.filter((s) => s.status === 'paid').map((s) => s.investorId),
+    (selectedDealData?.subscriptions ?? []).filter((s) => s.status === 'paid').map((s) => s.investorId),
   )
-  const paidInvestors = appData.investors.filter((inv) => paidInvestorIds.has(inv.id))
-  const capTableSourceInvestors = paidInvestors.length > 0 ? paidInvestors : appData.investors
+  const paidInvestors = (selectedDealData?.investors ?? []).filter((inv) => paidInvestorIds.has(inv.id))
+  const capTableSourceInvestors = paidInvestors.length > 0 ? paidInvestors : (selectedDealData?.investors ?? [])
   const capTableLpEquity = capTableSourceInvestors.reduce((sum, inv) => sum + (inv.subscriptionAmount || 0), 0)
 
   useEffect(() => {
@@ -285,9 +288,9 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
 
   useEffect(() => {
     if (!lpPrefRateManualOverride) {
-      patchCore('lpPrefRateAnnual', oaLpPrefRateAnnual)
+      patchCore('lpPrefRateAnnual', getOaPrefRate(core.dealId))
     }
-  }, [lpPrefRateManualOverride, oaLpPrefRateAnnual])
+  }, [lpPrefRateManualOverride, core.dealId])
 
   const validate = (): boolean => {
     const e: Record<string, string> = {}
@@ -397,35 +400,22 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
 
         {/* ── Deal linkage ── */}
         <div className="field-group">
-          <label className="field-label">Deal / Fund</label>
-          {availableDeals.length > 0 ? (
-            <select
-              className="field-input"
-              style={{ maxWidth: 340 }}
-              value={core.dealId}
-              onChange={(e) => patchCore('dealId', e.target.value)}
-            >
-              <option value="">— Select a deal —</option>
-              {availableDeals.map((d) => (
-                <option key={d.id} value={d.id}>{d.label}</option>
-              ))}
-              <option value="__standalone__">Standalone (no deal link)</option>
-            </select>
-          ) : (
-            <input
-              type="text"
-              className="field-input"
-              style={{ maxWidth: 340 }}
-              placeholder="Fund or deal name (optional)"
-              value={core.dealId}
-              onChange={(e) => patchCore('dealId', e.target.value)}
-            />
-          )}
-          <div className="field-hint">
-            {availableDeals.length > 0
-              ? 'Links this property to a deal in your dashboard.'
-              : 'No deals found in Phase 1. Complete the Questionnaire first, or enter a name manually.'}
-          </div>
+          <label className="field-label">Deal</label>
+          <select
+            className="field-input"
+            style={{ maxWidth: 340 }}
+            value={core.dealId}
+            onChange={(e) => {
+              patchCore('dealId', e.target.value)
+              patchCore('lpPrefRateAnnual', getOaPrefRate(e.target.value))
+            }}
+          >
+            <option value="">— Select a deal —</option>
+            {availableDeals.map((d) => (
+              <option key={d.id} value={d.id}>{d.label}</option>
+            ))}
+          </select>
+          <div className="field-hint">Links this property to a deal from the Deals module.</div>
         </div>
 
         <div className="property-setup-divider">Financial Details</div>
@@ -694,7 +684,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                 className={`toggle-btn toggle-btn--sm ${!lpPrefRateManualOverride ? 'toggle-btn--active' : ''}`}
                 onClick={() => {
                   setLpPrefRateManualOverride(false)
-                  patchCore('lpPrefRateAnnual', oaLpPrefRateAnnual)
+                  patchCore('lpPrefRateAnnual', getOaPrefRate(core.dealId))
                 }}
               >
                 Pull from OA
@@ -721,7 +711,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
             <div className="field-hint">
               {lpPrefRateManualOverride
                 ? 'Manual override enabled.'
-                : `Auto from Operating Agreement: ${(oaLpPrefRateAnnual * 100).toFixed(2)}%`}
+                : `Auto from Operating Agreement: ${(getOaPrefRate(core.dealId) * 100).toFixed(2)}%`}
             </div>
           </div>
         </div>

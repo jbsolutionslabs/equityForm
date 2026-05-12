@@ -1,17 +1,19 @@
 import React, { useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { useAppStore, canSendSubAgreements } from '../../state/store'
 import { HelpCard } from '../components/HelpCard'
 import ModuleProgress from '../components/ModuleProgress'
 
 export const ESignature: React.FC = () => {
-  const data          = useAppStore((s) => s.data)
-  const investors     = data.investors
-  const subscriptions = data.subscriptions
+  const { dealId }    = useParams<{ dealId: string }>()
+  const data          = useAppStore((s) => s.deals[dealId!]?.data)
+  const investors     = data?.investors ?? []
+  const subscriptions = data?.subscriptions ?? []
   const generateSubscriptionForInvestor = useAppStore((s) => s.generateSubscriptionForInvestor)
   const sendSubscriptionForSignature    = useAppStore((s) => s.sendSubscriptionForSignature)
   const markSubscriptionSigned          = useAppStore((s) => s.markSubscriptionSigned)
 
-  const canSend = canSendSubAgreements(data)
+  const canSend = data ? canSendSubAgreements(data) : false
 
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
 
@@ -36,11 +38,11 @@ export const ESignature: React.FC = () => {
     investors.forEach((inv) => {
       const sub = getSub(inv.id)
       if (!sub) {
-        generateSubscriptionForInvestor(inv.id)
-        sendSubscriptionForSignature(inv.id)
+        generateSubscriptionForInvestor(dealId!, inv.id)
+        sendSubscriptionForSignature(dealId!, inv.id)
         sent++
       } else if (sub.status === 'pending' || sub.status === 'generated') {
-        sendSubscriptionForSignature(inv.id)
+        sendSubscriptionForSignature(dealId!, inv.id)
         sent++
       }
     })
@@ -190,8 +192,8 @@ export const ESignature: React.FC = () => {
                             disabled={!canSend}
                             title={!canSend ? 'Complete OA signing first' : undefined}
                             onClick={() => {
-                              generateSubscriptionForInvestor(inv.id)
-                              sendSubscriptionForSignature(inv.id)
+                              generateSubscriptionForInvestor(dealId!, inv.id)
+                              sendSubscriptionForSignature(dealId!, inv.id)
                               notify(`Agreement sent to ${inv.fullLegalName}.`)
                             }}
                           >
@@ -203,7 +205,7 @@ export const ESignature: React.FC = () => {
                             type="button"
                             className="btn btn-primary btn-sm"
                             onClick={() => {
-                              sendSubscriptionForSignature(inv.id)
+                              sendSubscriptionForSignature(dealId!, inv.id)
                               notify(`Agreement sent to ${inv.fullLegalName}.`)
                             }}
                           >
@@ -223,7 +225,7 @@ export const ESignature: React.FC = () => {
                               type="button"
                               className="btn btn-ghost btn-sm"
                               onClick={() => {
-                                markSubscriptionSigned(inv.id)
+                                markSubscriptionSigned(dealId!, inv.id)
                                 notify(`Marked as signed for ${inv.fullLegalName}.`)
                               }}
                             >

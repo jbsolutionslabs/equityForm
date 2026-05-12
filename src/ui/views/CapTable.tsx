@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { useAppStore, canLockCapTable } from '../../state/store'
 import { HelpCard } from '../components/HelpCard'
 import { generatePlaceholders } from '../../utils/placeholders'
@@ -7,9 +8,10 @@ import html2pdf from 'html2pdf.js'
 import ModuleProgress from '../components/ModuleProgress'
 
 export const CapTable: React.FC = () => {
-  const data        = useAppStore((s) => s.data)
-  const investors   = data.investors
-  const deal        = data.deal
+  const { dealId }  = useParams<{ dealId: string }>()
+  const data        = useAppStore((s) => s.deals[dealId!]?.data)
+  const investors   = data?.investors ?? []
+  const deal        = data?.deal ?? {}
   const lockCapTable = useAppStore((s) => s.lockCapTable)
 
   const [showConfirm, setShowConfirm] = useState(false)
@@ -21,11 +23,11 @@ export const CapTable: React.FC = () => {
   }
 
   const isLocked  = !!deal.capTableLockedAt
-  const canLock   = canLockCapTable(data)
+  const canLock   = data ? canLockCapTable(data) : false
 
   // Only include investors who have actually sent funds (subscription status === 'paid')
   const paidInvestorIds = new Set(
-    data.subscriptions.filter((s) => s.status === 'paid').map((s) => s.investorId),
+    (data?.subscriptions ?? []).filter((s) => s.status === 'paid').map((s) => s.investorId),
   )
   const paidInvestors = investors.filter((inv) => paidInvestorIds.has(inv.id))
 
@@ -36,7 +38,7 @@ export const CapTable: React.FC = () => {
   const gpName = deal.gpEntityName || deal.gpSignerName || 'GP / Managing Member'
 
   const handleLock = () => {
-    lockCapTable()
+    lockCapTable(dealId!)
     setShowConfirm(false)
     notify('Cap table locked. Closing documents are ready to download.')
   }
@@ -183,7 +185,7 @@ export const CapTable: React.FC = () => {
   }
 
   const getUpdatedOaHtml = () => {
-    const { values } = generatePlaceholders(data)
+    const { values } = generatePlaceholders(data!)
     return generateOperatingAgreementHtml(values)
   }
 
@@ -217,7 +219,7 @@ export const CapTable: React.FC = () => {
       notify('Lock the cap table first to generate the final OA with updated Exhibit A.', 'error')
       return
     }
-    const { values } = generatePlaceholders(data)
+    const { values } = generatePlaceholders(data!)
     const html = generateOperatingAgreementWordHtml(values)
     const filename = `${(deal.entityName || 'operating-agreement').replace(/\s+/g, '-').toLowerCase()}-updated.doc`
     downloadOAAsDoc(html, filename)

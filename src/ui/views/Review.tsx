@@ -147,16 +147,20 @@ function InvestorsTable({ investors, subscriptions }: {
 
 /* ─── Main Review view ───────────────────────────────────────────────────── */
 export const Review: React.FC = () => {
-  const data            = useAppStore((s) => s.data)
-  const generateOA      = useAppStore((s) => s.generateOA)
-  const gpSignOA        = useAppStore((s) => s.gpSignOA)
-  const lockCapTable    = useAppStore((s) => s.lockCapTable)
+  const primaryId       = useAppStore((s) => Object.keys(s.deals)[0] ?? '')
+  const data            = useAppStore((s) => Object.values(s.deals)[0]?.data)
+  const _generateOA     = useAppStore((s) => s.generateOA)
+  const _gpSignOA       = useAppStore((s) => s.gpSignOA)
+  const _lockCapTable   = useAppStore((s) => s.lockCapTable)
+  const generateOA      = () => _generateOA(primaryId)
+  const gpSignOA        = () => _gpSignOA(primaryId)
+  const lockCapTable    = () => _lockCapTable(primaryId)
 
-  const ph     = generatePlaceholders(data)
+  const ph     = data ? generatePlaceholders(data) : { values: {} as any }
   const values = ph.values
-  const entityName = data.deal.entityName || '—'
-  const formationState = toLegalStateName(data.deal.formationState || '—')
-  const effectiveDate = toLongDate(data.deal.effectiveDate || '—')
+  const entityName = data?.deal.entityName || '—'
+  const formationState = toLegalStateName(data?.deal.formationState || '—')
+  const effectiveDate = toLongDate(data?.deal.effectiveDate || '—')
 
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
   const [showFullDoc, setShowFullDoc]   = useState(false)

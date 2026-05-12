@@ -113,4 +113,6 @@ export const seed: AppData = {
       signerTitle: 'Authorized Signatory',
     },
   ],
+  blueSkyFilings: {},
+  activityFeed:   [],
 }

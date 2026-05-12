@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react'
+import { useParams } from 'react-router-dom'
 import { useAppStore, canGenerateOA, isSpvFormed } from '../../state/store'
 import { useEconomicsStore, isEconomicsLocked } from '../../state/economicsStore'
 import { generatePlaceholders } from '../../utils/placeholders'
@@ -47,19 +48,20 @@ const TOC_SECTIONS = [
 ]
 
 export const OperatingAgreement: React.FC = () => {
-  const data              = useAppStore((s) => s.data)
-  const oa                = data.operatingAgreement
+  const { dealId }        = useParams<{ dealId: string }>()
+  const data              = useAppStore((s) => s.deals[dealId!]?.data)
+  const oa                = data?.operatingAgreement
   const generateOA        = useAppStore((s) => s.generateOA)
   const sendOaForDocuSign = useAppStore((s) => s.sendOaForDocuSign)
   const simulateOaSigned  = useAppStore((s) => s.simulateOaSigned)
-  const { values }        = generatePlaceholders(data)
-  const liveOaText        = generateOperatingAgreementText(values)
+  const { values }        = data ? generatePlaceholders(data) : { values: {} as any }
+  const liveOaText        = data ? generateOperatingAgreementText(values) : ''
 
-  const economicsDeal   = useEconomicsStore((s) => s.deals.find((d) => d.dealId === 'current'))
+  const economicsDeal   = useEconomicsStore((s) => s.deals.find((d) => d.dealId === dealId))
   const econLocked      = isEconomicsLocked(economicsDeal)
 
-  const spvOk  = isSpvFormed(data)
-  const canGen = canGenerateOA(data) && econLocked
+  const spvOk  = data ? isSpvFormed(data) : false
+  const canGen = data ? canGenerateOA(data) && econLocked : false
 
   // Derive current sub-step from OA status
   const deriveSubStep = (): SubStep => {
@@ -70,7 +72,7 @@ export const OperatingAgreement: React.FC = () => {
 
   const [subStep, setSubStep] = useState<SubStep>(deriveSubStep)
   const [acks, setAcks]       = useState({ a: false, b: false, c: false })
-  const [gpEmail, setGpEmail] = useState(oa?.gpEmail || data.deal.gpSignerName ? '' : '')
+  const [gpEmail, setGpEmail] = useState(oa?.gpEmail || data?.deal.gpSignerName ? '' : '')
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
   const docRef = useRef<HTMLDivElement>(null)
 
@@ -79,17 +81,17 @@ export const OperatingAgreement: React.FC = () => {
     window.setTimeout(() => setNotification(null), 4000)
   }
 
-  const entityName = data.deal.entityName || '—'
-  const formationState = toLegalStateName(data.deal.formationState || '—')
-  const effectiveDate = toLongDate(data.deal.effectiveDate || '—')
-  const preferredReturnPct = data.offering.preferredReturnEnabled
+  const entityName = data?.deal.entityName || '—'
+  const formationState = toLegalStateName(data?.deal.formationState || '—')
+  const effectiveDate = toLongDate(data?.deal.effectiveDate || '—')
+  const preferredReturnPct = data?.offering.preferredReturnEnabled
     ? data.offering.preferredReturnRate != null
       ? `${data.offering.preferredReturnRate}%`
       : '—'
     : 'None'
-  const gpPromotePct = data.offering.gpPromote != null ? `${data.offering.gpPromote}%` : '—'
+  const gpPromotePct = data?.offering.gpPromote != null ? `${data.offering.gpPromote}%` : '—'
   const lpGpSplit =
-    data.offering.lpResidual != null && data.offering.gpPromote != null
+    data?.offering.lpResidual != null && data?.offering.gpPromote != null
       ? `LP ${data.offering.lpResidual}% / GP ${data.offering.gpPromote}%`
       : '—'
 
@@ -98,7 +100,7 @@ export const OperatingAgreement: React.FC = () => {
       notify('Complete SPV Formation (Stage 3) and lock Deal Economics (Stage 2) before generating the Operating Agreement.', 'error')
       return
     }
-    generateOA()
+    generateOA(dealId!)
     setSubStep(2)
     notify('Operating Agreement generated. Please review and acknowledge below.')
   }
@@ -108,14 +110,14 @@ export const OperatingAgreement: React.FC = () => {
       notify('Please confirm all three acknowledgments before sending.', 'error')
       return
     }
-    const email = gpEmail.trim() || (data.deal.gpSignerName ? `${data.deal.gpSignerName.toLowerCase().replace(/\s+/g, '.')}@example.com` : 'gp@example.com')
-    sendOaForDocuSign(email)
+    const email = gpEmail.trim() || (data?.deal.gpSignerName ? `${data.deal.gpSignerName.toLowerCase().replace(/\s+/g, '.')}@example.com` : 'gp@example.com')
+    sendOaForDocuSign(dealId!, email)
     setSubStep(3)
     notify('Operating Agreement sent for DocuSign signature.')
   }
 
   const handleSimulateSigned = () => {
-    simulateOaSigned()
+    simulateOaSigned(dealId!)
     notify('Simulated: DocuSign envelope completed. OA is now GP-signed.')
   }
 

@@ -210,6 +210,13 @@ export type AppData = {
   activityFeed:       ActivityEvent[]
 }
 
+/* ─── Multi-deal wrapper ─────────────────────────────────────────────────── */
+export type AppDealEntry = {
+  id:        string
+  createdAt: string
+  data:      AppData
+}
+
 /* ─── Gate Functions (exported) ─────────────────────────────────────────── */
 export function isSpvFormed(data: AppData): boolean {
   const sf = data.spvFormation
@@ -266,7 +273,7 @@ const defaultOA: OperatingAgreement = {
   status: 'not_generated',
 }
 
-const defaultData: AppData = {
+export const defaultData: AppData = {
   deal:               {},
   offering:           {},
   banking:            {},
@@ -279,30 +286,11 @@ const defaultData: AppData = {
   activityFeed:       [],
 }
 
-/* ─── Seed data ──────────────────────────────────────────────────────────── */
-try {
-  const raw = localStorage.getItem(STORAGE_KEY)
-  if (!raw && demoSeed) {
-    Object.assign(defaultData, demoSeed)
-    if (!defaultData.spvFormation) defaultData.spvFormation = { ...defaultSpvFormation }
-    if (!defaultData.operatingAgreement.status) {
-      defaultData.operatingAgreement.status = defaultData.operatingAgreement.gpSigned
-        ? 'signed'
-        : defaultData.operatingAgreement.generated
-        ? 'generated'
-        : 'not_generated'
-    }
-  }
-} catch (_) {
-  // ignore
-}
-
-/* ─── Data migration (called on load to handle old localStorage) ─────────── */
-function migrate(data: AppData): AppData {
+/* ─── App-data migration (per-deal) ─────────────────────────────────────── */
+function migrateAppData(data: AppData): AppData {
   const sf = data.spvFormation as any
 
   if (!sf) {
-    // Very old data — had only the legacy spv object
     const formed = !!data.spv?.formed
     data.spvFormation = {
       entityName:           { complete: formed, entityName: data.deal?.entityName },
@@ -312,7 +300,6 @@ function migrate(data: AppData): AppData {
       foreignQualification: { complete: formed },
     }
   } else if (sf.llcFiled && !sf.entityName) {
-    // Old 3-step data (llcFiled / einObtained / registeredAgent) → new 5-step
     const oldFormed = !!sf.llcFiled?.complete
     data.spvFormation = {
       entityName:           { complete: oldFormed, entityName: data.deal?.entityName },
@@ -326,7 +313,6 @@ function migrate(data: AppData): AppData {
       foreignQualification: { complete: oldFormed },
     }
   } else {
-    // Post-migration data — ensure all keys exist
     data.spvFormation = {
       entityName:           sf.entityName           ?? { complete: false },
       registeredAgent:      sf.registeredAgent      ?? { complete: false },
@@ -335,7 +321,7 @@ function migrate(data: AppData): AppData {
       foreignQualification: sf.foreignQualification ?? { complete: false },
     }
   }
-  // Ensure OA status is canonical
+
   if (!data.operatingAgreement) {
     data.operatingAgreement = { status: 'not_generated' }
   } else if (!data.operatingAgreement.status) {
@@ -346,7 +332,6 @@ function migrate(data: AppData): AppData {
     }
   }
 
-  // Normalize investor accreditation basis for backward compatibility
   if (Array.isArray(data.investors)) {
     data.investors = data.investors.map((investor) => {
       const basis = investor.accreditedInvestorBasis
@@ -369,151 +354,232 @@ function migrate(data: AppData): AppData {
   return data
 }
 
+/* ─── Deals load / save ──────────────────────────────────────────────────── */
+function loadDeals(): Record<string, AppDealEntry> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+
+    // No stored data — seed if available
+    if (!raw) {
+      if (demoSeed) {
+        const id = 'deal-legacy'
+        const data: AppData = { ...defaultData }
+        Object.assign(data, demoSeed)
+        return { [id]: { id, createdAt: new Date().toISOString(), data: migrateAppData(data) } }
+      }
+      return {}
+    }
+
+    const parsed = JSON.parse(raw)
+
+    // New format: { deals: Record<string, AppDealEntry> }
+    if (parsed.deals && typeof parsed.deals === 'object') {
+      const result: Record<string, AppDealEntry> = {}
+      for (const [id, entry] of Object.entries(parsed.deals as Record<string, AppDealEntry>)) {
+        result[id] = { ...entry, data: migrateAppData({ ...entry.data }) }
+      }
+      return result
+    }
+
+    // Old format: raw AppData (top-level keys: deal, offering, spvFormation, ...)
+    if (parsed.deal !== undefined || parsed.spvFormation !== undefined) {
+      const id = 'deal-legacy'
+      return { [id]: { id, createdAt: new Date().toISOString(), data: migrateAppData(parsed) } }
+    }
+
+    return {}
+  } catch (_) {
+    return {}
+  }
+}
+
+function saveDeals(deals: Record<string, AppDealEntry>) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ deals }))
+  } catch (_) {
+    // ignore
+  }
+}
+
 /* ─── Store Actions Type ─────────────────────────────────────────────────── */
 type AppState = {
-  data: AppData
-  setData:          (patch: Partial<AppData>) => void
-  setDeal:          (d: Partial<Deal>) => void
-  setOffering:      (o: Partial<Offering>) => void
-  setBanking:       (b: Partial<Banking>) => void
-  addInvestor:      (inv: Investor) => void
-  updateInvestor:   (id: string, patch: Partial<Investor>) => void
-  removeInvestor:   (id: string) => void
-  setBlueSkyFilingStep: (stateCode: string, step: BlueSkyChecklistStep, completed: boolean) => void
-  syncBlueSkyFilingsForStates: (stateCodes: string[]) => void
-  /** Stage 2: mark one checklist item as complete or incomplete */
-  markSpvItem:      (item: keyof SpvFormation, data: Partial<SpvFormationItem>) => void
-  /** Legacy one-shot SPV formation (kept for backward compat) */
-  formSPV:          (spv: Partial<SPV>) => void
-  /** Stage 3: generate OA text from current data */
-  generateOA:       () => void
-  /** Stage 3: simulate sending OA to GP via DocuSign */
-  sendOaForDocuSign:(gpEmail: string) => void
-  /** Stage 3: simulate DocuSign webhook envelope-completed event */
-  simulateOaSigned: () => void
-  /** Stage 3: reset OA status (after change warning) */
-  resetOaStatus:    () => void
-  /** Legacy GP-sign button (kept for backward compat) */
-  gpSignOA:         (gpSignerName?: string) => void
-  generateSubscriptionForInvestor: (investorId: string) => void
-  sendSubscriptionForSignature:    (investorId: string) => void
-  markSubscriptionSigned:          (investorId: string) => void
-  recordWirePayment:               (investorId: string, confirmation: string, amount?: number, date?: string) => void
-  lockCapTable:     () => void
-  addActivity:      (event: Omit<ActivityEvent, 'id'>) => void
+  deals: Record<string, AppDealEntry>
+
+  // Deal lifecycle
+  createDeal: () => string
+  deleteDeal: (dealId: string) => void
+
+  // All mutations take dealId as first param
+  setData:          (dealId: string, patch: Partial<AppData>) => void
+  setDeal:          (dealId: string, d: Partial<Deal>) => void
+  setOffering:      (dealId: string, o: Partial<Offering>) => void
+  setBanking:       (dealId: string, b: Partial<Banking>) => void
+  addInvestor:      (dealId: string, inv: Investor) => void
+  updateInvestor:   (dealId: string, id: string, patch: Partial<Investor>) => void
+  removeInvestor:   (dealId: string, id: string) => void
+  setBlueSkyFilingStep: (dealId: string, stateCode: string, step: BlueSkyChecklistStep, completed: boolean) => void
+  syncBlueSkyFilingsForStates: (dealId: string, stateCodes: string[]) => void
+  markSpvItem:      (dealId: string, item: keyof SpvFormation, data: Partial<SpvFormationItem>) => void
+  formSPV:          (dealId: string, spv: Partial<SPV>) => void
+  generateOA:       (dealId: string) => void
+  sendOaForDocuSign:(dealId: string, gpEmail: string) => void
+  simulateOaSigned: (dealId: string) => void
+  resetOaStatus:    (dealId: string) => void
+  gpSignOA:         (dealId: string, gpSignerName?: string) => void
+  generateSubscriptionForInvestor: (dealId: string, investorId: string) => void
+  sendSubscriptionForSignature:    (dealId: string, investorId: string) => void
+  markSubscriptionSigned:          (dealId: string, investorId: string) => void
+  recordWirePayment:               (dealId: string, investorId: string, confirmation: string, amount?: number, date?: string) => void
+  lockCapTable:     (dealId: string) => void
+  addActivity:      (dealId: string, event: Omit<ActivityEvent, 'id'>) => void
   reset:            () => void
+}
+
+/* ─── Helper: update a single deal's data ───────────────────────────────── */
+function pd(
+  s: AppState,
+  dealId: string,
+  fn: (data: AppData) => AppData,
+): Partial<AppState> {
+  const entry = s.deals[dealId]
+  if (!entry) return {}
+  return {
+    deals: {
+      ...s.deals,
+      [dealId]: { ...entry, data: fn(entry.data) },
+    },
+  }
 }
 
 /* ─── Store ──────────────────────────────────────────────────────────────── */
 export const useAppStore = create<AppState>()(
-  devtools((set, get) => ({
-    data: load(),
+  devtools((set, _get) => ({
+    deals: loadDeals(),
 
-    setData: (patch) =>
-      set((s) => ({ data: { ...s.data, ...patch } }), false, 'setData'),
+    /* ── Deal lifecycle ── */
+    createDeal: () => {
+      const id = crypto.randomUUID()
+      const entry: AppDealEntry = {
+        id,
+        createdAt: new Date().toISOString(),
+        data: { ...defaultData, spvFormation: { ...defaultSpvFormation }, operatingAgreement: { ...defaultOA } },
+      }
+      set((s) => ({ deals: { ...s.deals, [id]: entry } }), false, 'createDeal')
+      return id
+    },
 
-    setDeal: (d) =>
-      set((s) => ({ data: { ...s.data, deal: { ...s.data.deal, ...d } } }), false, 'setDeal'),
+    deleteDeal: (dealId) =>
+      set((s) => {
+        const next = { ...s.deals }
+        delete next[dealId]
+        return { deals: next }
+      }, false, 'deleteDeal'),
 
-    setOffering: (o) =>
-      set((s) => ({ data: { ...s.data, offering: { ...s.data.offering, ...o } } }), false, 'setOffering'),
+    setData: (dealId, patch) =>
+      set((s) => pd(s, dealId, (d) => ({ ...d, ...patch })), false, 'setData'),
 
-    setBanking: (b) =>
-      set((s) => ({ data: { ...s.data, banking: { ...s.data.banking, ...b } } }), false, 'setBanking'),
+    setDeal: (dealId, deal) =>
+      set((s) => pd(s, dealId, (d) => ({ ...d, deal: { ...d.deal, ...deal } })), false, 'setDeal'),
+
+    setOffering: (dealId, o) =>
+      set((s) => pd(s, dealId, (d) => ({ ...d, offering: { ...d.offering, ...o } })), false, 'setOffering'),
+
+    setBanking: (dealId, b) =>
+      set((s) => pd(s, dealId, (d) => ({ ...d, banking: { ...d.banking, ...b } })), false, 'setBanking'),
 
     /* ── Stage 2: SPV Formation checklist ── */
-    markSpvItem: (item, patch) =>
-      set((s) => {
+    markSpvItem: (dealId, item, patch) =>
+      set((s) => pd(s, dealId, (d) => {
         const sf: SpvFormation = {
-          ...s.data.spvFormation,
-          [item]: { ...(s.data.spvFormation as any)[item], ...patch },
+          ...d.spvFormation,
+          [item]: { ...(d.spvFormation as any)[item], ...patch },
         }
-        const allFormed = isSpvFormed({ ...s.data, spvFormation: sf })
+        const allFormed = isSpvFormed({ ...d, spvFormation: sf })
         const spv: SPV = allFormed
           ? {
               formed:                 true,
               formationDate:          sf.certOfFormation?.dateFiled || new Date().toISOString(),
-              ein:                    sf.einObtained.ein || s.data.spv?.ein,
-              registeredAgentName:    sf.registeredAgent.agentName || s.data.spv?.registeredAgentName,
-              registeredAgentAddress: sf.registeredAgent.agentAddress || s.data.spv?.registeredAgentAddress,
+              ein:                    sf.einObtained.ein || d.spv?.ein,
+              registeredAgentName:    sf.registeredAgent.agentName || d.spv?.registeredAgentName,
+              registeredAgentAddress: sf.registeredAgent.agentAddress || d.spv?.registeredAgentAddress,
             }
-          : { ...s.data.spv, formed: false }
+          : { ...d.spv, formed: false }
         const deal: Deal = {
-          ...s.data.deal,
+          ...d.deal,
           ...(sf.entityName?.entityName  && { entityName: sf.entityName.entityName }),
           ...(sf.einObtained.ein         && { ein: sf.einObtained.ein }),
           ...(sf.registeredAgent.agentName    && { registeredAgentName: sf.registeredAgent.agentName }),
           ...(sf.registeredAgent.agentAddress && { registeredAgentAddress: sf.registeredAgent.agentAddress }),
         }
-        return { data: { ...s.data, spvFormation: sf, spv, deal } }
-      }, false, 'markSpvItem'),
+        return { ...d, spvFormation: sf, spv, deal }
+      }), false, 'markSpvItem'),
 
     /* ── Legacy SPV formation ── */
-    formSPV: (spv) =>
-      set((s) => {
-        const newSpv: SPV = { ...s.data.spv, ...spv, formed: true, formationDate: spv.formationDate || new Date().toISOString() }
+    formSPV: (dealId, spv) =>
+      set((s) => pd(s, dealId, (d) => {
+        const newSpv: SPV = { ...d.spv, ...spv, formed: true, formationDate: spv.formationDate || new Date().toISOString() }
         const sf: SpvFormation = {
-          entityName:           { complete: true, completedAt: newSpv.formationDate, entityName: s.data.deal.entityName },
+          entityName:           { complete: true, completedAt: newSpv.formationDate, entityName: d.deal.entityName },
           registeredAgent:      { complete: !!(newSpv.registeredAgentName && newSpv.registeredAgentAddress), agentName: newSpv.registeredAgentName, agentAddress: newSpv.registeredAgentAddress },
           certOfFormation:      { complete: true, completedAt: newSpv.formationDate },
           einObtained:          { complete: !!newSpv.ein, completedAt: newSpv.formationDate, ein: newSpv.ein },
           foreignQualification: { complete: true, completedAt: newSpv.formationDate },
         }
         const deal: Deal = {
-          ...s.data.deal,
+          ...d.deal,
           ...(newSpv.ein && { ein: newSpv.ein }),
           ...(newSpv.registeredAgentName && { registeredAgentName: newSpv.registeredAgentName }),
           ...(newSpv.registeredAgentAddress && { registeredAgentAddress: newSpv.registeredAgentAddress }),
         }
-        return { data: { ...s.data, spv: newSpv, spvFormation: sf, deal } }
-      }, false, 'formSPV'),
+        return { ...d, spv: newSpv, spvFormation: sf, deal }
+      }), false, 'formSPV'),
 
     /* ── Stage 3: Generate OA ── */
-    generateOA: () =>
-      set((s) => {
-        const { values } = generatePlaceholders(s.data)
+    generateOA: (dealId) =>
+      set((s) => pd(s, dealId, (d) => {
+        const { values } = generatePlaceholders(d)
         const documentText = generateOperatingAgreementText(values)
         const oa: OperatingAgreement = {
-          ...s.data.operatingAgreement,
+          ...d.operatingAgreement,
           status:      'generated',
           generated:   true,
           generatedAt: new Date().toISOString(),
           documentText,
         }
-        return { data: { ...s.data, operatingAgreement: oa } }
-      }, false, 'generateOA'),
+        return { ...d, operatingAgreement: oa }
+      }), false, 'generateOA'),
 
     /* ── Stage 3: Send OA for DocuSign ── */
-    sendOaForDocuSign: (gpEmail) =>
-      set((s) => {
+    sendOaForDocuSign: (dealId, gpEmail) =>
+      set((s) => pd(s, dealId, (d) => {
         const oa: OperatingAgreement = {
-          ...s.data.operatingAgreement,
-          status:                  'sent_for_signature',
-          sentForSignatureAt:      new Date().toISOString(),
-          docusignEnvelopeId:      `DS_OA_${Date.now()}`,
+          ...d.operatingAgreement,
+          status:             'sent_for_signature',
+          sentForSignatureAt: new Date().toISOString(),
+          docusignEnvelopeId: `DS_OA_${Date.now()}`,
           gpEmail,
         }
-        return { data: { ...s.data, operatingAgreement: oa } }
-      }, false, 'sendOaForDocuSign'),
+        return { ...d, operatingAgreement: oa }
+      }), false, 'sendOaForDocuSign'),
 
-    /* ── Stage 3: Simulate DocuSign webhook (envelope-completed) ── */
-    simulateOaSigned: () =>
-      set((s) => {
+    /* ── Stage 3: Simulate DocuSign webhook ── */
+    simulateOaSigned: (dealId) =>
+      set((s) => pd(s, dealId, (d) => {
         const oa: OperatingAgreement = {
-          ...s.data.operatingAgreement,
+          ...d.operatingAgreement,
           status:    'signed',
           signedAt:  new Date().toISOString(),
           gpSigned:  true,
           gpSignedAt: new Date().toISOString(),
-          gpSignerName: s.data.deal.gpSignerName || '',
+          gpSignerName: d.deal.gpSignerName || '',
         }
-        return { data: { ...s.data, operatingAgreement: oa } }
-      }, false, 'simulateOaSigned'),
+        return { ...d, operatingAgreement: oa }
+      }), false, 'simulateOaSigned'),
 
-    /* ── Stage 3: Reset OA (after change warning — forces re-sign) ── */
-    resetOaStatus: () =>
-      set((s) => {
-        const { values } = generatePlaceholders(s.data)
+    /* ── Stage 3: Reset OA ── */
+    resetOaStatus: (dealId) =>
+      set((s) => pd(s, dealId, (d) => {
+        const { values } = generatePlaceholders(d)
         const documentText = generateOperatingAgreementText(values)
         const oa: OperatingAgreement = {
           status:      'generated',
@@ -522,34 +588,34 @@ export const useAppStore = create<AppState>()(
           documentText,
           gpSigned:    false,
         }
-        return { data: { ...s.data, operatingAgreement: oa } }
-      }, false, 'resetOaStatus'),
+        return { ...d, operatingAgreement: oa }
+      }), false, 'resetOaStatus'),
 
     /* ── Legacy GP-sign button ── */
-    gpSignOA: (gpSignerName) =>
-      set((s) => {
+    gpSignOA: (dealId, gpSignerName) =>
+      set((s) => pd(s, dealId, (d) => {
         const oa: OperatingAgreement = {
-          ...s.data.operatingAgreement,
+          ...d.operatingAgreement,
           status:       'signed',
           signedAt:     new Date().toISOString(),
           gpSigned:     true,
-          gpSignerName: gpSignerName || s.data.deal.gpSignerName || '',
+          gpSignerName: gpSignerName || d.deal.gpSignerName || '',
           gpSignedAt:   new Date().toISOString(),
         }
-        return { data: { ...s.data, operatingAgreement: oa } }
-      }, false, 'gpSignOA'),
+        return { ...d, operatingAgreement: oa }
+      }), false, 'gpSignOA'),
 
     /* ── Subscription management ── */
-    generateSubscriptionForInvestor: (investorId) =>
-      set((s) => {
-        if (!canSendSubAgreements(s.data)) {
+    generateSubscriptionForInvestor: (dealId, investorId) =>
+      set((s) => pd(s, dealId, (d) => {
+        if (!canSendSubAgreements(d)) {
           console.warn('Gate: OA must be signed before generating subscription agreements')
-          return { data: s.data }
+          return d
         }
-        const exists = s.data.subscriptions.find((ss) => ss.investorId === investorId)
-        if (exists) return { data: s.data }
-        const { values } = generatePlaceholders(s.data)
-        const idx = s.data.investors.findIndex((i) => i.id === investorId)
+        const exists = d.subscriptions.find((ss) => ss.investorId === investorId)
+        if (exists) return d
+        const { values } = generatePlaceholders(d)
+        const idx = d.investors.findIndex((i) => i.id === investorId)
         const investorPh = (values.INVESTORS && values.INVESTORS[idx]) || {}
         const generatedText = generateSubscriptionAgreementText(values, investorPh)
         const sub: Subscription = {
@@ -558,102 +624,96 @@ export const useAppStore = create<AppState>()(
           generatedAt: new Date().toISOString(),
           generatedText,
         }
-        return { data: { ...s.data, subscriptions: [...s.data.subscriptions, sub] } }
-      }, false, 'generateSubscriptionForInvestor'),
+        return { ...d, subscriptions: [...d.subscriptions, sub] }
+      }), false, 'generateSubscriptionForInvestor'),
 
-    sendSubscriptionForSignature: (investorId) =>
-      set((s) => {
-        if (!canSendSubAgreements(s.data)) {
+    sendSubscriptionForSignature: (dealId, investorId) =>
+      set((s) => pd(s, dealId, (d) => {
+        if (!canSendSubAgreements(d)) {
           console.warn('Gate: OA must be signed before sending subscription agreements')
-          return { data: s.data }
+          return d
         }
-        const subs = s.data.subscriptions.map((ss): Subscription =>
+        const subs = d.subscriptions.map((ss): Subscription =>
           ss.investorId === investorId
             ? { ...ss, status: 'sent', sentAt: new Date().toISOString(), docusignEnvelopeId: `DS_SUB_${investorId}_${Date.now()}` }
             : ss,
         )
-        return { data: { ...s.data, subscriptions: subs } }
-      }, false, 'sendSubscriptionForSignature'),
+        return { ...d, subscriptions: subs }
+      }), false, 'sendSubscriptionForSignature'),
 
-    markSubscriptionSigned: (investorId) =>
-      set((s) => {
-        const subs = s.data.subscriptions.map((ss): Subscription =>
+    markSubscriptionSigned: (dealId, investorId) =>
+      set((s) => pd(s, dealId, (d) => {
+        const subs = d.subscriptions.map((ss): Subscription =>
           ss.investorId === investorId
             ? { ...ss, status: 'signed', signedAt: new Date().toISOString() }
             : ss,
         )
-        return { data: { ...s.data, subscriptions: subs } }
-      }, false, 'markSubscriptionSigned'),
+        return { ...d, subscriptions: subs }
+      }), false, 'markSubscriptionSigned'),
 
-    recordWirePayment: (investorId, confirmation, amount, date) =>
-      set((s) => {
-        const subs = s.data.subscriptions.map((ss): Subscription =>
+    recordWirePayment: (dealId, investorId, confirmation, _amount, date) =>
+      set((s) => pd(s, dealId, (d) => {
+        const subs = d.subscriptions.map((ss): Subscription =>
           ss.investorId === investorId
             ? {
                 ...ss,
-                status:                  'paid',
-                wireConfirmationNumber:  confirmation,
-                paidAt:                  date || new Date().toISOString(),
+                status:                 'paid',
+                wireConfirmationNumber: confirmation,
+                paidAt:                 date || new Date().toISOString(),
               }
             : ss,
         )
-        return { data: { ...s.data, subscriptions: subs } }
-      }, false, 'recordWirePayment'),
+        return { ...d, subscriptions: subs }
+      }), false, 'recordWirePayment'),
 
-    lockCapTable: () =>
-      set((s) => {
-        if (!canLockCapTable(s.data)) {
+    lockCapTable: (dealId) =>
+      set((s) => pd(s, dealId, (d) => {
+        if (!canLockCapTable(d)) {
           console.warn('Gate: all signed subscriptions must be paid before locking')
-          return { data: s.data }
+          return d
         }
-        const deal: Deal = { ...s.data.deal, capTableLockedAt: new Date().toISOString() }
-        const updatedData: AppData = { ...s.data, deal }
-        const { values } = generatePlaceholders(updatedData)
+        const deal: Deal = { ...d.deal, capTableLockedAt: new Date().toISOString() }
+        const updated: AppData = { ...d, deal }
+        const { values } = generatePlaceholders(updated)
         const documentText = generateOperatingAgreementText(values)
         const oa: OperatingAgreement = {
-          ...s.data.operatingAgreement,
+          ...d.operatingAgreement,
           generatedAt: new Date().toISOString(),
           documentText,
         }
-        return { data: { ...updatedData, operatingAgreement: oa } }
-      }, false, 'lockCapTable'),
+        return { ...updated, operatingAgreement: oa }
+      }), false, 'lockCapTable'),
 
     /* ── Investor management ── */
-    addInvestor: (inv) =>
-      set((s) => {
+    addInvestor: (dealId, inv) =>
+      set((s) => pd(s, dealId, (d) => {
         const normalized = { ...inv, derivedLastName: inv.derivedLastName ?? deriveLastName(inv.fullLegalName) }
-        const investors = [...s.data.investors, normalized]
-        return { data: recalcOwnerships({ ...s.data, investors }) }
-      }, false, 'addInvestor'),
+        const investors = [...d.investors, normalized]
+        return recalcOwnerships({ ...d, investors })
+      }), false, 'addInvestor'),
 
-    updateInvestor: (id, patch) =>
-      set((s) => {
-        const investors = s.data.investors.map((i) =>
+    updateInvestor: (dealId, id, patch) =>
+      set((s) => pd(s, dealId, (d) => {
+        const investors = d.investors.map((i) =>
           i.id === id
             ? { ...i, ...patch, derivedLastName: patch.derivedLastName ?? deriveLastName(patch.fullLegalName ?? i.fullLegalName) }
             : i,
         )
-        return { data: recalcOwnerships({ ...s.data, investors }) }
-      }, false, 'updateInvestor'),
+        return recalcOwnerships({ ...d, investors })
+      }), false, 'updateInvestor'),
 
-    removeInvestor: (id) =>
-      set(
-        (s) => ({
-          data: {
-            ...s.data,
-            investors: s.data.investors.filter((i) => i.id !== id),
-            subscriptions: s.data.subscriptions.filter((sub) => sub.investorId !== id),
-          },
-        }),
-        false,
-        'removeInvestor',
-      ),
+    removeInvestor: (dealId, id) =>
+      set((s) => pd(s, dealId, (d) => ({
+        ...d,
+        investors:     d.investors.filter((i) => i.id !== id),
+        subscriptions: d.subscriptions.filter((sub) => sub.investorId !== id),
+      })), false, 'removeInvestor'),
 
-    setBlueSkyFilingStep: (stateCode, step, completed) =>
-      set((s) => {
+    setBlueSkyFilingStep: (dealId, stateCode, step, completed) =>
+      set((s) => pd(s, dealId, (d) => {
         const normalizedCode = stateCode.trim().toUpperCase()
-        if (!normalizedCode) return { data: s.data }
-        const current = s.data.blueSkyFilings[normalizedCode] || {
+        if (!normalizedCode) return d
+        const current = d.blueSkyFilings[normalizedCode] || {
           requirementsReviewed: false,
           stateNoticeFiled: false,
           stateFeePaid: false,
@@ -670,20 +730,14 @@ export const useAppStore = create<AppState>()(
           next.stateFeePaid &&
           next.evidenceSaved
         next.completedAt = isComplete ? new Date().toISOString() : undefined
-
         return {
-          data: {
-            ...s.data,
-            blueSkyFilings: {
-              ...s.data.blueSkyFilings,
-              [normalizedCode]: next,
-            },
-          },
+          ...d,
+          blueSkyFilings: { ...d.blueSkyFilings, [normalizedCode]: next },
         }
-      }, false, 'setBlueSkyFilingStep'),
+      }), false, 'setBlueSkyFilingStep'),
 
-    syncBlueSkyFilingsForStates: (stateCodes) =>
-      set((s) => {
+    syncBlueSkyFilingsForStates: (dealId, stateCodes) =>
+      set((s) => pd(s, dealId, (d) => {
         const normalizedActiveCodes = Array.from(
           new Set(
             stateCodes
@@ -691,71 +745,42 @@ export const useAppStore = create<AppState>()(
               .filter((code) => code.length > 0),
           ),
         )
-
-        const current = s.data.blueSkyFilings || {}
+        const current = d.blueSkyFilings || {}
         const next: Record<string, BlueSkyFilingStatus> = {}
-
         normalizedActiveCodes.forEach((code) => {
-          next[code] =
-            current[code] || {
-              requirementsReviewed: false,
-              stateNoticeFiled: false,
-              stateFeePaid: false,
-              evidenceSaved: false,
-            }
+          next[code] = current[code] || {
+            requirementsReviewed: false,
+            stateNoticeFiled: false,
+            stateFeePaid: false,
+            evidenceSaved: false,
+          }
         })
-
         const unchanged =
           Object.keys(current).length === Object.keys(next).length &&
           Object.keys(next).every((code) => current[code] === next[code])
+        if (unchanged) return d
+        return { ...d, blueSkyFilings: next }
+      }), false, 'syncBlueSkyFilingsForStates'),
 
-        if (unchanged) return { data: s.data }
-
-        return {
-          data: {
-            ...s.data,
-            blueSkyFilings: next,
-          },
-        }
-      }, false, 'syncBlueSkyFilingsForStates'),
-
-    addActivity: (event) =>
-      set((s) => {
+    addActivity: (dealId, event) =>
+      set((s) => pd(s, dealId, (d) => {
         const e: ActivityEvent = {
           ...event,
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         }
-        const feed = [e, ...(s.data.activityFeed || [])].slice(0, 50)
-        return { data: { ...s.data, activityFeed: feed } }
-      }, false, 'addActivity'),
+        const feed = [e, ...(d.activityFeed || [])].slice(0, 50)
+        return { ...d, activityFeed: feed }
+      }), false, 'addActivity'),
 
     reset: () => {
-      save(defaultData)
-      set(() => ({ data: defaultData }), false, 'reset')
+      saveDeals({})
+      set(() => ({ deals: {} }), false, 'reset')
     },
   })),
 )
 
 /* ─── Persistence ─────────────────────────────────────────────────────────── */
-function load(): AppData {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return defaultData
-    return migrate(JSON.parse(raw))
-  } catch (_) {
-    return defaultData
-  }
-}
-
-function save(data: AppData) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
-  } catch (_) {
-    // ignore
-  }
-}
-
-useAppStore.subscribe((s) => save(s.data))
+useAppStore.subscribe((s) => saveDeals(s.deals))
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
 function deriveLastName(full?: string): string {

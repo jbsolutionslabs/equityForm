@@ -23,8 +23,8 @@ function preview(value: unknown): string {
 }
 
 export const PlaceholderCoverage: React.FC = () => {
-  const data = useAppStore((s) => s.data)
-  const { values, map } = generatePlaceholders(data)
+  const data = useAppStore((s) => Object.values(s.deals)[0]?.data)
+  const { values, map } = data ? generatePlaceholders(data) : { values: {} as any, map: {} as any }
   const [showRaw, setShowRaw] = useState(false)
 
   // Group placeholders into logical categories

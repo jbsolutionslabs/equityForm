@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { useForm, useFieldArray, Controller, useWatch } from 'react-hook-form'
 import type { SubmitHandler } from 'react-hook-form'
 import type { FieldErrors } from 'react-hook-form'
@@ -256,8 +257,9 @@ const STATUS_CLASS: Record<string, string> = {
 
 /* ─── Component ──────────────────────────────────────────────────────────── */
 export const Investors: React.FC = () => {
-  const data                        = useAppStore((s) => s.data.investors)
-  const blueSkyFilings              = useAppStore((s) => s.data.blueSkyFilings)
+  const { dealId }                  = useParams<{ dealId: string }>()
+  const data                        = useAppStore((s) => s.deals[dealId!]?.data.investors ?? [])
+  const blueSkyFilings              = useAppStore((s) => s.deals[dealId!]?.data.blueSkyFilings ?? {})
   const addInvestor                 = useAppStore((s) => s.addInvestor)
   const updateInvestor              = useAppStore((s) => s.updateInvestor)
   const removeInvestor              = useAppStore((s) => s.removeInvestor)
@@ -267,9 +269,9 @@ export const Investors: React.FC = () => {
   const sendSubscriptionForSignature    = useAppStore((s) => s.sendSubscriptionForSignature)
   const markSubscriptionSigned          = useAppStore((s) => s.markSubscriptionSigned)
   const recordWirePayment               = useAppStore((s) => s.recordWirePayment)
-  const appData    = useAppStore((s) => s.data)
-  const subscriptions = appData.subscriptions
-  const offering   = appData.offering
+  const appData    = useAppStore((s) => s.deals[dealId!]?.data)
+  const subscriptions = appData?.subscriptions ?? []
+  const offering   = appData?.offering ?? {}
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -405,7 +407,7 @@ export const Investors: React.FC = () => {
   const onRemove = (idx: number, id: string) => {
     remove(idx)
     if (data.some((inv) => inv.id === id)) {
-      removeInvestor(id)
+      removeInvestor(dealId!, id)
     }
     setExpanded((prev) => {
       const next = { ...prev }
@@ -467,9 +469,9 @@ export const Investors: React.FC = () => {
       }
 
       if (data.some((existing) => existing.id === inv.id)) {
-        updateInvestor(inv.id, payload)
+        updateInvestor(dealId!, inv.id, payload)
       } else {
-        addInvestor(payload as Investor)
+        addInvestor(dealId!, payload as Investor)
       }
     })
 
@@ -490,7 +492,9 @@ export const Investors: React.FC = () => {
   }
 
   const previewSubscription = (invId: string) => {
-    const appData   = useAppStore.getState().data
+    const dealData  = useAppStore.getState().deals[dealId!]?.data
+    if (!dealData) return
+    const appData   = dealData
     const ph        = generatePlaceholders(appData)
     const idx       = appData.investors.findIndex((i) => i.id === invId)
     const invPh     = (ph.values.INVESTORS && (ph.values.INVESTORS as unknown[])[idx]) ?? {}
@@ -505,7 +509,7 @@ export const Investors: React.FC = () => {
     }
   }
 
-  const canGenerateSub = canSendSubAgreements(appData)
+  const canGenerateSub = appData ? canSendSubAgreements(appData) : false
   const watchedInvestors = useWatch({ control: form.control, name: 'investors' }) || []
   const blueSkyStates = useMemo(() => {
     const byState = new Map<string, number>()
@@ -518,7 +522,7 @@ export const Investors: React.FC = () => {
   }, [watchedInvestors])
 
   useEffect(() => {
-    syncBlueSkyFilingsForStates(blueSkyStates.map(([code]) => code))
+    syncBlueSkyFilingsForStates(dealId!, blueSkyStates.map(([code]) => code))
   }, [blueSkyStates, syncBlueSkyFilingsForStates])
 
   const stateComplianceRows = blueSkyStates.map(([code, count]) => {
@@ -665,7 +669,7 @@ export const Investors: React.FC = () => {
                           <input
                             type="checkbox"
                             checked={Boolean(row.filing[step.key])}
-                            onChange={(e) => setBlueSkyFilingStep(row.code, step.key, e.target.checked)}
+                            onChange={(e) => setBlueSkyFilingStep(dealId!, row.code, step.key, e.target.checked)}
                           />
                           <span className="checkbox-label" style={{ display: 'grid', gap: 2 }}>
                             <span>{step.label}</span>
@@ -805,7 +809,7 @@ export const Investors: React.FC = () => {
                         disabled={!canGenerateSub}
                         title={!canGenerateSub ? 'Operating Agreement must be GP-signed (Stage 3) before generating subscription agreements' : undefined}
                         onClick={() => {
-                          generateSubscriptionForInvestor(f.id)
+                          generateSubscriptionForInvestor(dealId!, f.id)
                           notify(`Subscription generated for ${name}.`)
                         }}
                       >
@@ -817,7 +821,7 @@ export const Investors: React.FC = () => {
                         disabled={!canGenerateSub}
                         title={!canGenerateSub ? 'Operating Agreement must be GP-signed (Stage 3) before sending subscription agreements' : undefined}
                         onClick={() => {
-                          sendSubscriptionForSignature(f.id)
+                          sendSubscriptionForSignature(dealId!, f.id)
                           notify(`Subscription sent for e-signature for ${name}.`)
                         }}
                       >
@@ -836,7 +840,7 @@ export const Investors: React.FC = () => {
                         type="button"
                         className="link-btn"
                         onClick={() => {
-                          markSubscriptionSigned(f.id)
+                          markSubscriptionSigned(dealId!, f.id)
                           notify(`Marked as signed for ${name}.`)
                         }}
                       >
@@ -867,7 +871,7 @@ export const Investors: React.FC = () => {
                           onClick={() => {
                             const conf = wireInput[idx]?.trim()
                             if (conf) {
-                              recordWirePayment(f.id, conf)
+                              recordWirePayment(dealId!, f.id, conf)
                               setShowWire((prev) => ({ ...prev, [idx]: false }))
                               setWireInput((prev) => ({ ...prev, [idx]: '' }))
                               notify(`Wire recorded for ${name}.`)
