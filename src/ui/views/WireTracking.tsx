@@ -1,14 +1,16 @@
 import React, { useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { useAppStore } from '../../state/store'
 import { HelpCard } from '../components/HelpCard'
 import { CurrencyInput } from '../components/CurrencyInput'
 import ModuleProgress from '../components/ModuleProgress'
 
 export const WireTracking: React.FC = () => {
-  const data         = useAppStore((s) => s.data)
-  const investors    = data.investors
-  const subscriptions = data.subscriptions
-  const banking      = data.banking
+  const { dealId }   = useParams<{ dealId: string }>()
+  const data         = useAppStore((s) => s.deals[dealId!]?.data)
+  const investors    = data?.investors ?? []
+  const subscriptions = data?.subscriptions ?? []
+  const banking      = data?.banking ?? {}
   const recordWirePayment = useAppStore((s) => s.recordWirePayment)
 
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
@@ -61,7 +63,7 @@ export const WireTracking: React.FC = () => {
       return
     }
     if (wireModal) {
-      recordWirePayment(wireModal.investorId, wireConf.trim(), wireAmt > 0 ? wireAmt : undefined, wireDate || undefined)
+      recordWirePayment(dealId!, wireModal.investorId, wireConf.trim(), wireAmt > 0 ? wireAmt : undefined, wireDate || undefined)
       notify(`Wire confirmed for ${wireModal.name}.`)
       setWireModal(null)
     }

@@ -51,10 +51,13 @@ const schema = baseSchema.superRefine((vals, ctx) => {
 type FormValues = z.infer<typeof baseSchema>
 
 export const Offering: React.FC = () => {
-  const setOffering  = useAppStore((s) => s.setOffering)
-  const resetOaStatus = useAppStore((s) => s.resetOaStatus)
-  const data         = useAppStore((s) => s.data.offering)
-  const oaStatus: OaStatus = useAppStore((s) => s.data.operatingAgreement?.status ?? 'not_generated')
+  const _setOffering  = useAppStore((s) => s.setOffering)
+  const _resetOaStatus = useAppStore((s) => s.resetOaStatus)
+  const primaryId    = useAppStore((s) => Object.keys(s.deals)[0] ?? '')
+  const setOffering  = (vals: any) => _setOffering(primaryId, vals)
+  const resetOaStatus = () => _resetOaStatus(primaryId)
+  const data         = useAppStore((s) => Object.values(s.deals)[0]?.data.offering ?? {})
+  const oaStatus: OaStatus = useAppStore((s) => Object.values(s.deals)[0]?.data.operatingAgreement?.status ?? 'not_generated')
 
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
   const [pendingVals, setPendingVals] = useState<FormValues | null>(null)

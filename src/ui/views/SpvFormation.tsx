@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { useAppStore, isSpvFormed } from '../../state/store'
 import { HelpCard } from '../components/HelpCard'
 import ModuleProgress from '../components/ModuleProgress'
@@ -14,12 +15,13 @@ import {
 } from '../../api/legalFormation'
 
 export const SpvFormation: React.FC = () => {
-  const spvFormation = useAppStore((s) => s.data.spvFormation)
+  const { dealId }   = useParams<{ dealId: string }>()
+  const spvFormation = useAppStore((s) => s.deals[dealId!]?.data.spvFormation)
   const markSpvItem  = useAppStore((s) => s.markSpvItem)
   const setDeal      = useAppStore((s) => s.setDeal)
-  const data         = useAppStore((s) => s.data)
-  const formed       = isSpvFormed(data)
-  const deal         = data.deal
+  const data         = useAppStore((s) => s.deals[dealId!]?.data)
+  const formed       = data ? isSpvFormed(data) : false
+  const deal         = data?.deal ?? {}
 
   const propertyState = (deal.propertyState || '').toUpperCase()
   const stateInfo     = propertyState ? STATE_REQUIREMENTS[propertyState] : null
@@ -47,18 +49,18 @@ export const SpvFormation: React.FC = () => {
     const name = nameInput.trim()
     if (!name) { notify('Enter an entity name.', 'error'); return }
     if (!nameConfirmed) { notify('Confirm you have checked availability on the Delaware website.', 'error'); return }
-    markSpvItem('entityName', {
+    markSpvItem(dealId!,'entityName', {
       complete:    true,
       completedAt: new Date().toISOString(),
       entityName:  name,
       nameLocked:  true,
     })
-    setDeal({ entityName: name, formationState: 'DE' })
+    setDeal(dealId!, { entityName: name, formationState: 'DE' })
     notify('Entity name locked.')
   }
 
   const handleUnlockName = () => {
-    markSpvItem('entityName', { complete: false, nameLocked: false })
+    markSpvItem(dealId!,'entityName', { complete: false, nameLocked: false })
     setNameConfirmed(false)
   }
 
@@ -76,7 +78,7 @@ export const SpvFormation: React.FC = () => {
       const confirmation = await provisionRegisteredAgent(deal.entityName || '', selectedAgent)
       setAgentConfirmation(confirmation)
       const provider = REGISTERED_AGENTS.find((a) => a.id === selectedAgent)!
-      markSpvItem('registeredAgent', {
+      markSpvItem(dealId!,'registeredAgent', {
         complete:              true,
         completedAt:           new Date().toISOString(),
         agentProvider:         selectedAgent,
@@ -94,7 +96,7 @@ export const SpvFormation: React.FC = () => {
   }
 
   const handleUnprovisionAgent = () => {
-    markSpvItem('registeredAgent', { complete: false, agentConfirmationId: undefined })
+    markSpvItem(dealId!,'registeredAgent', { complete: false, agentConfirmationId: undefined })
     setAgentConfirmation(null)
   }
 
@@ -118,7 +120,7 @@ export const SpvFormation: React.FC = () => {
         filingType,
       })
       setCertResult(result)
-      markSpvItem('certOfFormation', {
+      markSpvItem(dealId!,'certOfFormation', {
         complete:               true,
         completedAt:            new Date().toISOString(),
         certFilingType:         filingType,
@@ -136,7 +138,7 @@ export const SpvFormation: React.FC = () => {
   }
 
   const handleUnfileCert = () => {
-    markSpvItem('certOfFormation', { complete: false, certificateNumber: undefined })
+    markSpvItem(dealId!,'certOfFormation', { complete: false, certificateNumber: undefined })
     setCertResult(null)
   }
 
@@ -150,13 +152,13 @@ export const SpvFormation: React.FC = () => {
       notify('EIN format should be XX-XXXXXXX (e.g. 12-3456789).', 'error')
       return
     }
-    markSpvItem('einObtained', { complete: true, completedAt: new Date().toISOString(), ein })
-    setDeal({ ein })
+    markSpvItem(dealId!,'einObtained', { complete: true, completedAt: new Date().toISOString(), ein })
+    setDeal(dealId!, { ein })
     notify('EIN saved.')
   }
 
   const handleUnmarkEin = () => {
-    markSpvItem('einObtained', { complete: false })
+    markSpvItem(dealId!,'einObtained', { complete: false })
   }
 
   // ── Step 5: Foreign Qualification ──────────────────────────────────────
@@ -174,7 +176,7 @@ export const SpvFormation: React.FC = () => {
         agentAddress: spvFormation.registeredAgent?.agentAddress || '',
       })
       setFqResult(result)
-      markSpvItem('foreignQualification', {
+      markSpvItem(dealId!,'foreignQualification', {
         complete:                     true,
         completedAt:                  new Date().toISOString(),
         foreignQualRequired:          true,
@@ -195,7 +197,7 @@ export const SpvFormation: React.FC = () => {
   }
 
   const handleFQNotRequired = () => {
-    markSpvItem('foreignQualification', {
+    markSpvItem(dealId!,'foreignQualification', {
       complete:            true,
       completedAt:         new Date().toISOString(),
       foreignQualRequired: false,
@@ -206,7 +208,7 @@ export const SpvFormation: React.FC = () => {
   }
 
   const handleUnmarkFQ = () => {
-    markSpvItem('foreignQualification', { complete: false, foreignQualConfirmationId: undefined })
+    markSpvItem(dealId!,'foreignQualification', { complete: false, foreignQualConfirmationId: undefined })
     setFqResult(null)
   }
 

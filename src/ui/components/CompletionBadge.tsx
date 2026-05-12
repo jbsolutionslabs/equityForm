@@ -6,11 +6,11 @@ import { useAppStore } from '../../state/store'
  * Heuristic: measures serialised data payload vs. an "ideal" baseline.
  */
 export const CompletionBadge: React.FC = () => {
-  const data = useAppStore((s) => s.data)
+  const data = useAppStore((s) => Object.values(s.deals)[0]?.data)
 
   // Count meaningful filled fields rather than raw serialised size
-  const deal = data.deal
-  const offering = data.offering
+  const deal = data?.deal ?? {}
+  const offering = data?.offering ?? {}
   const dealFields = [
     deal.entityName, deal.formationState, deal.registeredAgentName,
     deal.propertyAddress, deal.propertyCity, deal.propertyState, deal.propertyZip,
@@ -23,7 +23,7 @@ export const CompletionBadge: React.FC = () => {
 
   const filled  = [...dealFields, ...offeringFields].filter(Boolean).length
   const total   = dealFields.length + offeringFields.length
-  const invPct  = data.investors.length > 0 ? 1 : 0
+  const invPct  = (data?.investors.length ?? 0) > 0 ? 1 : 0
   const pct     = Math.min(100, Math.round(((filled / total) * 0.7 + invPct * 0.3) * 100))
   const complete = pct >= 90
 

@@ -1,5 +1,7 @@
 import React, { useState, useRef } from 'react'
+import { useParams } from 'react-router-dom'
 import { useAppStore, canGenerateOA, isSpvFormed } from '../../state/store'
+import { useEconomicsStore, isEconomicsLocked } from '../../state/economicsStore'
 import { generatePlaceholders } from '../../utils/placeholders'
 import { generateOperatingAgreementHtml, generateOperatingAgreementText, generateOperatingAgreementWordHtml } from '../../utils/pdfTemplate'
 import html2pdf from 'html2pdf.js'
@@ -46,16 +48,20 @@ const TOC_SECTIONS = [
 ]
 
 export const OperatingAgreement: React.FC = () => {
-  const data              = useAppStore((s) => s.data)
-  const oa                = data.operatingAgreement
+  const { dealId }        = useParams<{ dealId: string }>()
+  const data              = useAppStore((s) => s.deals[dealId!]?.data)
+  const oa                = data?.operatingAgreement
   const generateOA        = useAppStore((s) => s.generateOA)
   const sendOaForDocuSign = useAppStore((s) => s.sendOaForDocuSign)
   const simulateOaSigned  = useAppStore((s) => s.simulateOaSigned)
-  const { values }        = generatePlaceholders(data)
-  const liveOaText        = generateOperatingAgreementText(values)
+  const { values }        = data ? generatePlaceholders(data) : { values: {} as any }
+  const liveOaText        = data ? generateOperatingAgreementText(values) : ''
 
-  const spvOk  = isSpvFormed(data)
-  const canGen = canGenerateOA(data)
+  const economicsDeal   = useEconomicsStore((s) => s.deals.find((d) => d.dealId === dealId))
+  const econLocked      = isEconomicsLocked(economicsDeal)
+
+  const spvOk  = data ? isSpvFormed(data) : false
+  const canGen = data ? canGenerateOA(data) && econLocked : false
 
   // Derive current sub-step from OA status
   const deriveSubStep = (): SubStep => {
@@ -66,7 +72,7 @@ export const OperatingAgreement: React.FC = () => {
 
   const [subStep, setSubStep] = useState<SubStep>(deriveSubStep)
   const [acks, setAcks]       = useState({ a: false, b: false, c: false })
-  const [gpEmail, setGpEmail] = useState(oa?.gpEmail || data.deal.gpSignerName ? '' : '')
+  const [gpEmail, setGpEmail] = useState(oa?.gpEmail || data?.deal.gpSignerName ? '' : '')
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
   const docRef = useRef<HTMLDivElement>(null)
 
@@ -75,26 +81,26 @@ export const OperatingAgreement: React.FC = () => {
     window.setTimeout(() => setNotification(null), 4000)
   }
 
-  const entityName = data.deal.entityName || '—'
-  const formationState = toLegalStateName(data.deal.formationState || '—')
-  const effectiveDate = toLongDate(data.deal.effectiveDate || '—')
-  const preferredReturnPct = data.offering.preferredReturnEnabled
+  const entityName = data?.deal.entityName || '—'
+  const formationState = toLegalStateName(data?.deal.formationState || '—')
+  const effectiveDate = toLongDate(data?.deal.effectiveDate || '—')
+  const preferredReturnPct = data?.offering.preferredReturnEnabled
     ? data.offering.preferredReturnRate != null
       ? `${data.offering.preferredReturnRate}%`
       : '—'
     : 'None'
-  const gpPromotePct = data.offering.gpPromote != null ? `${data.offering.gpPromote}%` : '—'
+  const gpPromotePct = data?.offering.gpPromote != null ? `${data.offering.gpPromote}%` : '—'
   const lpGpSplit =
-    data.offering.lpResidual != null && data.offering.gpPromote != null
+    data?.offering.lpResidual != null && data?.offering.gpPromote != null
       ? `LP ${data.offering.lpResidual}% / GP ${data.offering.gpPromote}%`
       : '—'
 
   const handleGenerate = () => {
     if (!canGen) {
-      notify('Complete SPV Formation (Stage 2) before generating the Operating Agreement.', 'error')
+      notify('Complete SPV Formation (Stage 3) and lock Deal Economics (Stage 2) before generating the Operating Agreement.', 'error')
       return
     }
-    generateOA()
+    generateOA(dealId!)
     setSubStep(2)
     notify('Operating Agreement generated. Please review and acknowledge below.')
   }
@@ -104,14 +110,14 @@ export const OperatingAgreement: React.FC = () => {
       notify('Please confirm all three acknowledgments before sending.', 'error')
       return
     }
-    const email = gpEmail.trim() || (data.deal.gpSignerName ? `${data.deal.gpSignerName.toLowerCase().replace(/\s+/g, '.')}@example.com` : 'gp@example.com')
-    sendOaForDocuSign(email)
+    const email = gpEmail.trim() || (data?.deal.gpSignerName ? `${data.deal.gpSignerName.toLowerCase().replace(/\s+/g, '.')}@example.com` : 'gp@example.com')
+    sendOaForDocuSign(dealId!, email)
     setSubStep(3)
     notify('Operating Agreement sent for DocuSign signature.')
   }
 
   const handleSimulateSigned = () => {
-    simulateOaSigned()
+    simulateOaSigned(dealId!)
     notify('Simulated: DocuSign envelope completed. OA is now GP-signed.')
   }
 
@@ -217,16 +223,23 @@ export const OperatingAgreement: React.FC = () => {
         <div className="card">
           <h3 style={{ marginTop: 0 }}>Generate Operating Agreement</h3>
 
-          {!spvOk && (
+          {(!spvOk || !econLocked) && (
             <div className="gate-message" style={{ marginBottom: 20 }}>
-              <strong>Gate:</strong> SPV Formation (Stage 2) must be completed before generating
-              the Operating Agreement. Complete all three formation tasks first.
+              <strong>Gate:</strong> Both prerequisites must be met before generating the Operating Agreement:
+              <ul style={{ margin: '8px 0 0', paddingLeft: 20, fontSize: 14 }}>
+                <li style={{ color: spvOk ? 'var(--color-success)' : undefined }}>
+                  {spvOk ? '✓' : '○'} SPV Formation (Stage 3) — all 5 formation tasks complete
+                </li>
+                <li style={{ color: econLocked ? 'var(--color-success)' : undefined }}>
+                  {econLocked ? '✓' : '○'} Deal Economics (Stage 2) — capital stack, profit split &amp; fees locked
+                </li>
+              </ul>
             </div>
           )}
 
-          {spvOk && (
+          {spvOk && econLocked && (
             <div className="state-banner state-banner--success" style={{ marginBottom: 20 }}>
-              <span>✓</span> SPV is fully formed. You're ready to generate the Operating Agreement.
+              <span>✓</span> SPV formed and Economics locked. You're ready to generate the Operating Agreement.
             </div>
           )}
 
@@ -273,8 +286,9 @@ export const OperatingAgreement: React.FC = () => {
           <div className="info-box" style={{ marginBottom: 20 }}>
             <div className="info-box-title">What gets generated?</div>
             <p style={{ margin: 0, fontSize: 14 }}>
-              The system fills in all entity, offering, and GP details into a standard LLC Operating
-              Agreement template. You'll review the full document and confirm accuracy before signing.
+              The system fills in entity, offering, GP details, and locked economics terms (capital stack,
+              preferred return, waterfall, and fees) into a standard LLC Operating Agreement template.
+              You'll review the full document and confirm accuracy before signing.
             </p>
           </div>
 

@@ -221,14 +221,20 @@ const FEED_ICONS: Record<ActivityEvent['category'], string> = {
 
 export const GpDashboard: React.FC = () => {
   const navigate    = useNavigate()
-  const data        = useAppStore((s) => s.data)
+  const deals       = useAppStore((s) => s.deals)
   const setDeal     = useAppStore((s) => s.setDeal)
   const addActivity = useAppStore((s) => s.addActivity)
 
   const allProperties = useAccountingStore((s) => s.properties)
   const allEntries    = useAccountingStore((s) => s.entries)
 
-  const { deal, offering, investors, subscriptions, operatingAgreement, spv, activityFeed } = data
+  // Use first deal (by createdAt) as primary for Phase 1 fallback
+  const primaryEntry = Object.values(deals).sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  )[0]
+  const primaryId   = primaryEntry?.id ?? ''
+  const data        = primaryEntry?.data
+  const { deal = {}, offering = {}, investors = [], subscriptions = [], operatingAgreement = { status: 'not_generated' as const }, spv = {}, activityFeed = [] } = data ?? {}
 
   const [valuationModal, setValuationModal] = useState<string | null>(null) // property id or 'deal'
   const [valuationInput, setValuationInput] = useState('')
@@ -388,9 +394,9 @@ export const GpDashboard: React.FC = () => {
       cashOnHand:          0,
       dealStatus:          deal.dealStatus || 'Raising',
       missingData:         true,
-      route:               '/accounting',
+      route:               primaryId ? `/deals/${primaryId}/questionnaire` : '/deals',
     }]
-  }, [allProperties, allEntries, deal, offering, investors, subscriptions, now])
+  }, [allProperties, allEntries, deal, offering, investors, subscriptions, now, primaryId])
 
   // ── Section 3: Cash Flow ────────────────────────────────────────────────────
 
@@ -554,7 +560,7 @@ export const GpDashboard: React.FC = () => {
     }
     // OA signed
     if (operatingAgreement.signedAt) {
-      events.push({ id: 'oa-signed', timestamp: operatingAgreement.signedAt, dealName: dName, action: 'Operating Agreement signed by GP', category: 'document' })
+      events.push({ id: 'oa-signed', timestamp: operatingAgreement.signedAt, dealName: dName, action: 'Operating Agreement GP-signed', category: 'document' })
     }
     // Subscription agreements executed
     subscriptions.filter((s) => s.signedAt).forEach((sub) => {
@@ -592,8 +598,8 @@ export const GpDashboard: React.FC = () => {
   const saveValuation = () => {
     const amt = parseFloat(valuationInput.replace(/,/g, ''))
     if (isNaN(amt) || amt < 0) return
-    setDeal({ currentValuation: amt })
-    addActivity({
+    setDeal(primaryId, { currentValuation: amt })
+    addActivity(primaryId, {
       timestamp: new Date().toISOString(),
       dealName:  deal.entityName || 'Deal',
       action:    `Valuation updated to ${fmtCurrency(amt, false)}`,

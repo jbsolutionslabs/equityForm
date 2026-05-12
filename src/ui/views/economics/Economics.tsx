@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
   useEconomicsStore,
   canLockEconomics,
@@ -14,9 +14,6 @@ import { SectionA } from './SectionA'
 import { SectionB } from './SectionB'
 import { SectionC } from './SectionC'
 
-/** Single deal ID for POC (no multi-deal routing yet). */
-export const DEAL_ID = 'current'
-
 type Tab = 'A' | 'B' | 'C'
 
 const TABS: { id: Tab; label: string; sub: string }[] = [
@@ -26,16 +23,17 @@ const TABS: { id: Tab; label: string; sub: string }[] = [
 ]
 
 export const Economics: React.FC = () => {
+  const { dealId }  = useParams<{ dealId: string }>()
   const [tab, setTab] = useState<Tab>('A')
   const navigate = useNavigate()
 
   const getOrCreateDeal = useEconomicsStore(s => s.getOrCreateDeal)
   const lockEconomics   = useEconomicsStore(s => s.lockEconomics)
   const unlockEconomics = useEconomicsStore(s => s.unlockEconomics)
-  const deal = useEconomicsStore(s => s.deals.find(d => d.dealId === DEAL_ID))
+  const deal = useEconomicsStore(s => s.deals.find(d => d.dealId === dealId))
 
   // Seed deal on first mount
-  useEffect(() => { getOrCreateDeal(DEAL_ID) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (dealId) getOrCreateDeal(dealId) }, [dealId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!deal) return null
 
@@ -108,9 +106,9 @@ export const Economics: React.FC = () => {
 
       {/* ── Active section ── */}
       <div className="econ-body">
-        {tab === 'A' && <SectionA dealId={DEAL_ID} locked={locked} setTab={setTab} />}
-        {tab === 'B' && <SectionB dealId={DEAL_ID} locked={locked} setTab={setTab} />}
-        {tab === 'C' && <SectionC dealId={DEAL_ID} locked={locked} />}
+        {tab === 'A' && <SectionA dealId={dealId!} locked={locked} setTab={setTab} />}
+        {tab === 'B' && <SectionB dealId={dealId!} locked={locked} setTab={setTab} />}
+        {tab === 'C' && <SectionC dealId={dealId!} locked={locked} />}
       </div>
 
       {/* ── Lock / Unlock bar ── */}
@@ -129,7 +127,7 @@ export const Economics: React.FC = () => {
             <button
               type="button"
               className="btn btn-secondary btn-sm"
-              onClick={() => unlockEconomics(DEAL_ID, 'Manual unlock')}
+              onClick={() => unlockEconomics(dealId!, 'Manual unlock')}
             >
               Unlock
             </button>
@@ -145,7 +143,7 @@ export const Economics: React.FC = () => {
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => { lockEconomics(DEAL_ID, 'GP'); navigate('/spv') }}
+              onClick={() => { lockEconomics(dealId!, 'GP'); navigate(`/deals/${dealId}/spv`) }}
             >
               Lock Economics
             </button>

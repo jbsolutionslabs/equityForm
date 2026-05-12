@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAccountingStore } from '../../../state/accountingStore'
 import { useAppStore } from '../../../state/store'
 import { MonthYearPicker } from '../../components/MonthYearPicker'
@@ -34,8 +35,8 @@ function useYtdNoi(property: AccountingProperty, entries: ReturnType<typeof useA
 
 type View =
   | { type: 'dashboard' }
-  | { type: 'setup';       propertyId?: string }
-  | { type: 'property';    propertyId: string }
+  | { type: 'setup';    propertyId?: string; prefillDealId?: string }
+  | { type: 'property'; propertyId: string }
 
 /* ─── Property row inside a deal group ── */
 
@@ -50,10 +51,12 @@ function PropertyRow({
   onEdit: () => void
   showPrefGap: boolean
 }) {
-  const entries = useAccountingStore((s) => s.getEntriesForProperty(property.id))
-  const gap     = computePrefGapSummary(entries)
-  const ytdNOI  = useYtdNoi(property, entries)
-  const latest  = entries[entries.length - 1]
+  const entries        = useAccountingStore((s) => s.getEntriesForProperty(property.id))
+  const deleteProperty = useAccountingStore((s) => s.deleteProperty)
+  const gap            = computePrefGapSummary(entries)
+  const ytdNOI         = useYtdNoi(property, entries)
+  const latest         = entries[entries.length - 1]
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   return (
     <div className="property-row">
@@ -93,8 +96,38 @@ function PropertyRow({
         </div>
 
         <div className="property-row-actions">
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onEdit}>Settings</button>
-          <button type="button" className="btn btn-primary btn-sm" onClick={onOpen}>Open →</button>
+          {confirmDelete ? (
+            <div className="property-row-delete-confirm">
+              <span className="property-row-delete-label">Delete property and all entries?</span>
+              <button
+                type="button"
+                className="btn btn-danger btn-sm"
+                onClick={() => deleteProperty(property.id)}
+              >
+                Yes, delete
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setConfirmDelete(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={onEdit}>Settings</button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={onOpen}>Open →</button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm property-row-delete-btn"
+                onClick={() => setConfirmDelete(true)}
+                title="Delete property"
+              >
+                ✕
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -112,7 +145,6 @@ function PropertyRow({
 function DealGroup({
   dealId,
   dealLabel,
-  isPhase1Deal,
   properties,
   onOpenProperty,
   onEditProperty,
@@ -121,7 +153,6 @@ function DealGroup({
 }: {
   dealId: string
   dealLabel: string
-  isPhase1Deal: boolean
   properties: AccountingProperty[]
   onOpenProperty: (id: string) => void
   onEditProperty: (id: string) => void
@@ -149,10 +180,7 @@ function DealGroup({
             <span className="deal-group-chevron">{collapsed ? '▸' : '▾'}</span>
           </button>
           <div>
-            <div className="deal-group-name">
-              {dealLabel}
-              {isPhase1Deal && <span className="deal-group-badge">Phase 1</span>}
-            </div>
+            <div className="deal-group-name">{dealLabel}</div>
             <div className="deal-group-meta">
               {properties.length} propert{properties.length !== 1 ? 'ies' : 'y'}
               {totalGap > 0.01 && (
@@ -449,16 +477,21 @@ function PropertyWorkspace({
 /* ─── Main dashboard ── */
 
 export const AccountingDashboard: React.FC = () => {
-  const properties  = useAccountingStore((s) => s.properties)
-  const phase1Deal  = useAppStore((s) => s.data.deal)
-  const showPrefGap = useAppStore((s) => !!s.data.offering.preferredReturnEnabled)
+  const properties   = useAccountingStore((s) => s.properties)
+  const appDealEntries = useAppStore((s) =>
+    Object.values(s.deals).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+  )
+  const showPrefGap = appDealEntries.some((e) => !!e.data.offering.preferredReturnEnabled)
   const [view, setView] = useState<View>({ type: 'dashboard' })
-  const [addToDealId, setAddToDealId] = useState<string | undefined>()
 
-  /* Navigate to setup with optional pre-filled dealId */
+  // UUID-keyed deal list passed down to PropertySetup
+  const availableDeals = appDealEntries.map((e) => ({
+    id:    e.id,
+    label: e.data.deal.entityName || 'Untitled Deal',
+  }))
+
   const startSetup = (dealId?: string) => {
-    setAddToDealId(dealId)
-    setView({ type: 'setup' })
+    setView({ type: 'setup', propertyId: undefined, prefillDealId: dealId })
   }
 
   if (view.type === 'setup') {
@@ -466,14 +499,10 @@ export const AccountingDashboard: React.FC = () => {
     return (
       <PropertySetup
         existingProperty={existing}
-        onSaved={(id) => {
-          setAddToDealId(undefined)
-          setView({ type: 'property', propertyId: id })
-        }}
-        onCancel={() => {
-          setAddToDealId(undefined)
-          setView({ type: 'dashboard' })
-        }}
+        availableDeals={availableDeals}
+        prefillDealId={view.prefillDealId}
+        onSaved={(id) => setView({ type: 'property', propertyId: id })}
+        onCancel={() => setView({ type: 'dashboard' })}
       />
     )
   }
@@ -490,37 +519,60 @@ export const AccountingDashboard: React.FC = () => {
     )
   }
 
-  /* ── Dashboard: group by deal ── */
+  /* ── Dashboard: one group per app deal ── */
 
-  // Build deal groups — derive deal label from Phase 1 store when possible
-  const phase1DealId = phase1Deal.entityName ?? ''
+  const knownDealIds = new Set(availableDeals.map((d) => d.id))
 
-  // Collect all distinct dealIds (including standalone)
+  // Seed one empty array per app deal
   const dealMap = new Map<string, AccountingProperty[]>()
+  for (const d of availableDeals) dealMap.set(d.id, [])
+
+  // Assign each property to its deal group (or standalone)
   for (const p of properties) {
-    const key = p.dealId || '__standalone__'
+    const key = knownDealIds.has(p.dealId) ? p.dealId : '__standalone__'
     if (!dealMap.has(key)) dealMap.set(key, [])
     dealMap.get(key)!.push(p)
   }
 
-  // Phase 1 deal group always shown if entityName exists (even if no properties yet)
-  if (phase1DealId && !dealMap.has(phase1DealId)) {
-    dealMap.set(phase1DealId, [])
-  }
-
-  // Sort groups: Phase 1 deal first, standalone last
+  // Sort: known deals first (creation order), standalone last
+  const dealOrder = availableDeals.map((d) => d.id)
   const sortedGroups = [...dealMap.entries()].sort(([a], [b]) => {
-    if (a === phase1DealId) return -1
-    if (b === phase1DealId) return  1
+    const ai = dealOrder.indexOf(a)
+    const bi = dealOrder.indexOf(b)
     if (a === '__standalone__') return  1
     if (b === '__standalone__') return -1
-    return a.localeCompare(b)
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
   })
 
   const getDealLabel = (dealId: string) => {
     if (dealId === '__standalone__') return 'Standalone Properties'
-    if (dealId === phase1DealId)     return phase1DealId
-    return dealId
+    return availableDeals.find((d) => d.id === dealId)?.label ?? 'Unknown Deal'
+  }
+
+  // No deals at all → gate the whole module
+  if (appDealEntries.length === 0) {
+    return (
+      <div className="page-enter">
+        <div className="page-header">
+          <ModuleProgress
+            moduleLabel="Accounting"
+            step={1}
+            totalSteps={3}
+            stepTitle="Portfolio Dashboard"
+            detail="Manage properties"
+          />
+          <h1>Accounting</h1>
+        </div>
+        <div className="card" style={{ padding: '48px 40px', textAlign: 'center' }}>
+          <div style={{ fontSize: 40, marginBottom: 16 }}>📋</div>
+          <h3 style={{ marginTop: 0, marginBottom: 8 }}>No deals yet</h3>
+          <p style={{ color: 'var(--color-slate-500)', fontSize: 14, maxWidth: 400, margin: '0 auto 20px' }}>
+            Properties are linked to deals. Create a deal first, then come back to add properties.
+          </p>
+          <Link to="/deals" className="btn btn-primary">Go to Deals →</Link>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -541,7 +593,7 @@ export const AccountingDashboard: React.FC = () => {
       </div>
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 28 }}>
-        <button type="button" className="btn btn-primary" onClick={() => startSetup(phase1DealId || undefined)}>
+        <button type="button" className="btn btn-primary" onClick={() => startSetup()}>
           + Add Property
         </button>
       </div>
@@ -560,12 +612,11 @@ export const AccountingDashboard: React.FC = () => {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {sortedGroups.map(([dealId, props]) => (
+          {sortedGroups.map(([gDealId, props]) => (
             <DealGroup
-              key={dealId}
-              dealId={dealId}
-              dealLabel={getDealLabel(dealId)}
-              isPhase1Deal={dealId === phase1DealId && !!phase1DealId}
+              key={gDealId}
+              dealId={gDealId}
+              dealLabel={getDealLabel(gDealId)}
               properties={props}
               onOpenProperty={(id) => setView({ type: 'property', propertyId: id })}
               onEditProperty={(id) => setView({ type: 'setup', propertyId: id })}

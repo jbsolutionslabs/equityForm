@@ -3,7 +3,7 @@ import Stepper, { Step } from '../components/Stepper'
 import { FieldHelp, Tooltip, HelpCard } from '../components/HelpCard'
 import { CurrencyInput } from '../components/CurrencyInput'
 import ModuleProgress from '../components/ModuleProgress'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -49,13 +49,14 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>
 
 export const DealSetup: React.FC = () => {
+  const { dealId }    = useParams<{ dealId: string }>()
   const navigate      = useNavigate()
   const setDeal       = useAppStore((s) => s.setDeal)
   const setOffering   = useAppStore((s) => s.setOffering)
   const resetOaStatus = useAppStore((s) => s.resetOaStatus)
-  const dealData      = useAppStore((s) => s.data.deal)
-  const offeringData  = useAppStore((s) => s.data.offering)
-  const oaStatus: OaStatus = useAppStore((s) => s.data.operatingAgreement?.status ?? 'not_generated')
+  const dealData      = useAppStore((s) => s.deals[dealId!]?.data.deal      ?? {})
+  const offeringData  = useAppStore((s) => s.deals[dealId!]?.data.offering  ?? {})
+  const oaStatus: OaStatus = useAppStore((s) => s.deals[dealId!]?.data.operatingAgreement?.status ?? 'not_generated')
 
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
   const [pendingVals, setPendingVals]   = useState<FormValues | null>(null)
@@ -93,7 +94,7 @@ export const DealSetup: React.FC = () => {
       }
     }
 
-    setDeal({
+    setDeal(dealId!, {
       entityName:               vals.entityName,
       ein:                      vals.ein,
       formationState:           vals.formationState,
@@ -113,7 +114,7 @@ export const DealSetup: React.FC = () => {
       propertyLegalDescription: vals.propertyLegalDescription,
     })
 
-    setOffering({
+    setOffering(dealId!, {
       offeringExemption:  vals.offeringExemption,
       minimumInvestment:  vals.minimumInvestment,
       closingDate:        vals.closingDate,
@@ -134,20 +135,20 @@ export const DealSetup: React.FC = () => {
   const confirmChangeAndRegenerate = () => {
     if (pendingVals) {
       doSave(pendingVals)
-      resetOaStatus()
-      notify('Saved. Operating Agreement has been reset — please regenerate and re-sign.')
+      resetOaStatus(dealId!)
+      notify('Saved. Operating Agreement has been reset — complete Economics and SPV Formation before regenerating.')
     }
     setPendingVals(null)
   }
 
   const onFinish = () => {
     form.handleSubmit((vals) => {
-      if (oaStatus !== 'not_generated') {
-        setPendingVals(vals)
-        return
-      }
       doSave(vals)
-      navigate('/economics')
+      if (oaStatus !== 'not_generated') {
+        resetOaStatus(dealId!)
+        notify('Deal details updated. The Operating Agreement has been reset and will need to be regenerated after Economics is locked.')
+      }
+      navigate(`/deals/${dealId}/economics`)
     })()
   }
 
@@ -626,13 +627,13 @@ export const DealSetup: React.FC = () => {
             <div className="modal-body">
               <p style={{ margin: 0, color: 'var(--color-slate-600)' }}>
                 The Operating Agreement has already been {oaStatus === 'signed' ? 'signed' : 'generated'}.
-                Saving these changes will <strong>reset the OA</strong> and require you to regenerate
-                and re-collect the GP signature.
+                Saving these changes will <strong>reset the OA</strong>. You will need to complete
+                Deal Economics and SPV Formation before regenerating and re-signing.
               </p>
             </div>
             <div className="modal-footer">
               <button type="button" className="btn btn-primary" onClick={confirmChangeAndRegenerate}>
-                Save &amp; Regenerate OA
+                Save &amp; Reset OA
               </button>
               <button type="button" className="btn btn-ghost" onClick={() => setPendingVals(null)}>
                 Cancel Change

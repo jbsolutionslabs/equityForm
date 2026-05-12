@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useAccountingStore, buildDefaultEntry } from '../../../state/accountingStore'
 import { useAppStore } from '../../../state/store'
+import { useEconomicsStore } from '../../../state/economicsStore'
 import type { AccountingProperty } from '../../../state/accountingTypes'
 import { CurrencyInput } from '../../components/CurrencyInput'
 import { AddressAutocompleteInput, ParsedAddress } from '../../components/AddressAutocompleteInput'
@@ -167,35 +168,108 @@ function buildProperty(
 
 type Props = {
   existingProperty?: AccountingProperty
+  availableDeals:    { id: string; label: string }[]
+  prefillDealId?:    string
   onSaved: (propertyId: string) => void
   onCancel?: () => void
 }
 
 /* ─── Component ── */
 
-export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCancel }) => {
+export const PropertySetup: React.FC<Props> = ({ existingProperty, availableDeals, prefillDealId, onSaved, onCancel }) => {
   const addProperty    = useAccountingStore((s) => s.addProperty)
   const updateProperty = useAccountingStore((s) => s.updateProperty)
   const upsertEntry    = useAccountingStore((s) => s.upsertEntry)
-  const appData        = useAppStore((s) => s.data)
-  const oaLpPrefRateAnnual = getAnnualLpPrefRateFromOA(
-    appData.offering.preferredReturnEnabled,
-    appData.offering.preferredReturnRate,
-  )
+  const allDeals       = useAppStore((s) => s.deals)
+  const econDeals      = useEconomicsStore((s) => s.deals)
 
-  // Phase 1 deals — single deal for now
-  const phase1Deal = useAppStore((s) => s.data.deal)
-  const availableDeals = phase1Deal.entityName
-    ? [{ id: phase1Deal.entityName, label: phase1Deal.entityName }]
-    : []
+  // Derive LP pref rate: economics Section B first, then OA fallback
+  const getDealPrefRate = (dealId: string): number => {
+    const econDeal = econDeals.find((d) => d.dealId === dealId)
+    if (econDeal?.profitSplit?.pref?.type !== 'none' && econDeal?.profitSplit?.pref?.rate != null) {
+      return econDeal.profitSplit.pref.rate
+    }
+    const entry = allDeals[dealId] ?? Object.values(allDeals)[0]
+    return getAnnualLpPrefRateFromOA(
+      entry?.data.offering.preferredReturnEnabled,
+      entry?.data.offering.preferredReturnRate,
+    )
+  }
+
+  // Build prefill values from a deal's economics + AppData
+  const getEconomicsPrefill = (dealId: string): { core: Partial<CoreForm>; adv: Partial<AdvancedForm> } => {
+    const appData  = allDeals[dealId]?.data
+    const econDeal = econDeals.find((d) => d.dealId === dealId)
+    const stack    = econDeal?.capitalStack
+    const split    = econDeal?.profitSplit
+
+    const corePatch: Partial<CoreForm>     = {}
+    const advPatch:  Partial<AdvancedForm> = {}
+
+    // From AppData: property address + EIN (available as soon as a deal exists)
+    if (appData) {
+      if (appData.deal.propertyAddress) advPatch.address = appData.deal.propertyAddress
+      if (appData.deal.propertyCity)    advPatch.city    = appData.deal.propertyCity
+      if (appData.deal.propertyState)   advPatch.state   = appData.deal.propertyState
+      if (appData.spv?.ein)             advPatch.ein     = appData.spv.ein
+      // Use offering closing date as acquisition fallback
+      if (!stack?.closingDate && appData.offering.closingDate) {
+        corePatch.acquisitionDate = appData.offering.closingDate
+      }
+    }
+
+    // From Capital Stack (economics Section A)
+    if (stack) {
+      if (stack.purchasePrice > 0) corePatch.purchasePrice = stack.purchasePrice
+      if (stack.closingDate)       corePatch.acquisitionDate = stack.closingDate
+
+      const seniorDebt = stack.instruments.filter((i) => i.position === 'senior')
+      const subDebt    = stack.instruments.filter((i) => i.position === 'subordinate')
+
+      const senior = seniorDebt[0]
+      if (senior) {
+        corePatch.mortgageBalance = senior.loanAmount
+        const rate = senior.fixedRate ?? senior.manualRate
+        if (rate != null && rate > 0)         advPatch.annualInterestRate = rate
+        if (senior.amortizationYears)         advPatch.amortizationYears  = senior.amortizationYears
+        if (senior.termYears)                 advPatch.loanTermYears      = senior.termYears
+        if (senior.startDate)                 advPatch.loanStartDate      = senior.startDate // YYYY-MM
+      }
+
+      if (subDebt.length > 0) {
+        corePatch.subordinateDebt = subDebt.reduce((sum, i) => sum + i.loanAmount, 0)
+      }
+    }
+
+    // From Profit Split (economics Section B): pref rate + GP waterfall
+    if (split) {
+      if (split.pref.type !== 'none' && split.pref.rate != null) {
+        corePatch.lpPrefRateAnnual = split.pref.rate
+      }
+      const wf = split.waterfall
+      if (wf.mode === 'simple' && wf.simpleLpSplit != null) {
+        advPatch.gpOwnershipPct = (100 - wf.simpleLpSplit) / 100
+        advPatch.gpPromotePct   = (100 - wf.simpleLpSplit) / 100
+      } else if (wf.mode === 'advanced' && wf.tiers && wf.tiers.length > 0) {
+        const lastTier = wf.tiers[wf.tiers.length - 1]
+        advPatch.gpOwnershipPct = lastTier.gpSplit / 100
+        advPatch.gpPromotePct   = lastTier.gpSplit / 100
+      }
+    }
+
+    return { core: corePatch, adv: advPatch }
+  }
 
   // Hydrate from existing property if editing
   const initCore = (): CoreForm => {
     if (!existingProperty) {
+      const defaultDealId = prefillDealId ?? availableDeals[0]?.id ?? ''
+      const { core: prefill } = getEconomicsPrefill(defaultDealId)
       return {
         ...defaultCore(),
-        dealId: availableDeals[0]?.id ?? '',
-        lpPrefRateAnnual: oaLpPrefRateAnnual,
+        ...prefill,
+        dealId:           defaultDealId,
+        lpPrefRateAnnual: prefill.lpPrefRateAnnual ?? getDealPrefRate(defaultDealId),
       }
     }
     return {
@@ -213,7 +287,11 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
   }
 
   const initAdvanced = (): AdvancedForm => {
-    if (!existingProperty) return defaultAdvanced()
+    if (!existingProperty) {
+      const defaultDealId = prefillDealId ?? availableDeals[0]?.id ?? ''
+      const { adv: prefill } = getEconomicsPrefill(defaultDealId)
+      return { ...defaultAdvanced(), ...prefill }
+    }
     const p = existingProperty
     return {
       address: p.address, city: p.city, state: p.state,
@@ -270,11 +348,12 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
   const patchAdv = <K extends keyof AdvancedForm>(k: K, v: AdvancedForm[K]) =>
     setAdv((f) => ({ ...f, [k]: v }))
 
+  const selectedDealData = allDeals[core.dealId]?.data
   const paidInvestorIds = new Set(
-    appData.subscriptions.filter((s) => s.status === 'paid').map((s) => s.investorId),
+    (selectedDealData?.subscriptions ?? []).filter((s) => s.status === 'paid').map((s) => s.investorId),
   )
-  const paidInvestors = appData.investors.filter((inv) => paidInvestorIds.has(inv.id))
-  const capTableSourceInvestors = paidInvestors.length > 0 ? paidInvestors : appData.investors
+  const paidInvestors = (selectedDealData?.investors ?? []).filter((inv) => paidInvestorIds.has(inv.id))
+  const capTableSourceInvestors = paidInvestors.length > 0 ? paidInvestors : (selectedDealData?.investors ?? [])
   const capTableLpEquity = capTableSourceInvestors.reduce((sum, inv) => sum + (inv.subscriptionAmount || 0), 0)
 
   useEffect(() => {
@@ -285,9 +364,9 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
 
   useEffect(() => {
     if (!lpPrefRateManualOverride) {
-      patchCore('lpPrefRateAnnual', oaLpPrefRateAnnual)
+      patchCore('lpPrefRateAnnual', getDealPrefRate(core.dealId))
     }
-  }, [lpPrefRateManualOverride, oaLpPrefRateAnnual])
+  }, [lpPrefRateManualOverride, core.dealId])
 
   const validate = (): boolean => {
     const e: Record<string, string> = {}
@@ -397,35 +476,38 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
 
         {/* ── Deal linkage ── */}
         <div className="field-group">
-          <label className="field-label">Deal / Fund</label>
-          {availableDeals.length > 0 ? (
-            <select
-              className="field-input"
-              style={{ maxWidth: 340 }}
-              value={core.dealId}
-              onChange={(e) => patchCore('dealId', e.target.value)}
-            >
-              <option value="">— Select a deal —</option>
-              {availableDeals.map((d) => (
-                <option key={d.id} value={d.id}>{d.label}</option>
-              ))}
-              <option value="__standalone__">Standalone (no deal link)</option>
-            </select>
-          ) : (
-            <input
-              type="text"
-              className="field-input"
-              style={{ maxWidth: 340 }}
-              placeholder="Fund or deal name (optional)"
-              value={core.dealId}
-              onChange={(e) => patchCore('dealId', e.target.value)}
-            />
-          )}
-          <div className="field-hint">
-            {availableDeals.length > 0
-              ? 'Links this property to a deal in your dashboard.'
-              : 'No deals found in Phase 1. Complete the Questionnaire first, or enter a name manually.'}
-          </div>
+          <label className="field-label">Deal</label>
+          <select
+            className="field-input"
+            style={{ maxWidth: 340 }}
+            value={core.dealId}
+            onChange={(e) => {
+              const newDealId = e.target.value
+              const { core: cPrefill, adv: aPrefill } = getEconomicsPrefill(newDealId)
+              setCore((prev) => ({
+                ...prev,
+                ...cPrefill,
+                dealId: newDealId,
+                // Respect manual overrides
+                lpPrefRateAnnual: lpPrefRateManualOverride
+                  ? prev.lpPrefRateAnnual
+                  : (cPrefill.lpPrefRateAnnual ?? getDealPrefRate(newDealId)),
+                lpEquity: lpEquityManualOverride ? prev.lpEquity : prev.lpEquity,
+              }))
+              setAdv((prev) => ({ ...prev, ...aPrefill }))
+              // Sync pct input states to new dollar amounts
+              if (cPrefill.purchasePrice != null) {
+                setSeniorDebtPctInput(pctOfPurchase(cPrefill.mortgageBalance ?? 0, cPrefill.purchasePrice))
+                setSubDebtPctInput(pctOfPurchase(cPrefill.subordinateDebt ?? 0, cPrefill.purchasePrice))
+              }
+            }}
+          >
+            <option value="">— Select a deal —</option>
+            {availableDeals.map((d) => (
+              <option key={d.id} value={d.id}>{d.label}</option>
+            ))}
+          </select>
+          <div className="field-hint">Links this property to a deal. Fields auto-populated from the deal's economics when available.</div>
         </div>
 
         <div className="property-setup-divider">Financial Details</div>
@@ -694,10 +776,10 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
                 className={`toggle-btn toggle-btn--sm ${!lpPrefRateManualOverride ? 'toggle-btn--active' : ''}`}
                 onClick={() => {
                   setLpPrefRateManualOverride(false)
-                  patchCore('lpPrefRateAnnual', oaLpPrefRateAnnual)
+                  patchCore('lpPrefRateAnnual', getDealPrefRate(core.dealId))
                 }}
               >
-                Pull from OA
+                Pull from Deal
               </button>
               <button
                 type="button"
@@ -721,7 +803,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, onSaved, onCa
             <div className="field-hint">
               {lpPrefRateManualOverride
                 ? 'Manual override enabled.'
-                : `Auto from Operating Agreement: ${(oaLpPrefRateAnnual * 100).toFixed(2)}%`}
+                : `Auto from deal (economics / OA): ${(getDealPrefRate(core.dealId) * 100).toFixed(2)}%`}
             </div>
           </div>
         </div>
