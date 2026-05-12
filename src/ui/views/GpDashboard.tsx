@@ -554,7 +554,7 @@ export const GpDashboard: React.FC = () => {
     }
     // OA signed
     if (operatingAgreement.signedAt) {
-      events.push({ id: 'oa-signed', timestamp: operatingAgreement.signedAt, dealName: dName, action: 'Operating Agreement signed by GP', category: 'document' })
+      events.push({ id: 'oa-signed', timestamp: operatingAgreement.signedAt, dealName: dName, action: 'Operating Agreement GP-signed', category: 'document' })
     }
     // Subscription agreements executed
     subscriptions.filter((s) => s.signedAt).forEach((sub) => {

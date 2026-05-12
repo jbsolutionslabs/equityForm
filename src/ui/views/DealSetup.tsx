@@ -135,18 +135,18 @@ export const DealSetup: React.FC = () => {
     if (pendingVals) {
       doSave(pendingVals)
       resetOaStatus()
-      notify('Saved. Operating Agreement has been reset — please regenerate and re-sign.')
+      notify('Saved. Operating Agreement has been reset — complete Economics and SPV Formation before regenerating.')
     }
     setPendingVals(null)
   }
 
   const onFinish = () => {
     form.handleSubmit((vals) => {
-      if (oaStatus !== 'not_generated') {
-        setPendingVals(vals)
-        return
-      }
       doSave(vals)
+      if (oaStatus !== 'not_generated') {
+        resetOaStatus()
+        notify('Deal details updated. The Operating Agreement has been reset and will need to be regenerated after Economics is locked.')
+      }
       navigate('/economics')
     })()
   }
@@ -626,13 +626,13 @@ export const DealSetup: React.FC = () => {
             <div className="modal-body">
               <p style={{ margin: 0, color: 'var(--color-slate-600)' }}>
                 The Operating Agreement has already been {oaStatus === 'signed' ? 'signed' : 'generated'}.
-                Saving these changes will <strong>reset the OA</strong> and require you to regenerate
-                and re-collect the GP signature.
+                Saving these changes will <strong>reset the OA</strong>. You will need to complete
+                Deal Economics and SPV Formation before regenerating and re-signing.
               </p>
             </div>
             <div className="modal-footer">
               <button type="button" className="btn btn-primary" onClick={confirmChangeAndRegenerate}>
-                Save &amp; Regenerate OA
+                Save &amp; Reset OA
               </button>
               <button type="button" className="btn btn-ghost" onClick={() => setPendingVals(null)}>
                 Cancel Change

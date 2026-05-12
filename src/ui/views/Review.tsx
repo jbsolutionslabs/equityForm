@@ -274,7 +274,7 @@ export const Review: React.FC = () => {
             disabled={!oaGenerated}
             title="Record the GP signature on the Operating Agreement"
           >
-            {oaGpSigned ? '✓ GP signed' : 'GP Sign Operating Agreement'}
+            {oaGpSigned ? '✓ GP-signed' : 'GP Sign Operating Agreement'}
           </button>
           <button
             type="button"
