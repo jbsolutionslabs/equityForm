@@ -36,6 +36,7 @@ const schema = z.object({
   minimumInvestment:        z.number().nullable().optional(),
   closingDate:              z.string().optional(),
   solicitationMethod:       z.string().optional(),
+  gpCapitalContribution:    z.number().nullable().optional(),
 }).superRefine((vals, ctx) => {
   if (vals.offeringExemption === '506(b)' && !vals.solicitationMethod) {
     ctx.addIssue({
@@ -119,6 +120,7 @@ export const DealSetup: React.FC = () => {
       minimumInvestment:  vals.minimumInvestment,
       closingDate:        vals.closingDate,
       solicitationMethod: vals.solicitationMethod,
+      gpCapitalContribution: vals.gpCapitalContribution,
     })
   }
 
@@ -606,6 +608,24 @@ export const DealSetup: React.FC = () => {
                     type="date"
                     className="field-input"
                     {...form.register('closingDate')}
+                  />
+                </div>
+
+                <div className="field-group">
+                  <label className="field-label" htmlFor="gpCapitalContribution">GP Capital Contribution ($)</label>
+                  <FieldHelp text="If the GP is co-investing, enter the GP capital amount. This flows to Cap Table ownership calculations." />
+                  <Controller
+                    control={form.control}
+                    name="gpCapitalContribution"
+                    render={({ field }) => (
+                      <CurrencyInput
+                        id="gpCapitalContribution"
+                        className="field-input"
+                        placeholder="e.g. 50000"
+                        value={field.value ?? 0}
+                        onChange={(v) => field.onChange(v || null)}
+                      />
+                    )}
                   />
                 </div>
               </div>

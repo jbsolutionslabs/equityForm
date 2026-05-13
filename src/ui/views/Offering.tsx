@@ -17,6 +17,7 @@ const baseSchema = z.object({
   preferredReturnType:         z.enum(['cumulative', 'non-cumulative', 'IRR-based', '']).optional(),
   irrRate:                     z.number().nullable().optional(),
   gpPromote:                   z.number().nullable().optional(),
+  gpCapitalContribution:       z.number().nullable().optional(),
   assetManagementFeeDescription: z.string().optional(),
 })
 
@@ -453,6 +454,26 @@ export const Offering: React.FC = () => {
                   <p>LPs will receive {lpResidual}% of profits above the preferred return.</p>
                 </div>
               )}
+
+              <div className="field-group" style={{ maxWidth: 320, marginTop: 16 }}>
+                <label className="field-label" htmlFor="gpCapitalContribution">
+                  GP Capital Contribution ($)
+                </label>
+                <FieldHelp text="If GP is co-investing, enter the GP's equity contribution. This will create a GP cap table row with units and ownership %." />
+                <Controller
+                  control={form.control}
+                  name="gpCapitalContribution"
+                  render={({ field }) => (
+                    <CurrencyInput
+                      id="gpCapitalContribution"
+                      className="field-input"
+                      placeholder="e.g. 50000"
+                      value={field.value ?? 0}
+                      onChange={(v) => field.onChange(v || null)}
+                    />
+                  )}
+                />
+              </div>
             </div>
           </Step>
 

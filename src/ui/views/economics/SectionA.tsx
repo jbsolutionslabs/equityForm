@@ -46,10 +46,30 @@ function fromDisplayRate(s: string): number {
   return isNaN(n) ? 0 : n / 100
 }
 
+function deriveClosingCosts(purchasePrice: number, mode?: 'percent' | 'manual', pct?: number, manual?: number): number {
+  if (mode === 'percent') return Math.max(0, purchasePrice) * (pct ?? 0)
+  return manual ?? 0
+}
+
+function deriveTotalProjectCost(stack: CapitalStack): number {
+  return (stack.purchasePrice ?? 0)
+    + (stack.closingCosts ?? 0)
+    + (stack.operatingReserves ?? 0)
+    + (stack.capexReserves ?? 0)
+    + (stack.otherUses ?? 0)
+}
+
+function deriveLoanAmount(totalProjectCost: number, mode?: 'ltc' | 'manual', ltcPct?: number, manual?: number): number {
+  if (mode === 'ltc') return Math.max(0, totalProjectCost) * (ltcPct ?? 0)
+  return manual ?? 0
+}
+
 function emptyStack(): CapitalStack {
   return {
     purchasePrice:     0,
     closingCosts:      0,
+    closingCostsMode:  'percent',
+    closingCostsPct:   0.02,
     operatingReserves: 0,
     capexReserves:     0,
     otherUses:         0,
@@ -66,6 +86,8 @@ function blankInstrument(): Omit<DebtInstrument, 'id'> {
     loanType:          'fixed',
     lender:            '',
     loanAmount:        0,
+    loanAmountMode:    'manual',
+    loanAmountLtcPct:  0,
     startDate:         `${yyyy}-${mm}`,
     termYears:         5,
     amortizationYears: 30,
@@ -173,14 +195,17 @@ interface InstrumentFormProps {
   instrument: DebtInstrument
   onChange:   (patch: Partial<DebtInstrument>) => void
   locked:     boolean
+  totalProjectCost: number
   showAmort:  boolean
   onToggleAmort: () => void
 }
 
 const InstrumentForm: React.FC<InstrumentFormProps> = ({
-  instrument, onChange, locked, showAmort, onToggleAmort,
+  instrument, onChange, locked, totalProjectCost, showAmort, onToggleAmort,
 }) => {
   const p        = instrument
+  const loanAmountMode = p.loanAmountMode ?? 'manual'
+  const loanAmountLtcPct = p.loanAmountLtcPct ?? 0
   const isPrefEq = p.position === 'pref_equity'
   // isFloating: true when instrument uses floating rate (either explicitly or via rateIsFloating toggle)
   const isFloating = p.loanType === 'floating' || (!isPrefEq && !!p.rateIsFloating)
@@ -326,12 +351,60 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
           </select>,
         )}
         {field('Loan Amount',
-          <CurrencyInput
-            className="field-input"
-            value={p.loanAmount}
-            disabled={locked}
-            onChange={v => onChange({ loanAmount: v })}
-          />,
+          <>
+            <div className="toggle-row" style={{ marginBottom: 8 }}>
+              <button
+                type="button"
+                className={`toggle-btn${loanAmountMode === 'ltc' ? ' toggle-btn--active' : ''}`}
+                disabled={locked}
+                onClick={() => onChange({
+                  loanAmountMode: 'ltc',
+                  loanAmount: deriveLoanAmount(totalProjectCost, 'ltc', loanAmountLtcPct, p.loanAmount),
+                })}
+              >
+                LTC % Plug
+              </button>
+              <button
+                type="button"
+                className={`toggle-btn${loanAmountMode === 'manual' ? ' toggle-btn--active' : ''}`}
+                disabled={locked}
+                onClick={() => onChange({ loanAmountMode: 'manual' })}
+              >
+                Manual Override
+              </button>
+            </div>
+            {loanAmountMode === 'ltc' ? (
+              <>
+                <input
+                  type="number"
+                  className="field-input"
+                  value={toDisplayRate(loanAmountLtcPct)}
+                  min={0}
+                  max={100}
+                  step={0.001}
+                  disabled={locked}
+                  onChange={e => {
+                    const nextPct = fromDisplayRate(e.target.value)
+                    onChange({
+                      loanAmountLtcPct: nextPct,
+                      loanAmount: deriveLoanAmount(totalProjectCost, 'ltc', nextPct, p.loanAmount),
+                    })
+                  }}
+                  placeholder="e.g. 65.0"
+                />
+                <p className="field-hint">
+                  % of total costs ({fmtCurrency(totalProjectCost)}). Current: <strong>{fmtCurrency(p.loanAmount)}</strong>
+                </p>
+              </>
+            ) : (
+              <CurrencyInput
+                className="field-input"
+                value={p.loanAmount}
+                disabled={locked}
+                onChange={v => onChange({ loanAmount: v })}
+              />
+            )}
+          </>,
         )}
         {field('Origination Date',
           <input
@@ -469,7 +542,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                     disabled={locked}
                     onChange={e => onChange({ amortizationYears: parseInt(e.target.value) || undefined })}
                   />,
-                  'Leave blank for IO throughout',
+                  'Required for fixed-rate amortizing loans',
                 )}
               </div>
             </div>
@@ -874,6 +947,10 @@ const SUPanel: React.FC<{ stack: CapitalStack }> = ({ stack }) => {
   const sau = computeSourcesAndUses(stack)
   const fmt = (n: number) => fmtCurrency(n)
   const pct = (n: number) => `${(n * 100).toFixed(1)}%`
+  const shareOf = (value: number, total: number) => {
+    if (!total || total <= 0) return '0.0%'
+    return `${((value / total) * 100).toFixed(1)}%`
+  }
 
   const hasData = stack.purchasePrice > 0
 
@@ -891,30 +968,30 @@ const SUPanel: React.FC<{ stack: CapitalStack }> = ({ stack }) => {
           <div className="su-section-label">Uses</div>
           <div className="su-row su-row--indent">
             <span>Purchase Price</span>
-            <span>{fmt(sau.uses.purchasePrice)}</span>
+            <span>{fmt(sau.uses.purchasePrice)} <small className="su-row-pct">({shareOf(sau.uses.purchasePrice, sau.uses.total)})</small></span>
           </div>
           {sau.uses.closingCosts > 0 && (
             <div className="su-row su-row--indent">
               <span>Closing Costs</span>
-              <span>{fmt(sau.uses.closingCosts)}</span>
+              <span>{fmt(sau.uses.closingCosts)} <small className="su-row-pct">({shareOf(sau.uses.closingCosts, sau.uses.total)})</small></span>
             </div>
           )}
           {sau.uses.operatingReserves > 0 && (
             <div className="su-row su-row--indent">
               <span>Operating Reserves</span>
-              <span>{fmt(sau.uses.operatingReserves)}</span>
+              <span>{fmt(sau.uses.operatingReserves)} <small className="su-row-pct">({shareOf(sau.uses.operatingReserves, sau.uses.total)})</small></span>
             </div>
           )}
           {sau.uses.capexReserves > 0 && (
             <div className="su-row su-row--indent">
               <span>CapEx Reserves</span>
-              <span>{fmt(sau.uses.capexReserves)}</span>
+              <span>{fmt(sau.uses.capexReserves)} <small className="su-row-pct">({shareOf(sau.uses.capexReserves, sau.uses.total)})</small></span>
             </div>
           )}
           {sau.uses.otherUses > 0 && (
             <div className="su-row su-row--indent">
               <span>{stack.otherUsesLabel?.trim() || 'Other Costs'}</span>
-              <span>{fmt(sau.uses.otherUses)}</span>
+              <span>{fmt(sau.uses.otherUses)} <small className="su-row-pct">({shareOf(sau.uses.otherUses, sau.uses.total)})</small></span>
             </div>
           )}
           <div className="su-row su-row--total">
@@ -927,12 +1004,12 @@ const SUPanel: React.FC<{ stack: CapitalStack }> = ({ stack }) => {
           {Object.entries(sau.sources.byPosition).map(([pos, amt]) => (
             <div key={pos} className="su-row su-row--indent">
               <span>{positionLabel(pos as any)}</span>
-              <span>{fmt(amt ?? 0)}</span>
+              <span>{fmt(amt ?? 0)} <small className="su-row-pct">({shareOf(amt ?? 0, sau.sources.total)})</small></span>
             </div>
           ))}
           <div className="su-row su-row--indent">
-            <span>Equity Raise</span>
-            <span>{fmt(sau.sources.equity)}</span>
+            <span>Equity</span>
+            <span>{fmt(sau.sources.equity)} <small className="su-row-pct">({shareOf(sau.sources.equity, sau.sources.total)})</small></span>
           </div>
           <div className="su-row su-row--total">
             <span>Total Sources</span>
@@ -995,12 +1072,26 @@ export const SectionA: React.FC<Props> = ({ dealId, locked, setTab }) => {
   if (!deal) return null
 
   const stack       = deal.capitalStack ?? emptyStack()
+  const closingCostsMode = stack.closingCostsMode ?? 'percent'
+  const closingCostsPct = stack.closingCostsPct ?? 0
   const instruments = stack.instruments
   const errors      = validateSectionA(deal)
   const canComplete = errors.length === 0 && stack.purchasePrice > 0
 
   function patchStack(patch: Partial<CapitalStack>) {
-    updateCapitalStack(dealId, { ...stack, ...patch })
+    const next = { ...stack, ...patch }
+    next.closingCosts = deriveClosingCosts(
+      next.purchasePrice,
+      next.closingCostsMode,
+      next.closingCostsPct,
+      next.closingCosts,
+    )
+    const totalProjectCost = deriveTotalProjectCost(next)
+    next.instruments = (next.instruments ?? []).map(inst => ({
+      ...inst,
+      loanAmount: deriveLoanAmount(totalProjectCost, inst.loanAmountMode, inst.loanAmountLtcPct, inst.loanAmount),
+    }))
+    updateCapitalStack(dealId, next)
     if (deal!.sectionAComplete) setSectionComplete(dealId, 'A', false)
   }
 
@@ -1016,17 +1107,35 @@ export const SectionA: React.FC<Props> = ({ dealId, locked, setTab }) => {
     if (patch.position === 'pref_equity' && !deal!.hasSeenPrefEquityWarning) {
       markPrefEquityWarningSeen(dealId)
     }
-    updateInstrument(dealId, id, patch)
+    const current = instruments.find(i => i.id === id)
+    const merged = current ? { ...current, ...patch } : patch
+    const totalProjectCost = deriveTotalProjectCost(stack)
+    const normalizedPatch: Partial<DebtInstrument> = {
+      ...patch,
+      loanAmount: deriveLoanAmount(
+        totalProjectCost,
+        merged.loanAmountMode,
+        merged.loanAmountLtcPct,
+        merged.loanAmount,
+      ),
+    }
+    updateInstrument(dealId, id, normalizedPatch)
     if (deal!.sectionAComplete) setSectionComplete(dealId, 'A', false)
   }
 
   function handleAddInstrument() {
-    if (!draft.loanAmount || !draft.termYears) {
+    const totalProjectCost = deriveTotalProjectCost(stack)
+    const normalizedDraft: Omit<DebtInstrument, 'id'> = {
+      ...draft,
+      loanAmount: deriveLoanAmount(totalProjectCost, draft.loanAmountMode, draft.loanAmountLtcPct, draft.loanAmount),
+    }
+
+    if (!normalizedDraft.loanAmount || !normalizedDraft.termYears) {
       setNotification('Loan amount and term are required.')
       setTimeout(() => setNotification(null), 3000)
       return
     }
-    const newId = addInstrument(dealId, draft)
+    const newId = addInstrument(dealId, normalizedDraft)
     setDraft(blankInstrument())
     setShowNewForm(false)
     setExpandedId(newId)
@@ -1080,13 +1189,53 @@ export const SectionA: React.FC<Props> = ({ dealId, locked, setTab }) => {
             <div className="instrument-form-grid">
               <div className="field-group">
                 <label className="field-label">Closing Costs</label>
-                <CurrencyInput
-                  className="field-input"
-                  value={stack.closingCosts}
-                  disabled={locked}
-                  onChange={v => patchStack({ closingCosts: v })}
-                />
-                <p className="field-hint">Title, legal, transfer tax, lender fees</p>
+                <div className="toggle-row" style={{ marginBottom: 8 }}>
+                  <button
+                    type="button"
+                    className={`toggle-btn${closingCostsMode === 'percent' ? ' toggle-btn--active' : ''}`}
+                    disabled={locked}
+                    onClick={() => patchStack({ closingCostsMode: 'percent' })}
+                  >
+                    % of Purchase Price
+                  </button>
+                  <button
+                    type="button"
+                    className={`toggle-btn${closingCostsMode === 'manual' ? ' toggle-btn--active' : ''}`}
+                    disabled={locked}
+                    onClick={() => patchStack({ closingCostsMode: 'manual' })}
+                  >
+                    Manual Override
+                  </button>
+                </div>
+
+                {closingCostsMode === 'percent' ? (
+                  <>
+                    <input
+                      type="number"
+                      className="field-input"
+                      value={toDisplayRate(closingCostsPct)}
+                      min={0}
+                      max={20}
+                      step={0.001}
+                      disabled={locked}
+                      onChange={e => patchStack({ closingCostsPct: fromDisplayRate(e.target.value) })}
+                      placeholder="e.g. 2.0"
+                    />
+                    <p className="field-hint">
+                      Plug from purchase price. Current: <strong>{fmtCurrency(stack.closingCosts)}</strong>
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <CurrencyInput
+                      className="field-input"
+                      value={stack.closingCosts}
+                      disabled={locked}
+                      onChange={v => patchStack({ closingCosts: v })}
+                    />
+                    <p className="field-hint">Manual override amount for title, legal, transfer tax, lender fees</p>
+                  </>
+                )}
               </div>
               <div className="field-group">
                 <label className="field-label">Initial Operating Reserves</label>
@@ -1203,6 +1352,7 @@ export const SectionA: React.FC<Props> = ({ dealId, locked, setTab }) => {
                         instrument={inst}
                         onChange={p => handleInstrumentChange(inst.id, p)}
                         locked={locked}
+                        totalProjectCost={deriveTotalProjectCost(stack)}
                         showAmort={amortId === inst.id}
                         onToggleAmort={() => setAmortId(amortId === inst.id ? null : inst.id)}
                       />
@@ -1228,6 +1378,7 @@ export const SectionA: React.FC<Props> = ({ dealId, locked, setTab }) => {
                     instrument={{ ...draft, id: '__new__' }}
                     onChange={p => setDraft(prev => ({ ...prev, ...p }))}
                     locked={false}
+                    totalProjectCost={deriveTotalProjectCost(stack)}
                     showAmort={false}
                     onToggleAmort={() => {}}
                   />

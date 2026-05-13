@@ -123,6 +123,7 @@ export type Offering = {
   preferredReturnType?: 'cumulative' | 'non-cumulative' | 'IRR-based' | ''
   irrRate?: number | null
   gpPromote?: number | null
+  gpCapitalContribution?: number | null
   lpResidual?: number | null
   assetManagementFeeDescription?: string
   acquisitionFeeDescription?: string
