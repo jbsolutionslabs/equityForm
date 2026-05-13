@@ -33,6 +33,25 @@ export const CapTable: React.FC = () => {
 
   const totalUnits   = paidInvestors.reduce((sum, inv) => sum + (inv.classAUnits || 0), 0)
   const totalAmount  = paidInvestors.reduce((sum, inv) => sum + (inv.subscriptionAmount || 0), 0)
+  const unitPriceCents = totalUnits > 0 ? Math.round((totalAmount * 100) / totalUnits) : 0
+  const normalizedLpUnits = (amount: number, fallbackUnits: number) => {
+    if (unitPriceCents <= 0) return fallbackUnits
+    return Math.round((Math.max(0, amount) * 100) / unitPriceCents)
+  }
+  const totalNormalizedLpUnits = paidInvestors.reduce(
+    (sum, inv) => sum + normalizedLpUnits(inv.subscriptionAmount || 0, inv.classAUnits || 0),
+    0,
+  )
+  const gpCapitalContribution = Math.max(0, data?.offering?.gpCapitalContribution ?? 0)
+  const inferredUnitPrice = unitPriceCents > 0
+    ? unitPriceCents / 100
+    : Math.max(1, data?.offering?.minimumInvestment ?? 1)
+  const hasGpCoinvest = gpCapitalContribution > 0
+  const gpUnits = hasGpCoinvest ? Math.round((gpCapitalContribution * 100) / Math.max(unitPriceCents || 100, 1)) : 0
+  const grandTotalUnits = totalNormalizedLpUnits + gpUnits
+  const grandTotalAmount = totalAmount + gpCapitalContribution
+  const ownershipPctFromAmount = (amount: number) =>
+    grandTotalAmount > 0 ? ((amount / grandTotalAmount) * 100).toFixed(2) : '0.00'
 
   // For display, add a GP row representing 0-unit management interest
   const gpName = deal.gpEntityName || deal.gpSignerName || 'GP / Managing Member'
@@ -49,11 +68,11 @@ export const CapTable: React.FC = () => {
       ? new Date(deal.capTableLockedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
       : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     const rows = paidInvestors.map((inv) => {
-      const pct = totalUnits > 0 ? (((inv.classAUnits || 0) / totalUnits) * 100).toFixed(2) : '0.00'
+      const pct = ownershipPctFromAmount(inv.subscriptionAmount || 0)
       return `<tr>
         <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0">${inv.fullLegalName}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center">${inv.subscriberType === 'entity' ? 'LP (Entity)' : 'LP (Individual)'}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-family:monospace">${(inv.classAUnits || 0).toLocaleString()}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-family:monospace">${normalizedLpUnits(inv.subscriptionAmount || 0, inv.classAUnits || 0).toLocaleString()}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-family:monospace">${pct}%</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-family:monospace">$${(inv.subscriptionAmount || 0).toLocaleString()}</td>
       </tr>`
@@ -74,17 +93,17 @@ export const CapTable: React.FC = () => {
           <tr style="background:#f8fafc">
             <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600">${gpName}<br><span style="font-weight:400;font-size:11px;color:#94a3b8">Managing Member</span></td>
             <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center">GP</td>
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-family:monospace">0</td>
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-family:monospace">Management</td>
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-family:monospace">—</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-family:monospace">${hasGpCoinvest ? gpUnits.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '0'}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-family:monospace">${hasGpCoinvest ? `${ownershipPctFromAmount(gpCapitalContribution)}%` : 'Management'}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-family:monospace">${hasGpCoinvest ? `$${gpCapitalContribution.toLocaleString()}` : '—'}</td>
           </tr>
           ${rows}
         </tbody>
         <tfoot><tr style="background:#f1f5f9;font-weight:700">
           <td style="padding:10px 12px" colspan="2">TOTAL</td>
-          <td style="padding:10px 12px;text-align:right;font-family:monospace">${totalUnits.toLocaleString()}</td>
+          <td style="padding:10px 12px;text-align:right;font-family:monospace">${grandTotalUnits.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
           <td style="padding:10px 12px;text-align:right;font-family:monospace">100%</td>
-          <td style="padding:10px 12px;text-align:right;font-family:monospace">$${totalAmount.toLocaleString()}</td>
+          <td style="padding:10px 12px;text-align:right;font-family:monospace">$${grandTotalAmount.toLocaleString()}</td>
         </tr></tfoot>
       </table>
       <p style="margin-top:32px;font-size:12px;color:#94a3b8;text-align:center">
@@ -137,9 +156,9 @@ export const CapTable: React.FC = () => {
         ${row('Registered Agent',      deal.registeredAgentName || '—')}
         ${row('Managing Member (GP)',  gpName)}
         ${row('Property',             [deal.propertyAddress, deal.propertyCity, deal.propertyState, deal.propertyZip].filter(Boolean).join(', ') || '—')}
-        ${row('Total Capital Raised',  '$' + totalAmount.toLocaleString())}
+        ${row('Total Capital Raised',  '$' + grandTotalAmount.toLocaleString())}
         ${row('Number of Investors',   String(paidInvestors.length))}
-        ${row('Total Class A Units',   totalUnits.toLocaleString())}
+        ${row('Total Class A Units',   grandTotalUnits.toLocaleString(undefined, { maximumFractionDigits: 2 }))}
         ${row('Closing Date',          lockedDate)}
       </table>
       <p style="margin-top:40px;font-size:12px;color:#94a3b8">
@@ -228,18 +247,18 @@ export const CapTable: React.FC = () => {
   const downloadCSV = () => {
     const rows = [
       ['Name', 'Type', 'Class A Units', 'Ownership %', 'Subscription Amount'],
-      [gpName, 'GP', '0', 'Management interest', '$0'],
+      [gpName, 'GP', hasGpCoinvest ? gpUnits.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '0', hasGpCoinvest ? `${ownershipPctFromAmount(gpCapitalContribution)}%` : 'Management interest', hasGpCoinvest ? `$${gpCapitalContribution.toLocaleString()}` : '$0'],
       // only include investors who have paid
       ...paidInvestors.map((inv) => [
         inv.fullLegalName,
         inv.subscriberType === 'entity' ? 'LP (Entity)' : 'LP (Individual)',
-        String(inv.classAUnits || 0),
-        totalUnits > 0 ? (((inv.classAUnits || 0) / totalUnits) * 100).toFixed(2) + '%' : '—',
+        String(normalizedLpUnits(inv.subscriptionAmount || 0, inv.classAUnits || 0)),
+        grandTotalAmount > 0 ? ownershipPctFromAmount(inv.subscriptionAmount || 0) + '%' : '—',
         `$${(inv.subscriptionAmount || 0).toLocaleString()}`,
       ]),
     ]
     if (paidInvestors.length > 0) {
-      rows.push(['TOTAL', '', String(totalUnits), '100%', `$${totalAmount.toLocaleString()}`])
+      rows.push(['TOTAL', '', grandTotalUnits.toLocaleString(undefined, { maximumFractionDigits: 2 }), '100%', `$${grandTotalAmount.toLocaleString()}`])
     }
     const csv = rows.map((r) => r.map((c) => `"${c}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
@@ -324,14 +343,14 @@ export const CapTable: React.FC = () => {
                   <div style={{ fontSize: 12, color: 'var(--color-slate-500)' }}>Managing Member</div>
                 </td>
                 <td><span className="status-badge" style={{ background: 'var(--color-navy-900)', color: '#fff', fontSize: 11 }}>GP</span></td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>0</td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>Management</td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>—</td>
+                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>{hasGpCoinvest ? gpUnits.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '0'}</td>
+                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>{hasGpCoinvest ? `${ownershipPctFromAmount(gpCapitalContribution)}%` : 'Management'}</td>
+                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>{hasGpCoinvest ? `$${gpCapitalContribution.toLocaleString()}` : '—'}</td>
               </tr>
 
               {/* LP rows — only show investors who have paid */}
               {paidInvestors.map((inv) => {
-                const pct = totalUnits > 0 ? (((inv.classAUnits || 0) / totalUnits) * 100).toFixed(2) : '0.00'
+                const pct = ownershipPctFromAmount(inv.subscriptionAmount || 0)
                 return (
                   <tr key={inv.id}>
                     <td>
@@ -344,7 +363,7 @@ export const CapTable: React.FC = () => {
                       </span>
                     </td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
-                      {(inv.classAUnits || 0).toLocaleString()}
+                      {normalizedLpUnits(inv.subscriptionAmount || 0, inv.classAUnits || 0).toLocaleString()}
                     </td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
                       {pct}%
@@ -363,11 +382,11 @@ export const CapTable: React.FC = () => {
                   <td>TOTAL</td>
                   <td></td>
                   <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                    {totalUnits.toLocaleString()}
+                    {grandTotalUnits.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                   </td>
                   <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>100%</td>
                   <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                    ${totalAmount.toLocaleString()}
+                    ${grandTotalAmount.toLocaleString()}
                   </td>
                 </tr>
               </tfoot>

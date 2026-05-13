@@ -208,6 +208,13 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, availableDeal
 
     // From AppData: property address + EIN (available as soon as a deal exists)
     if (appData) {
+      // Property name fallback from questionnaire/deal context
+      if (appData.deal.propertyAddress) {
+        corePatch.name = appData.deal.propertyAddress
+      } else if (appData.deal.entityName) {
+        corePatch.name = appData.deal.entityName
+      }
+
       if (appData.deal.propertyAddress) advPatch.address = appData.deal.propertyAddress
       if (appData.deal.propertyCity)    advPatch.city    = appData.deal.propertyCity
       if (appData.deal.propertyState)   advPatch.state   = appData.deal.propertyState
@@ -223,8 +230,14 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, availableDeal
       if (stack.purchasePrice > 0) corePatch.purchasePrice = stack.purchasePrice
       if (stack.closingDate)       corePatch.acquisitionDate = stack.closingDate
 
+      // Pull initial capex reserve into accounting monthly CapEx default as starting suggestion
+      if ((stack.capexReserves ?? 0) > 0) {
+        advPatch.monthlyCapExDefault = stack.capexReserves ?? 0
+      }
+
       const seniorDebt = stack.instruments.filter((i) => i.position === 'senior')
       const subDebt    = stack.instruments.filter((i) => i.position === 'subordinate')
+      const prefEquity = stack.instruments.filter((i) => i.position === 'pref_equity')
 
       const senior = seniorDebt[0]
       if (senior) {
@@ -239,6 +252,46 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, availableDeal
       if (subDebt.length > 0) {
         corePatch.subordinateDebt = subDebt.reduce((sum, i) => sum + i.loanAmount, 0)
       }
+
+      // Build initial equity from complete capital stack / cap table context:
+      // total uses (includes closing costs + capex reserves) less debt sources,
+      // while preserving any cap-table-derived LP equity pull later in lifecycle.
+      const usesTotal =
+        (stack.purchasePrice ?? 0)
+        + (stack.closingCosts ?? 0)
+        + (stack.operatingReserves ?? 0)
+        + (stack.capexReserves ?? 0)
+        + (stack.otherUses ?? 0)
+
+      const seniorDebtTotal = seniorDebt.reduce((sum, i) => sum + (i.loanAmount || 0), 0)
+      const subDebtTotal    = subDebt.reduce((sum, i) => sum + (i.loanAmount || 0), 0)
+      const prefEquityTotal = prefEquity.reduce((sum, i) => sum + (i.loanAmount || 0), 0)
+      const debtTotal       = seniorDebtTotal + subDebtTotal
+
+      const capTableLpEquity = ((appData?.subscriptions ?? []).length > 0
+        ? (appData?.subscriptions ?? [])
+            .filter((s) => s.status === 'paid')
+            .map((s) => s.investorId)
+        : []
+      )
+
+      const paidInvestorIds = new Set(capTableLpEquity)
+      const paidInvestors = (appData?.investors ?? []).filter((inv) => paidInvestorIds.has(inv.id))
+      const capTableSourceInvestors = paidInvestors.length > 0 ? paidInvestors : (appData?.investors ?? [])
+      const lpFromCapTable = capTableSourceInvestors.reduce((sum, inv) => sum + (inv.subscriptionAmount || 0), 0)
+
+      // Preferred equity should populate GP Co-Invest-equity track for accounting waterfall inputs.
+      if (prefEquityTotal > 0) {
+        advPatch.gpEquity = prefEquityTotal
+      }
+
+      const impliedInitialEquity = Math.max(0, usesTotal - debtTotal)
+      const gpContributionFromOffering = Math.max(0, appData?.offering?.gpCapitalContribution ?? 0)
+
+      corePatch.initialEquity = Math.max(
+        impliedInitialEquity,
+        lpFromCapTable + gpContributionFromOffering + prefEquityTotal,
+      )
     }
 
     // From Profit Split (economics Section B): pref rate + GP waterfall
@@ -492,7 +545,9 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, availableDeal
                 lpPrefRateAnnual: lpPrefRateManualOverride
                   ? prev.lpPrefRateAnnual
                   : (cPrefill.lpPrefRateAnnual ?? getDealPrefRate(newDealId)),
-                lpEquity: lpEquityManualOverride ? prev.lpEquity : prev.lpEquity,
+                lpEquity: lpEquityManualOverride
+                  ? prev.lpEquity
+                  : (cPrefill.lpEquity ?? prev.lpEquity),
               }))
               setAdv((prev) => ({ ...prev, ...aPrefill }))
               // Sync pct input states to new dollar amounts

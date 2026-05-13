@@ -31,6 +31,8 @@ export interface DebtInstrument {
   loanType: LoanType;
   lender?: string;
   loanAmount: number;
+  loanAmountMode?: 'ltc' | 'manual'; // ltc = plug from total project cost, manual = direct override
+  loanAmountLtcPct?: number; // decimal (0.65 = 65% LTC)
   startDate: string;             // 'YYYY-MM'
   firstPaymentMonth?: string;    // 'YYYY-MM' — when first scheduled payment is due
   termYears: number;
@@ -96,6 +98,8 @@ export interface CapitalStack {
   purchasePrice: number;
   closingDate?: string;         // 'YYYY-MM-DD' — target closing date
   closingCosts: number;         // title, legal, transfer tax, lender fees, etc.
+  closingCostsMode?: 'percent' | 'manual'; // percent = plug from purchase price, manual = direct override
+  closingCostsPct?: number;     // decimal (0.02 = 2.0% of purchase price)
   operatingReserves: number;    // initial operating reserve funded at close
   capexReserves: number;        // initial capex / improvement reserve funded at close
   otherUses: number;            // catch-all additional acquisition cost

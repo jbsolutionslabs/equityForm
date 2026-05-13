@@ -164,6 +164,14 @@ function currentPeriod(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
+function propertyTotalSourcesAndUsesBasis(property: AccountingProperty): number {
+  const seniorDebt = property.debtStructure.loanAmount || 0
+  const subDebt = property.debtStructure.subordinateLoanAmount || 0
+  const lpEquity = property.waterfall.lpEquity || 0
+  const gpEquity = property.waterfall.gpEquity || 0
+  return seniorDebt + subDebt + lpEquity + gpEquity
+}
+
 // ── Sub-types ─────────────────────────────────────────────────────────────────
 
 type DealRow = {
@@ -253,10 +261,7 @@ export const GpDashboard: React.FC = () => {
   const { totalAUM, totalInvestorCapital, totalDistributions, activeDealCount } = useMemo(() => {
     if (allProperties.length > 0) {
       return {
-        totalAUM: allProperties.reduce((s, p) => {
-          const val = p.id === 'deal' ? (deal.currentValuation ?? p.purchasePrice) : p.purchasePrice
-          return s + val
-        }, 0),
+        totalAUM: allProperties.reduce((s, p) => s + propertyTotalSourcesAndUsesBasis(p), 0),
         totalInvestorCapital: allProperties.reduce((s, p) => s + p.waterfall.lpEquity, 0),
         totalDistributions: allEntries.reduce((s, e) =>
           s + e.distributions.actualLPDistribution + e.distributions.actualGPDistribution, 0),
@@ -350,7 +355,7 @@ export const GpDashboard: React.FC = () => {
           name:                prop.name || prop.address,
           assetClass:          prop.assetClass === 'multifamily' ? 'Multifamily' : 'Hotel',
           acquisitionDate:     prop.acquisitionDate,
-          totalCapitalization: prop.purchasePrice,
+          totalCapitalization: propertyTotalSourcesAndUsesBasis(prop),
           lpEquity,
           prefReturnPct:       prefPct,
           actualYTDReturnPct:  actualYTD,
