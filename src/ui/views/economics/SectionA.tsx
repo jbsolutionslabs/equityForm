@@ -9,6 +9,8 @@ import type {
   LoanType,
   LoanPosition,
   RateIndex,
+  DayCountConvention,
+  MezzPaymentType,
   CapitalStack,
   AmortizationRow,
   PrefCompounding,
@@ -17,6 +19,7 @@ import type {
 } from '../../../state/economicsTypes'
 import { CurrencyInput } from '../../components/CurrencyInput'
 import { fmtCurrency } from '../../../utils/financialComputations'
+import { DebtInstrumentImportModal } from '../../components/DebtInstrumentImportModal'
 
 // ─── Display helpers ──────────────────────────────────────────────────────────
 
@@ -89,6 +92,7 @@ function blankInstrument(): Omit<DebtInstrument, 'id'> {
     loanAmountMode:    'manual',
     loanAmountLtcPct:  0,
     startDate:         `${yyyy}-${mm}`,
+    dayCountConvention: 'actual_360',
     termYears:         5,
     amortizationYears: 30,
     fixedRate:         0,
@@ -207,6 +211,17 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
   const loanAmountMode = p.loanAmountMode ?? 'manual'
   const loanAmountLtcPct = p.loanAmountLtcPct ?? 0
   const isPrefEq = p.position === 'pref_equity'
+  const prefExitFeeMode = p.prefEquityExitFeeMode ?? 'percent'
+  const prefExitFeePct = p.prefEquityExitFeePct ?? 0
+  const prefOriginationFeeMode = p.prefEquityOriginationFeeMode ?? 'percent'
+  const prefOriginationFeePct = p.prefEquityOriginationFeePct ?? 0
+  const prefCurrentPayPortionPct = p.prefCurrentPayPortionPct ?? 0
+  const prefAccruedPortionPct = Math.max(0, 1 - prefCurrentPayPortionPct)
+  const exitFeeMode = p.exitFeeMode ?? 'percent'
+  const exitFeePct = p.exitFeePct ?? 0
+  const originationFeeMode = p.originationFeeMode ?? 'percent'
+  const originationFeePct = p.originationFeePct ?? (p.originationFees ?? 0)
+  const mezzPaymentType = p.mezzPaymentType ?? 'current_pay'
   // isFloating: true when instrument uses floating rate (either explicitly or via rateIsFloating toggle)
   const isFloating = p.loanType === 'floating' || (!isPrefEq && !!p.rateIsFloating)
 
@@ -350,7 +365,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
             <option value="pref_equity">Preferred Equity</option>
           </select>,
         )}
-        {field('Loan Amount',
+        {field(isPrefEq ? 'Commitment Amount' : 'Loan Amount',
           <>
             <div className="toggle-row" style={{ marginBottom: 8 }}>
               <button
@@ -435,6 +450,20 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
             onChange={e => onChange({ termYears: parseInt(e.target.value) || 0 })}
           />,
         )}
+        {field('Day Count',
+          <select
+            className="field-input"
+            value={p.dayCountConvention ?? 'actual_360'}
+            disabled={locked}
+            onChange={e => onChange({ dayCountConvention: e.target.value as DayCountConvention })}
+          >
+            <option value="actual_360">Actual/360</option>
+            <option value="actual_365">Actual/365</option>
+            <option value="thirty_360">30/360</option>
+            <option value="actual_actual">Actual/Actual</option>
+          </select>,
+          'Used for interest accrual calculations',
+        )}
       </div>
 
       {/* ── Preferred Equity configuration ── */}
@@ -466,14 +495,171 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                 <option value="annual">Annual</option>
               </select>,
             )}
-            {field('Closing Fee ($)',
-              <CurrencyInput
+            {field('Exit Fee',
+              <>
+                <div className="toggle-row" style={{ marginBottom: 8 }}>
+                  <button
+                    type="button"
+                    className={`toggle-btn${prefExitFeeMode === 'percent' ? ' toggle-btn--active' : ''}`}
+                    disabled={locked}
+                    onClick={() => onChange({
+                      prefEquityExitFeeMode: 'percent',
+                      prefEquityClosingFee: (p.loanAmount ?? 0) * prefExitFeePct,
+                    })}
+                  >
+                    % of Commitment Amount
+                  </button>
+                  <button
+                    type="button"
+                    className={`toggle-btn${prefExitFeeMode === 'manual' ? ' toggle-btn--active' : ''}`}
+                    disabled={locked}
+                    onClick={() => onChange({ prefEquityExitFeeMode: 'manual' })}
+                  >
+                    Manual Input
+                  </button>
+                </div>
+
+                {prefExitFeeMode === 'percent' ? (
+                  <>
+                    <input
+                      type="number"
+                      className="field-input"
+                      value={toDisplayRate(prefExitFeePct)}
+                      min={0}
+                      max={20}
+                      step={0.001}
+                      disabled={locked}
+                      onChange={e => {
+                        const nextPct = fromDisplayRate(e.target.value)
+                        onChange({
+                          prefEquityExitFeePct: nextPct,
+                          prefEquityClosingFee: (p.loanAmount ?? 0) * nextPct,
+                        })
+                      }}
+                      placeholder="e.g. 1.0"
+                    />
+                    <p className="field-hint">
+                      % of commitment amount. Current: <strong>{fmtCurrency(p.prefEquityClosingFee ?? 0)}</strong>
+                    </p>
+                  </>
+                ) : (
+                  <CurrencyInput
+                    className="field-input"
+                    value={p.prefEquityClosingFee ?? 0}
+                    disabled={locked}
+                    onChange={v => onChange({ prefEquityClosingFee: v })}
+                  />
+                )}
+              </>,
+              'One-time fee applied at exit',
+            )}
+            {field('Origination Fee',
+              <>
+                <div className="toggle-row" style={{ marginBottom: 8 }}>
+                  <button
+                    type="button"
+                    className={`toggle-btn${prefOriginationFeeMode === 'percent' ? ' toggle-btn--active' : ''}`}
+                    disabled={locked}
+                    onClick={() => onChange({
+                      prefEquityOriginationFeeMode: 'percent',
+                      prefEquityOriginationFeeAmount: (p.loanAmount ?? 0) * prefOriginationFeePct,
+                    })}
+                  >
+                    % of Commitment Amount
+                  </button>
+                  <button
+                    type="button"
+                    className={`toggle-btn${prefOriginationFeeMode === 'manual' ? ' toggle-btn--active' : ''}`}
+                    disabled={locked}
+                    onClick={() => onChange({ prefEquityOriginationFeeMode: 'manual' })}
+                  >
+                    Manual Input
+                  </button>
+                </div>
+
+                {prefOriginationFeeMode === 'percent' ? (
+                  <>
+                    <input
+                      type="number"
+                      className="field-input"
+                      value={toDisplayRate(prefOriginationFeePct)}
+                      min={0}
+                      max={20}
+                      step={0.001}
+                      disabled={locked}
+                      onChange={e => {
+                        const nextPct = fromDisplayRate(e.target.value)
+                        onChange({
+                          prefEquityOriginationFeePct: nextPct,
+                          prefEquityOriginationFeeAmount: (p.loanAmount ?? 0) * nextPct,
+                        })
+                      }}
+                      placeholder="e.g. 1.0"
+                    />
+                    <p className="field-hint">
+                      % of commitment amount. Current: <strong>{fmtCurrency(p.prefEquityOriginationFeeAmount ?? 0)}</strong>
+                    </p>
+                  </>
+                ) : (
+                  <CurrencyInput
+                    className="field-input"
+                    value={p.prefEquityOriginationFeeAmount ?? 0}
+                    disabled={locked}
+                    onChange={v => onChange({ prefEquityOriginationFeeAmount: v })}
+                  />
+                )}
+              </>,
+              'One-time fee applied at origination',
+            )}
+            {field('Current Pay Portion (%)',
+              <input
+                type="number"
                 className="field-input"
-                value={p.prefEquityClosingFee ?? 0}
+                value={toDisplayRate(prefCurrentPayPortionPct)}
+                min={0}
+                max={100}
+                step={0.001}
+                placeholder="e.g. 60"
                 disabled={locked}
-                onChange={v => onChange({ prefEquityClosingFee: v })}
+                onChange={e => onChange({ prefCurrentPayPortionPct: fromDisplayRate(e.target.value) })}
               />,
-              'One-time fee at close (enter 0 if none)',
+              'Portion paid from operating cash flow each period. Remainder accrues and compounds at Pref Rate.',
+            )}
+            {field('Accrued Portion',
+              <input
+                type="text"
+                className="field-input"
+                value={`${(prefAccruedPortionPct * 100).toFixed(2)}%`}
+                disabled
+                readOnly
+              />,
+              'Auto-calculated as 100% - Current Pay Portion',
+            )}
+            {field('Minimum Multiple (MOIC)',
+              <input
+                type="number"
+                className="field-input"
+                value={p.prefMinimumMoic ?? ''}
+                min={1}
+                step={0.01}
+                placeholder="e.g. 1.30"
+                disabled={locked}
+                onChange={e => onChange({ prefMinimumMoic: e.target.value ? parseFloat(e.target.value) : undefined })}
+              />,
+              'MOIC floor at redemption. Leave blank if none.',
+            )}
+            {field('Make-whole period (months)',
+              <input
+                type="number"
+                className="field-input"
+                value={p.prefMakeWholeMonths ?? ''}
+                min={1}
+                step={1}
+                placeholder="Leave blank if none"
+                disabled={locked}
+                onChange={e => onChange({ prefMakeWholeMonths: e.target.value ? parseInt(e.target.value, 10) : undefined })}
+              />,
+              'Minimum guaranteed interest period. Leave blank if none.',
             )}
           </div>
           <div className="info-box" style={{ marginTop: 12 }}>
@@ -494,6 +680,55 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
       {/* ── Debt structure (non-pref-equity only) ── */}
       {!isPrefEq && (
         <>
+          {p.position === 'subordinate' && (
+            <div className="instrument-form-section">
+              <div className="instrument-form-section-title">Mezzanine Terms</div>
+              <div className="instrument-form-grid">
+                {field('Payment Type',
+                  <select
+                    className="field-input"
+                    value={mezzPaymentType}
+                    disabled={locked}
+                    onChange={e => onChange({ mezzPaymentType: e.target.value as MezzPaymentType })}
+                  >
+                    <option value="current_pay">Current Pay</option>
+                    <option value="pik">PIK</option>
+                    <option value="partial_pik">Partial PIK</option>
+                  </select>,
+                )}
+                {mezzPaymentType === 'partial_pik' && field('PIK Portion (%)',
+                  <input
+                    type="number"
+                    className="field-input"
+                    value={toDisplayRate(p.mezzPikPortionPct)}
+                    min={0}
+                    max={100}
+                    step={0.001}
+                    placeholder="e.g. 40"
+                    disabled={locked}
+                    onChange={e => onChange({ mezzPikPortionPct: fromDisplayRate(e.target.value) })}
+                  />,
+                  'Portion that accrues to principal. Remainder paid currently.',
+                )}
+                {field('Make-whole period (months)',
+                  <input
+                    type="number"
+                    className="field-input"
+                    value={p.mezzMakeWholeMonths ?? ''}
+                    min={1}
+                    step={1}
+                    placeholder="Leave blank if none"
+                    disabled={locked}
+                    onChange={e => onChange({ mezzMakeWholeMonths: e.target.value ? parseInt(e.target.value, 10) : undefined })}
+                  />,
+                )}
+              </div>
+              <div className="info-box" style={{ marginTop: 12 }}>
+                <strong>Intercreditor:</strong> Mezz debt is subordinate to senior debt per intercreditor agreement. Paid after senior debt service but before equity distributions.
+              </div>
+            </div>
+          )}
+
           {/* Loan Type */}
           <div className="instrument-form-section">
             <div className="instrument-form-section-title">Loan Structure</div>
@@ -855,17 +1090,122 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
           <div className="instrument-form-section">
             <div className="instrument-form-section-title">Additional Terms</div>
             <div className="instrument-form-grid">
-              {field('Origination Fees (%)',
-                <input
-                  type="number"
-                  className="field-input"
-                  value={toDisplayRate(p.originationFees)}
-                  min={0} max={10} step={0.001}
-                  placeholder="e.g. 1.0"
-                  disabled={locked}
-                  onChange={e => onChange({ originationFees: fromDisplayRate(e.target.value) || undefined })}
-                />,
-                'e.g. 1.0 = 1 point (informational)',
+              {field('Origination Fee',
+                <>
+                  <div className="toggle-row" style={{ marginBottom: 8 }}>
+                    <button
+                      type="button"
+                      className={`toggle-btn${originationFeeMode === 'percent' ? ' toggle-btn--active' : ''}`}
+                      disabled={locked}
+                      onClick={() => onChange({
+                        originationFeeMode: 'percent',
+                        originationFeePct,
+                        originationFees: originationFeePct,
+                        originationFeeAmount: (p.loanAmount ?? 0) * originationFeePct,
+                      })}
+                    >
+                      % of Loan Proceeds
+                    </button>
+                    <button
+                      type="button"
+                      className={`toggle-btn${originationFeeMode === 'manual' ? ' toggle-btn--active' : ''}`}
+                      disabled={locked}
+                      onClick={() => onChange({ originationFeeMode: 'manual' })}
+                    >
+                      Manual Input
+                    </button>
+                  </div>
+
+                  {originationFeeMode === 'percent' ? (
+                    <>
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={toDisplayRate(originationFeePct)}
+                        min={0}
+                        max={20}
+                        step={0.001}
+                        placeholder="e.g. 1.0"
+                        disabled={locked}
+                        onChange={e => {
+                          const nextPct = fromDisplayRate(e.target.value)
+                          onChange({
+                            originationFeePct: nextPct,
+                            originationFees: nextPct,
+                            originationFeeAmount: (p.loanAmount ?? 0) * nextPct,
+                          })
+                        }}
+                      />
+                      <p className="field-hint">
+                        % of loan proceeds. Current: <strong>{fmtCurrency(p.originationFeeAmount ?? 0)}</strong>
+                      </p>
+                    </>
+                  ) : (
+                    <CurrencyInput
+                      className="field-input"
+                      value={p.originationFeeAmount ?? 0}
+                      disabled={locked}
+                      onChange={v => onChange({ originationFeeAmount: v })}
+                    />
+                  )}
+                </>,
+              )}
+              {field('Exit Fee',
+                <>
+                  <div className="toggle-row" style={{ marginBottom: 8 }}>
+                    <button
+                      type="button"
+                      className={`toggle-btn${exitFeeMode === 'percent' ? ' toggle-btn--active' : ''}`}
+                      disabled={locked}
+                      onClick={() => onChange({
+                        exitFeeMode: 'percent',
+                        exitFeeAmount: (p.loanAmount ?? 0) * exitFeePct,
+                      })}
+                    >
+                      % of Loan Proceeds
+                    </button>
+                    <button
+                      type="button"
+                      className={`toggle-btn${exitFeeMode === 'manual' ? ' toggle-btn--active' : ''}`}
+                      disabled={locked}
+                      onClick={() => onChange({ exitFeeMode: 'manual' })}
+                    >
+                      Manual Input
+                    </button>
+                  </div>
+
+                  {exitFeeMode === 'percent' ? (
+                    <>
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={toDisplayRate(exitFeePct)}
+                        min={0}
+                        max={20}
+                        step={0.001}
+                        disabled={locked}
+                        onChange={e => {
+                          const nextPct = fromDisplayRate(e.target.value)
+                          onChange({
+                            exitFeePct: nextPct,
+                            exitFeeAmount: (p.loanAmount ?? 0) * nextPct,
+                          })
+                        }}
+                        placeholder="e.g. 0.5"
+                      />
+                      <p className="field-hint">
+                        % of loan proceeds. Current: <strong>{fmtCurrency(p.exitFeeAmount ?? 0)}</strong>
+                      </p>
+                    </>
+                  ) : (
+                    <CurrencyInput
+                      className="field-input"
+                      value={p.exitFeeAmount ?? 0}
+                      disabled={locked}
+                      onChange={v => onChange({ exitFeeAmount: v })}
+                    />
+                  )}
+                </>,
               )}
               <div className="field-group">
                 <label className="field-label">Recourse</label>
@@ -947,6 +1287,13 @@ const SUPanel: React.FC<{ stack: CapitalStack }> = ({ stack }) => {
   const sau = computeSourcesAndUses(stack)
   const fmt = (n: number) => fmtCurrency(n)
   const pct = (n: number) => `${(n * 100).toFixed(1)}%`
+  const lastDollarLtc = sau.uses.total > 0
+    ? (
+        (sau.sources.byPosition.senior ?? 0)
+        + (sau.sources.byPosition.subordinate ?? 0)
+        + (sau.sources.byPosition.pref_equity ?? 0)
+      ) / sau.uses.total
+    : 0
   const shareOf = (value: number, total: number) => {
     if (!total || total <= 0) return '0.0%'
     return `${((value / total) * 100).toFixed(1)}%`
@@ -1036,6 +1383,10 @@ const SUPanel: React.FC<{ stack: CapitalStack }> = ({ stack }) => {
                 <div className="su-metric-label">LTC</div>
                 <div className="su-metric-value">{pct(sau.ltc)}</div>
               </div>
+              <div className="su-metric">
+                <div className="su-metric-label">Last-Dollar-LTC</div>
+                <div className="su-metric-value">{pct(lastDollarLtc)}</div>
+              </div>
             </div>
           )}
         </>
@@ -1066,6 +1417,7 @@ export const SectionA: React.FC<Props> = ({ dealId, locked, setTab }) => {
   const [expandedId,  setExpandedId]  = useState<string | null>(null)
   const [amortId,     setAmortId]     = useState<string | null>(null)
   const [showNewForm, setShowNewForm] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
   const [draft, setDraft] = useState<Omit<DebtInstrument, 'id'>>(blankInstrument)
   const [notification, setNotification] = useState<string | null>(null)
 
@@ -1139,6 +1491,38 @@ export const SectionA: React.FC<Props> = ({ dealId, locked, setTab }) => {
     setDraft(blankInstrument())
     setShowNewForm(false)
     setExpandedId(newId)
+    if (deal!.sectionAComplete) setSectionComplete(dealId, 'A', false)
+  }
+
+  function handleApplyImportedInstruments(imported: Omit<DebtInstrument, 'id'>[]) {
+    const totalProjectCost = deriveTotalProjectCost(stack)
+    const existingByPosition = new Set(instruments.map(i => i.position))
+    const dedupedIncomingByPosition: Omit<DebtInstrument, 'id'>[] = []
+    const incomingSeen = new Set<string>()
+
+    imported.forEach((inst) => {
+      const key = inst.position
+      if (incomingSeen.has(key)) return
+      incomingSeen.add(key)
+      if (existingByPosition.has(key)) return
+      dedupedIncomingByPosition.push(inst)
+    })
+
+    dedupedIncomingByPosition.slice(0, Math.max(0, 5 - instruments.length)).forEach((inst) => {
+      const normalizedInst: Omit<DebtInstrument, 'id'> = {
+        ...blankInstrument(),
+        ...inst,
+        loanAmount: deriveLoanAmount(totalProjectCost, inst.loanAmountMode, inst.loanAmountLtcPct, inst.loanAmount),
+      }
+      addInstrument(dealId, normalizedInst)
+    })
+    setShowImportModal(false)
+    if (!dedupedIncomingByPosition.length) {
+      setNotification('No new instruments imported (duplicates were skipped).')
+    } else {
+      setNotification('Imported debt instruments. Please review extracted values.')
+    }
+    setTimeout(() => setNotification(null), 3500)
     if (deal!.sectionAComplete) setSectionComplete(dealId, 'A', false)
   }
 
@@ -1287,14 +1671,23 @@ export const SectionA: React.FC<Props> = ({ dealId, locked, setTab }) => {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <h2 className="form-section-title" style={{ margin: 0 }}>Debt Instruments</h2>
               {!locked && instruments.length < 5 && (
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => { setShowNewForm(true); setExpandedId(null) }}
-                  disabled={showNewForm}
-                >
-                  + Add Instrument
-                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setShowImportModal(true)}
+                  >
+                    Import Debt Instruments
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => { setShowNewForm(true); setExpandedId(null) }}
+                    disabled={showNewForm}
+                  >
+                    + Add Instrument
+                  </button>
+                </div>
               )}
             </div>
             <p style={{ fontSize: 12.5, color: 'var(--color-slate-400)', marginBottom: 16 }}>
@@ -1365,7 +1758,7 @@ export const SectionA: React.FC<Props> = ({ dealId, locked, setTab }) => {
                 <div className="empty-state" style={{ minHeight: 100, border: '1px dashed var(--color-slate-200)', borderRadius: 8 }}>
                   <p className="empty-state-title" style={{ fontSize: 13 }}>No debt instruments added</p>
                   <p style={{ fontSize: 12, color: 'var(--color-slate-400)' }}>
-                    All-equity deal — equity raise equals total uses.
+                    All-equity deal — equity equals total uses.
                   </p>
                 </div>
               )}
@@ -1447,6 +1840,12 @@ export const SectionA: React.FC<Props> = ({ dealId, locked, setTab }) => {
               {notification}
             </div>
           )}
+
+          <DebtInstrumentImportModal
+            open={showImportModal}
+            onClose={() => setShowImportModal(false)}
+            onApply={handleApplyImportedInstruments}
+          />
         </div>
 
         {/* ── S&U right rail ── */}

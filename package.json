@@ -12,6 +12,8 @@
     "@hookform/resolvers": "^2.9.10",
     "clsx": "^1.2.1",
     "html2pdf.js": "^0.14.0",
+    "mammoth": "^1.12.0",
+    "pdfjs-dist": "^5.7.284",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.45.1",

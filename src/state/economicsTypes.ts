@@ -5,6 +5,8 @@ export type LoanPosition = 'senior' | 'subordinate' | 'pref_equity';
 export type RateIndex = 'SOFR' | 'Prime' | 'Other';
 export type PrepaymentPenaltyType = 'step_down' | 'yield_maintenance' | 'flat';
 export type ResetFrequency = 'monthly' | 'quarterly' | 'annual';
+export type DayCountConvention = 'actual_360' | 'actual_365' | 'thirty_360' | 'actual_actual';
+export type MezzPaymentType = 'current_pay' | 'pik' | 'partial_pik';
 export type PrefType = 'none' | 'simple' | 'compound' | 'accrual' | 'participating';
 export type PrefCompounding = 'monthly' | 'quarterly' | 'annual';
 export type WaterfallMode = 'simple' | 'advanced';
@@ -35,15 +37,25 @@ export interface DebtInstrument {
   loanAmountLtcPct?: number; // decimal (0.65 = 65% LTC)
   startDate: string;             // 'YYYY-MM'
   firstPaymentMonth?: string;    // 'YYYY-MM' — when first scheduled payment is due
+  dayCountConvention?: DayCountConvention;
   termYears: number;
   amortizationYears?: number;    // undefined = IO for full term
 
   // Origination & loan terms
-  originationFees?: number;      // decimal (0.01 = 1 point)
+  originationFees?: number;      // decimal pct (legacy/supporting field)
+  originationFeeMode?: 'percent' | 'manual'; // senior/mezz: percent of loan proceeds or manual
+  originationFeePct?: number; // decimal (0.01 = 1.0%)
+  originationFeeAmount?: number; // dollar amount
   isRecourse?: boolean;
   hasPrepaymentPenalty?: boolean;
   prepaymentPenaltyType?: PrepaymentPenaltyType;
   prepaymentPenaltyTerm?: number; // months
+  exitFeeMode?: 'percent' | 'manual'; // senior/mezz: percent of loan proceeds or manual
+  exitFeePct?: number; // decimal (0.01 = 1.0%)
+  exitFeeAmount?: number; // dollar amount
+  mezzPaymentType?: MezzPaymentType;
+  mezzPikPortionPct?: number; // decimal (0.40 = 40%)
+  mezzMakeWholeMonths?: number;
 
   // Fixed rate
   fixedRate?: number;            // decimal (0.065 = 6.5%)
@@ -88,7 +100,15 @@ export interface DebtInstrument {
   // Pref equity fields (when position === 'pref_equity')
   prefEquityRate?: number;       // decimal annual (0.08 = 8%)
   prefEquityCompounding?: PrefCompounding;
-  prefEquityClosingFee?: number; // dollar amount, one-time at close
+  prefEquityClosingFee?: number; // dollar amount (used as Exit Fee amount)
+  prefEquityExitFeeMode?: 'percent' | 'manual'; // percent of commitment amount or manual override
+  prefEquityExitFeePct?: number; // decimal (0.01 = 1.0%)
+  prefEquityOriginationFeeMode?: 'percent' | 'manual';
+  prefEquityOriginationFeePct?: number; // decimal (0.01 = 1.0%)
+  prefEquityOriginationFeeAmount?: number; // dollar amount
+  prefCurrentPayPortionPct?: number; // decimal (0.60 = 60%)
+  prefMinimumMoic?: number; // e.g., 1.30x
+  prefMakeWholeMonths?: number;
 
   // Deprecated: use position === 'pref_equity' instead
   isPrefEquity?: boolean;
