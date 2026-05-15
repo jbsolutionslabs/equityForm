@@ -28,7 +28,7 @@ const PREF_TYPE_LABELS: Record<PrefType, string> = {
 const PREF_TYPE_DESCRIPTIONS: Record<PrefType, string> = {
   none:          'No preferred return — all profits go straight to the waterfall.',
   simple:        'Non-compounding annual pref on LP equity (most common).',
-  compound:      'Pref compounds over the hold period (specify period).',
+  compound:      'Unpaid preferred return compounds at the selected frequency.',
   accrual:       'Pref accrues and is paid in full at exit event.',
   participating: 'LP receives pref plus participates in upside alongside GP.',
 }
@@ -54,6 +54,14 @@ function defaultTier(index: number, hurdleIrr?: number): WaterfallTier {
     lpSplit:   70,
     gpSplit:   30,
   }
+}
+
+function defaultAdvancedTiers(): WaterfallTier[] {
+  return [
+    { id: uuidv4(), label: 'Tier 1', hurdleIrr: 0.08, lpSplit: 80, gpSplit: 20 },
+    { id: uuidv4(), label: 'Tier 2', hurdleIrr: 0.12, lpSplit: 70, gpSplit: 30 },
+    { id: uuidv4(), label: 'Tier 3', hurdleIrr: 0.18, lpSplit: 50, gpSplit: 50 },
+  ]
 }
 
 // ─── Rate helpers (decimal ↔ display string) ──────────────────────────────────
@@ -94,6 +102,29 @@ const WaterfallPreview: React.FC<PreviewProps> = ({ config, hasPrefEquityInst })
   const advanced = waterfall.mode === 'advanced'
   const tiers    = waterfall.tiers ?? []
 
+  function toFrequencyLabel(v?: PrefCompounding): string | null {
+    if (!v) return null
+    return v.charAt(0).toUpperCase() + v.slice(1)
+  }
+
+  function prefTag(): string | null {
+    if (pref.type === 'none') return null
+    if (pref.type === 'simple' || pref.type === 'participating') {
+      const label = toFrequencyLabel(pref.paymentFrequency)
+      return label ? `(${label})` : null
+    }
+    if (pref.type === 'compound') {
+      const label = toFrequencyLabel(pref.compounding)
+      return label ? `(${label})` : null
+    }
+    if (pref.type === 'accrual') {
+      return '(at exit)'
+    }
+    return null
+  }
+
+  const prefTagLabel = prefTag()
+
   return (
     <div className="waterfall-preview">
       <div className="waterfall-preview-title">Distribution Structure</div>
@@ -120,7 +151,7 @@ const WaterfallPreview: React.FC<PreviewProps> = ({ config, hasPrefEquityInst })
             <div className="wf-row-body">
               <div className="wf-row-label">
                 {toDisplayRate(pref.rate)}% Preferred Return
-                {pref.compounding && <span className="wf-row-tag">({pref.compounding})</span>}
+                {prefTagLabel && <span className="wf-row-tag">{prefTagLabel}</span>}
               </div>
               <div className="wf-row-desc">
                 {PREF_TYPE_DESCRIPTIONS[pref.type]}
@@ -178,7 +209,7 @@ const WaterfallPreview: React.FC<PreviewProps> = ({ config, hasPrefEquityInst })
         {waterfall.hasCatchUp && (
           <div className="wf-flag wf-flag--catchup">
             <span className="wf-flag-icon" aria-hidden="true">↩</span>
-            Catch-up {waterfall.catchUpRate ? `@ ${toDisplayRate(waterfall.catchUpRate)}%` : '(rate TBD)'}
+            Catch-up target {waterfall.catchUpTargetPct ?? 20}% / speed {waterfall.catchUpSpeedPct ?? 50}%
           </div>
         )}
 
@@ -200,13 +231,14 @@ const WaterfallPreview: React.FC<PreviewProps> = ({ config, hasPrefEquityInst })
 interface TierRowProps {
   tier:       WaterfallTier
   index:      number
+  totalTiers: number
   prevTier?:  WaterfallTier
   locked:     boolean
   onChange:   (patch: Partial<WaterfallTier>) => void
   onRemove:   () => void
 }
 
-const TierRow: React.FC<TierRowProps> = ({ tier, index, prevTier, locked, onChange, onRemove }) => {
+const TierRow: React.FC<TierRowProps> = ({ tier, index, totalTiers, prevTier, locked, onChange, onRemove }) => {
   const splitTotal = (tier.lpSplit ?? 0) + (tier.gpSplit ?? 0)
   const splitError = Math.abs(splitTotal - 100) > 0.01
     ? `LP + GP = ${splitTotal}% (must equal 100%)`
@@ -214,8 +246,10 @@ const TierRow: React.FC<TierRowProps> = ({ tier, index, prevTier, locked, onChan
 
   const hurdleError = prevTier?.hurdleIrr != null && tier.hurdleIrr != null
     && tier.hurdleIrr <= prevTier.hurdleIrr
-    ? `Must be > Tier ${index} (${toDisplayRate(prevTier.hurdleIrr)}%)`
+    ? 'Hurdle IRR must be higher than previous tier.'
     : null
+
+  const isFinalTier = index === totalTiers - 1
 
   function handleLpChange(v: string) {
     const lp = Math.min(100, Math.max(0, parseFloat(v) || 0))
@@ -265,6 +299,9 @@ const TierRow: React.FC<TierRowProps> = ({ tier, index, prevTier, locked, onChan
             <span className="tier-pct-suffix">%</span>
           </div>
           {hurdleError && <div className="tier-inline-error">{hurdleError}</div>}
+          {isFinalTier && !hurdleError && (
+            <div className="tier-inline-hint">Final tier — applies to all distributions above this threshold.</div>
+          )}
         </div>
 
         {/* LP split */}
@@ -285,19 +322,15 @@ const TierRow: React.FC<TierRowProps> = ({ tier, index, prevTier, locked, onChan
         </div>
 
         {/* GP split (auto) */}
-        <div className="tier-cell tier-cell--gp">
-          <span className={`tier-gp-display${splitError ? ' tier-gp-display--error' : ''}`}>
-            {tier.gpSplit}%
-          </span>
-          <span className="tier-gp-label">GP</span>
-        </div>
-
         {/* Remove */}
         {!locked && (
           <button
             type="button"
             className="btn btn-ghost btn-xs tier-remove-btn"
-            onClick={onRemove}
+            onClick={() => {
+              const tierName = tier.label || `Tier ${index + 1}`
+              if (window.confirm(`Remove ${tierName}?`)) onRemove()
+            }}
             aria-label={`Remove ${tier.label || `Tier ${index + 1}`}`}
           >
             ✕
@@ -330,6 +363,9 @@ interface PreviewResult {
 function calcPrefReturn(equity: number, pref: PrefConfig, years: number): number {
   if (pref.type === 'none' || !pref.rate || equity <= 0 || years <= 0) return 0
   if (pref.type === 'simple' || pref.type === 'participating') {
+    return equity * pref.rate * years
+  }
+  if (pref.type === 'accrual' && !pref.accrualCompounds) {
     return equity * pref.rate * years
   }
   // compound / accrual — compound to the hold period
@@ -628,17 +664,56 @@ export const SectionB: React.FC<Props> = ({ dealId, locked, setTab }) => {
   // ── Pref handlers ──────────────────────────────────────────────────────────
 
   function handlePrefTypeChange(type: PrefType) {
-    patchPref({ type, rate: type === 'none' ? undefined : (pref.rate ?? 0.08) })
+    if (type === 'none') {
+      patchPref({
+        type,
+        rate: undefined,
+        paymentFrequency: undefined,
+        accrualCompounds: undefined,
+        compounding: undefined,
+      })
+      return
+    }
+
+    if (type === 'simple' || type === 'participating') {
+      patchPref({
+        type,
+        rate: pref.rate ?? 0.08,
+        paymentFrequency: pref.paymentFrequency ?? 'quarterly',
+        accrualCompounds: undefined,
+        compounding: undefined,
+      })
+      return
+    }
+
+    if (type === 'compound') {
+      patchPref({
+        type,
+        rate: pref.rate ?? 0.08,
+        paymentFrequency: undefined,
+        accrualCompounds: undefined,
+        compounding: pref.compounding ?? 'quarterly',
+      })
+      return
+    }
+
+    patchPref({
+      type,
+      rate: pref.rate ?? 0.08,
+      paymentFrequency: undefined,
+      accrualCompounds: pref.accrualCompounds ?? false,
+      compounding: pref.compounding ?? 'quarterly',
+    })
   }
 
   // ── Waterfall handlers ─────────────────────────────────────────────────────
 
   function handleModeChange(mode: WaterfallMode) {
     if (mode === 'advanced' && (!waterfall.tiers || waterfall.tiers.length === 0)) {
-      // Seed first tier using pref rate as hurdle hint
+      // Seed default market-style tiers
       patchWaterfall({
         mode,
-        tiers: [defaultTier(0, pref.rate ?? undefined)],
+        tiers: defaultAdvancedTiers(),
       })
     } else {
       patchWaterfall({ mode })
@@ -742,6 +817,28 @@ export const SectionB: React.FC<Props> = ({ dealId, locked, setTab }) => {
                   <p className="field-hint">Enter as percentage — e.g. 8.0 for 8.000%</p>
                 </div>
 
+                {(pref.type === 'simple' || pref.type === 'participating') && (
+                  <div className="field-group">
+                    <label className="field-label">Payment Frequency</label>
+                    <div className="waterfall-mode-toggle" role="group">
+                      {COMPOUNDING_OPTIONS.map(opt => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          disabled={locked}
+                          className={[
+                            'waterfall-mode-btn',
+                            (pref.paymentFrequency ?? 'quarterly') === opt.value ? 'waterfall-mode-btn--active' : '',
+                          ].filter(Boolean).join(' ')}
+                          onClick={() => patchPref({ paymentFrequency: opt.value })}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {pref.type === 'compound' && (
                   <div className="field-group">
                     <label className="field-label">Compounding Period</label>
@@ -753,7 +850,62 @@ export const SectionB: React.FC<Props> = ({ dealId, locked, setTab }) => {
                           disabled={locked}
                           className={[
                             'waterfall-mode-btn',
-                            pref.compounding === opt.value ? 'waterfall-mode-btn--active' : '',
+                            (pref.compounding ?? 'quarterly') === opt.value ? 'waterfall-mode-btn--active' : '',
+                          ].filter(Boolean).join(' ')}
+                          onClick={() => patchPref({ compounding: opt.value })}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {pref.type === 'accrual' && (
+                  <div className="field-group">
+                    <label className="field-label">Does unpaid pref compound?</label>
+                    <div className="waterfall-mode-toggle" role="group">
+                      <button
+                        type="button"
+                        disabled={locked}
+                        className={[
+                          'waterfall-mode-btn',
+                          pref.accrualCompounds === true ? 'waterfall-mode-btn--active' : '',
+                        ].filter(Boolean).join(' ')}
+                        onClick={() => patchPref({ accrualCompounds: true, compounding: pref.compounding ?? 'quarterly' })}
+                      >
+                        Yes
+                      </button>
+                      <button
+                        type="button"
+                        disabled={locked}
+                        className={[
+                          'waterfall-mode-btn',
+                          pref.accrualCompounds === false ? 'waterfall-mode-btn--active' : '',
+                        ].filter(Boolean).join(' ')}
+                        onClick={() => patchPref({ accrualCompounds: false })}
+                      >
+                        No
+                      </button>
+                    </div>
+                    {pref.accrualCompounds === false && (
+                      <p className="field-hint">Unpaid preferred return accrues without compounding.</p>
+                    )}
+                  </div>
+                )}
+
+                {pref.type === 'accrual' && pref.accrualCompounds && (
+                  <div className="field-group">
+                    <label className="field-label">Compounding Period</label>
+                    <div className="waterfall-mode-toggle" role="group">
+                      {COMPOUNDING_OPTIONS.map(opt => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          disabled={locked}
+                          className={[
+                            'waterfall-mode-btn',
+                            (pref.compounding ?? 'quarterly') === opt.value ? 'waterfall-mode-btn--active' : '',
                           ].filter(Boolean).join(' ')}
                           onClick={() => patchPref({ compounding: opt.value })}
                         >
@@ -820,12 +972,9 @@ export const SectionB: React.FC<Props> = ({ dealId, locked, setTab }) => {
                   </div>
                 </div>
                 <div className="field-group">
-                  <label className="field-label">GP Split (auto)</label>
+                  <label className="field-label">GP Split</label>
                   <div className="tier-gp-readonly">
                     <span className="tier-gp-display">{gpAuto}%</span>
-                    <span style={{ fontSize: 12, color: 'var(--color-slate-400)' }}>
-                      GP promote = 100 − LP
-                    </span>
                   </div>
                 </div>
               </div>
@@ -840,10 +989,33 @@ export const SectionB: React.FC<Props> = ({ dealId, locked, setTab }) => {
                   <span></span>{/* drag handle col */}
                   <span></span>{/* num badge col */}
                   <span className="tier-header-cell">Label</span>
-                  <span className="tier-header-cell">Hurdle IRR</span>
+                  <span
+                    className="tier-header-cell"
+                    title="Cumulative LP IRR since inception. Split applies to distributions above this threshold up to the next tier."
+                  >
+                    Hurdle IRR
+                  </span>
                   <span className="tier-header-cell">LP Split</span>
-                  <span className="tier-header-cell">GP (auto)</span>
                   <span></span>{/* remove col */}
+                </div>
+
+                {/* Tier 0 Return of Capital (display only) */}
+                <div className="tier-row tier-row--tier0-readonly">
+                  <div className="tier-row-inner">
+                    <span className="tier-drag-handle" aria-hidden="true"></span>
+                    <span className="tier-num-badge tier-num-badge--0">T0</span>
+                    <div className="tier-cell tier-cell--label">
+                      <span className="tier-ro-value">Return of Capital</span>
+                    </div>
+                    <div className="tier-cell tier-cell--hurdle">
+                      <span className="tier-ro-value">Priority</span>
+                    </div>
+                    <div className="tier-cell tier-cell--split">
+                      <span className="tier-ro-value">100%</span>
+                    </div>
+                    <span style={{ width: 24 }}></span>
+                  </div>
+                  <div className="tier-inline-hint">100% to LP until LP unreturned capital is fully returned.</div>
                 </div>
 
                 {/* Tier 0 (derived, read-only) */}
@@ -861,10 +1033,6 @@ export const SectionB: React.FC<Props> = ({ dealId, locked, setTab }) => {
                       <div className="tier-cell tier-cell--split">
                         <span className="tier-ro-value">100%</span>
                       </div>
-                      <div className="tier-cell tier-cell--gp">
-                        <span className="tier-gp-display tier-ro-value">0%</span>
-                        <span className="tier-gp-label">GP</span>
-                      </div>
                       <span style={{ width: 24 }}></span>
                     </div>
                   </div>
@@ -877,6 +1045,7 @@ export const SectionB: React.FC<Props> = ({ dealId, locked, setTab }) => {
                       key={tier.id}
                       tier={tier}
                       index={i}
+                      totalTiers={tiers.length}
                       prevTier={tiers[i - 1]}
                       locked={locked}
                       onChange={p => handleTierChange(tier.id, p)}
@@ -934,7 +1103,18 @@ export const SectionB: React.FC<Props> = ({ dealId, locked, setTab }) => {
                         type="checkbox"
                         checked={!!waterfall.hasCatchUp}
                         disabled={locked}
-                        onChange={e => patchWaterfall({ hasCatchUp: e.target.checked })}
+                        onChange={e => {
+                          const checked = e.target.checked
+                          patchWaterfall(
+                            checked
+                              ? {
+                                  hasCatchUp: true,
+                                  catchUpTargetPct: waterfall.catchUpTargetPct ?? 20,
+                                  catchUpSpeedPct: waterfall.catchUpSpeedPct ?? 50,
+                                }
+                              : { hasCatchUp: false }
+                          )
+                        }}
                       />
                       Include a GP catch-up provision
                     </label>
@@ -942,23 +1122,49 @@ export const SectionB: React.FC<Props> = ({ dealId, locked, setTab }) => {
                   {waterfall.hasCatchUp && (
                     <div className="instrument-form-grid">
                       <div className="field-group">
-                        <label className="field-label">Catch-Up Rate (%)</label>
+                        <label className="field-label">Catch-up Target (%)</label>
                         <div style={{ position: 'relative' }}>
                           <input
                             type="number"
                             className="field-input"
-                            value={toDisplayRate(waterfall.catchUpRate)}
+                            value={waterfall.catchUpTargetPct ?? 20}
                             min={0}
                             max={100}
-                            step={0.1}
-                            placeholder="e.g. 8.0"
+                            step={1}
+                            placeholder="e.g. 20"
                             disabled={locked}
                             onChange={e =>
-                              patchWaterfall({ catchUpRate: fromDisplayRate(e.target.value) })
+                              patchWaterfall({ catchUpTargetPct: parseFloat(e.target.value) || 0 })
                             }
                           />
                           <span className="tier-pct-suffix" style={{ right: 12 }}>%</span>
                         </div>
+                        <p className="field-hint">GP's target share of profits above pref. Typically 20%.</p>
+                      </div>
+                      <div className="field-group">
+                        <label className="field-label">Catch-up Speed (%)</label>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            type="number"
+                            className="field-input"
+                            value={waterfall.catchUpSpeedPct ?? 50}
+                            min={0}
+                            max={100}
+                            step={1}
+                            placeholder="e.g. 50"
+                            disabled={locked}
+                            onChange={e =>
+                              patchWaterfall({ catchUpSpeedPct: parseFloat(e.target.value) || 0 })
+                            }
+                          />
+                          <span className="tier-pct-suffix" style={{ right: 12 }}>%</span>
+                        </div>
+                        <p className="field-hint">Portion of catch-up tier distributions allocated to GP. Common values: 50% (LP-friendly) or 100% (GP-friendly).</p>
+                      </div>
+                      <div className="field-group" style={{ gridColumn: '1 / -1' }}>
+                        <p className="field-hint">
+                          GP receives {waterfall.catchUpSpeedPct ?? 50}% of distributions until GP has received {waterfall.catchUpTargetPct ?? 20}% of total profits above pref.
+                        </p>
                       </div>
                     </div>
                   )}

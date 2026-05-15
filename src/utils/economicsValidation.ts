@@ -170,6 +170,27 @@ export function validateSectionB(deal: EconomicsDeal): string[] {
     }
   }
 
+  if (pref.type === 'simple' || pref.type === 'participating') {
+    if (isEmpty(pref.paymentFrequency)) {
+      errors.push('Payment frequency is required for Simple and Participating preferred return types.');
+    }
+  }
+
+  if (pref.type === 'compound') {
+    if (isEmpty(pref.compounding)) {
+      errors.push('Compounding period is required for Compound preferred return type.');
+    }
+  }
+
+  if (pref.type === 'accrual') {
+    if (pref.accrualCompounds === undefined) {
+      errors.push('Please specify whether unpaid accrual preferred return compounds.');
+    }
+    if (pref.accrualCompounds && isEmpty(pref.compounding)) {
+      errors.push('Compounding period is required when accrual preferred return compounds.');
+    }
+  }
+
   // Waterfall
   if (!waterfall.mode) {
     errors.push('Waterfall mode must be selected.');
@@ -210,8 +231,24 @@ export function validateSectionB(deal: EconomicsDeal): string[] {
     });
 
     // Catch-up
-    if (waterfall.hasCatchUp && isEmpty(waterfall.catchUpRate)) {
-      errors.push('Catch-up rate is required when catch-up is enabled.');
+    if (waterfall.hasCatchUp) {
+      if (isEmpty(waterfall.catchUpTargetPct) || isEmpty(waterfall.catchUpSpeedPct)) {
+        errors.push('Catch-Up Target and Catch-Up Speed are required when catch-up is enabled.');
+      }
+
+      if (!isEmpty(waterfall.catchUpTargetPct)) {
+        const target = waterfall.catchUpTargetPct ?? 0;
+        if (target < 0 || target > 100) {
+          errors.push('Catch-up target must be between 0% and 100%.');
+        }
+      }
+
+      if (!isEmpty(waterfall.catchUpSpeedPct)) {
+        const speed = waterfall.catchUpSpeedPct ?? 0;
+        if (speed < 0 || speed > 100) {
+          errors.push('Catch-up speed must be between 0% and 100%.');
+        }
+      }
     }
   }
 
