@@ -3,7 +3,13 @@
 export type LoanType = 'fixed' | 'floating' | 'io' | 'hybrid' | 'construction';
 export type LoanPosition = 'senior' | 'subordinate' | 'pref_equity';
 export type RateIndex = 'SOFR' | 'Prime' | 'Other';
-export type PrepaymentPenaltyType = 'step_down' | 'yield_maintenance' | 'flat';
+export type PrepaymentPenaltyType =
+  | 'step_down'
+  | 'yield_maintenance'
+  | 'defeasance'
+  | 'flat'
+  | 'make_whole'
+  | 'none';
 export type ResetFrequency = 'monthly' | 'quarterly' | 'annual';
 export type DayCountConvention = 'actual_360' | 'actual_365' | 'thirty_360' | 'actual_actual';
 export type MezzPaymentType = 'current_pay' | 'pik' | 'partial_pik';
@@ -50,11 +56,21 @@ export interface DebtInstrument {
   hasPrepaymentPenalty?: boolean;
   prepaymentPenaltyType?: PrepaymentPenaltyType;
   prepaymentPenaltyTerm?: number; // months
+  prepaymentPenaltySchedule?: string; // comma-separated percentages by year, e.g. "3,2,1"
+  treasurySpreadBps?: number; // bps, e.g. 50
+  lockoutPeriodMonths?: number;
+  openWindowBeforeMaturityMonths?: number;
+  penaltyPct?: number; // decimal (0.01 = 1.0%)
+  makeWholePeriodMonths?: number;
+  redemptionSchedule?: string; // pref equity: comma-separated percentages by year
+  redemptionPremiumPct?: number; // pref equity: decimal (0.01 = 1.0%)
+  noCallPeriodMonths?: number; // pref equity
   exitFeeMode?: 'percent' | 'manual'; // senior/mezz: percent of loan proceeds or manual
   exitFeePct?: number; // decimal (0.01 = 1.0%)
   exitFeeAmount?: number; // dollar amount
   mezzPaymentType?: MezzPaymentType;
   mezzPikPortionPct?: number; // decimal (0.40 = 40%)
+  mezzCompounding?: PrefCompounding;
   mezzMakeWholeMonths?: number;
 
   // Fixed rate
@@ -109,6 +125,7 @@ export interface DebtInstrument {
   prefCurrentPayPortionPct?: number; // decimal (0.60 = 60%)
   prefMinimumMoic?: number; // e.g., 1.30x
   prefMakeWholeMonths?: number;
+  prefMandatoryRedemptionOnSaleOrRefi?: boolean;
 
   // Deprecated: use position === 'pref_equity' instead
   isPrefEquity?: boolean;
@@ -120,6 +137,7 @@ export interface CapitalStack {
   closingCosts: number;         // title, legal, transfer tax, lender fees, etc.
   closingCostsMode?: 'percent' | 'manual'; // percent = plug from purchase price, manual = direct override
   closingCostsPct?: number;     // decimal (0.02 = 2.0% of purchase price)
+  lpEquityPct?: number;         // decimal (0.90 = 90% of equity plug)
   operatingReserves: number;    // initial operating reserve funded at close
   capexReserves: number;        // initial capex / improvement reserve funded at close
   otherUses: number;            // catch-all additional acquisition cost
@@ -140,6 +158,8 @@ export interface WaterfallTier {
 export interface PrefConfig {
   type: PrefType;
   rate?: number;               // decimal annual (0.08 = 8%)
+  paymentFrequency?: PrefCompounding;
+  accrualCompounds?: boolean;
   compounding?: PrefCompounding;
 }
 
@@ -148,7 +168,9 @@ export interface WaterfallConfig {
   simpleLpSplit?: number;      // whole number percent; mode = 'simple'
   tiers?: WaterfallTier[];     // mode = 'advanced'; hurdles must be strictly ascending
   hasCatchUp?: boolean;
-  catchUpRate?: number;        // decimal
+  catchUpRate?: number;        // decimal (legacy)
+  catchUpTargetPct?: number;   // whole percent (e.g. 20)
+  catchUpSpeedPct?: number;    // whole percent (e.g. 50)
   hasClawback?: boolean;       // flag only — full math deferred to v2
 }
 
@@ -231,6 +253,8 @@ export interface PrefTemplate {
   name: string;
   type: PrefType;
   rate?: number;
+  paymentFrequency?: PrefCompounding;
+  accrualCompounds?: boolean;
   compounding?: PrefCompounding;
 }
 
@@ -242,6 +266,8 @@ export interface WaterfallTemplate {
   tiers?: WaterfallTier[];
   hasCatchUp?: boolean;
   catchUpRate?: number;
+  catchUpTargetPct?: number;
+  catchUpSpeedPct?: number;
   hasClawback?: boolean;
 }
 

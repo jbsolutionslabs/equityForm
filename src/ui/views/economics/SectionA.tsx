@@ -73,6 +73,7 @@ function emptyStack(): CapitalStack {
     closingCosts:      0,
     closingCostsMode:  'percent',
     closingCostsPct:   0.02,
+    lpEquityPct:       0.9,
     operatingReserves: 0,
     capexReserves:     0,
     otherUses:         0,
@@ -222,6 +223,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
   const originationFeeMode = p.originationFeeMode ?? 'percent'
   const originationFeePct = p.originationFeePct ?? (p.originationFees ?? 0)
   const mezzPaymentType = p.mezzPaymentType ?? 'current_pay'
+  const mezzCompounding = p.mezzCompounding ?? 'quarterly'
   // isFloating: true when instrument uses floating rate (either explicitly or via rateIsFloating toggle)
   const isFloating = p.loanType === 'floating' || (!isPrefEq && !!p.rateIsFloating)
 
@@ -483,7 +485,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
               />,
               'Annual preferred return rate',
             )}
-            {field('Compounding',
+            {prefCurrentPayPortionPct < 1 && field('Compounding',
               <select
                 className="field-input"
                 value={p.prefEquityCompounding ?? 'quarterly'}
@@ -648,18 +650,101 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
               />,
               'MOIC floor at redemption. Leave blank if none.',
             )}
-            {field('Make-whole period (months)',
-              <input
-                type="number"
-                className="field-input"
-                value={p.prefMakeWholeMonths ?? ''}
-                min={1}
-                step={1}
-                placeholder="Leave blank if none"
-                disabled={locked}
-                onChange={e => onChange({ prefMakeWholeMonths: e.target.value ? parseInt(e.target.value, 10) : undefined })}
-              />,
-              'Minimum guaranteed interest period. Leave blank if none.',
+            <div className="field-group instrument-form-field--full">
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={p.prefMandatoryRedemptionOnSaleOrRefi ?? true}
+                  disabled={locked}
+                  onChange={e => onChange({ prefMandatoryRedemptionOnSaleOrRefi: e.target.checked })}
+                />
+                Mandatory redemption upon sale or refinance
+              </label>
+            </div>
+          </div>
+          <div className="instrument-form-section" style={{ marginTop: 16 }}>
+            <div className="instrument-form-section-title">Redemption Premium</div>
+            <div className="field-group" style={{ marginBottom: 12 }}>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={!!p.hasPrepaymentPenalty}
+                  disabled={locked}
+                  onChange={e => onChange({ hasPrepaymentPenalty: e.target.checked })}
+                />
+                Has redemption premium
+              </label>
+            </div>
+            {p.hasPrepaymentPenalty && (
+              <div className="instrument-form-grid">
+                {field('Redemption Type',
+                  <select
+                    className="field-input"
+                    value={p.prepaymentPenaltyType ?? ''}
+                    disabled={locked}
+                    onChange={e => onChange({ prepaymentPenaltyType: (e.target.value as PrepaymentPenaltyType) || undefined })}
+                  >
+                    <option value="">— Select —</option>
+                    <option value="step_down">Step-Down</option>
+                    <option value="flat">Flat</option>
+                    <option value="none">None</option>
+                  </select>,
+                )}
+                {p.prepaymentPenaltyType === 'step_down' && (
+                  <>
+                    {field('Redemption Schedule',
+                      <input
+                        type="text"
+                        className="field-input"
+                        value={p.redemptionSchedule ?? ''}
+                        placeholder="e.g. 2,1,0"
+                        disabled={locked}
+                        onChange={e => onChange({ redemptionSchedule: e.target.value || undefined })}
+                      />,
+                      'Comma-separated %s by year',
+                    )}
+                    {field('No-Call Period (months)',
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={p.noCallPeriodMonths ?? ''}
+                        min={1}
+                        step={1}
+                        disabled={locked}
+                        onChange={e => onChange({ noCallPeriodMonths: parseInt(e.target.value, 10) || undefined })}
+                      />,
+                    )}
+                  </>
+                )}
+                {p.prepaymentPenaltyType === 'flat' && (
+                  <>
+                    {field('Redemption Premium (%)',
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={toDisplayRate(p.redemptionPremiumPct)}
+                        min={0}
+                        max={20}
+                        step={0.001}
+                        placeholder="e.g. 1.0"
+                        disabled={locked}
+                        onChange={e => onChange({ redemptionPremiumPct: fromDisplayRate(e.target.value) })}
+                      />,
+                    )}
+                    {field('No-Call Period (months)',
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={p.noCallPeriodMonths ?? ''}
+                        min={1}
+                        step={1}
+                        disabled={locked}
+                        onChange={e => onChange({ noCallPeriodMonths: parseInt(e.target.value, 10) || undefined })}
+                      />,
+                    )}
+                  </>
+                )}
+              </div>
             )}
           </div>
           <div className="info-box" style={{ marginTop: 12 }}>
@@ -696,6 +781,18 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                     <option value="partial_pik">Partial PIK</option>
                   </select>,
                 )}
+                {(mezzPaymentType === 'pik' || mezzPaymentType === 'partial_pik') && field('Compounding',
+                  <select
+                    className="field-input"
+                    value={mezzCompounding}
+                    disabled={locked}
+                    onChange={e => onChange({ mezzCompounding: e.target.value as PrefCompounding })}
+                  >
+                    <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                    <option value="annual">Annual</option>
+                  </select>,
+                )}
                 {mezzPaymentType === 'partial_pik' && field('PIK Portion (%)',
                   <input
                     type="number"
@@ -709,18 +806,6 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                     onChange={e => onChange({ mezzPikPortionPct: fromDisplayRate(e.target.value) })}
                   />,
                   'Portion that accrues to principal. Remainder paid currently.',
-                )}
-                {field('Make-whole period (months)',
-                  <input
-                    type="number"
-                    className="field-input"
-                    value={p.mezzMakeWholeMonths ?? ''}
-                    min={1}
-                    step={1}
-                    placeholder="Leave blank if none"
-                    disabled={locked}
-                    onChange={e => onChange({ mezzMakeWholeMonths: e.target.value ? parseInt(e.target.value, 10) : undefined })}
-                  />,
                 )}
               </div>
               <div className="info-box" style={{ marginTop: 12 }}>
@@ -1243,20 +1328,126 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                   >
                     <option value="">— Select —</option>
                     <option value="step_down">Step-Down</option>
-                    <option value="yield_maintenance">Yield Maintenance</option>
+                    {p.position === 'senior' && <option value="yield_maintenance">Yield Maintenance</option>}
+                    {p.position === 'senior' && <option value="defeasance">Defeasance</option>}
                     <option value="flat">Flat</option>
+                    {p.position === 'subordinate' && <option value="make_whole">Make-Whole</option>}
+                    <option value="none">None</option>
                   </select>,
                 )}
-                {field('Penalty Term (months)',
-                  <input
-                    type="number"
-                    className="field-input"
-                    value={p.prepaymentPenaltyTerm || ''}
-                    min={1} step={1}
-                    placeholder="e.g. 60"
-                    disabled={locked}
-                    onChange={e => onChange({ prepaymentPenaltyTerm: parseInt(e.target.value) || undefined })}
-                  />,
+
+                {p.prepaymentPenaltyType === 'step_down' && (
+                  field('Penalty Schedule',
+                    <input
+                      type="text"
+                      className="field-input"
+                      value={p.prepaymentPenaltySchedule ?? ''}
+                      placeholder="e.g. 3,2,1"
+                      disabled={locked}
+                      onChange={e => onChange({ prepaymentPenaltySchedule: e.target.value || undefined })}
+                    />,
+                    'Comma-separated %s by year',
+                  )
+                )}
+
+                {p.position === 'senior' && p.prepaymentPenaltyType === 'yield_maintenance' && (
+                  <>
+                    {field('Treasury Spread (bps)',
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={p.treasurySpreadBps ?? ''}
+                        min={0}
+                        step={1}
+                        placeholder="e.g. 50"
+                        disabled={locked}
+                        onChange={e => onChange({ treasurySpreadBps: parseInt(e.target.value, 10) || undefined })}
+                      />,
+                    )}
+                    {field('Lockout Period (months)',
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={p.lockoutPeriodMonths ?? ''}
+                        min={1}
+                        step={1}
+                        disabled={locked}
+                        onChange={e => onChange({ lockoutPeriodMonths: parseInt(e.target.value, 10) || undefined })}
+                      />,
+                    )}
+                  </>
+                )}
+
+                {p.position === 'senior' && p.prepaymentPenaltyType === 'defeasance' && (
+                  <>
+                    {field('Lockout Period (months)',
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={p.lockoutPeriodMonths ?? ''}
+                        min={1}
+                        step={1}
+                        disabled={locked}
+                        onChange={e => onChange({ lockoutPeriodMonths: parseInt(e.target.value, 10) || undefined })}
+                      />,
+                    )}
+                    {field('Open Window Before Maturity (months)',
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={p.openWindowBeforeMaturityMonths ?? ''}
+                        min={1}
+                        step={1}
+                        disabled={locked}
+                        onChange={e => onChange({ openWindowBeforeMaturityMonths: parseInt(e.target.value, 10) || undefined })}
+                      />,
+                    )}
+                  </>
+                )}
+
+                {p.prepaymentPenaltyType === 'flat' && (
+                  <>
+                    {field('Penalty (%)',
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={toDisplayRate(p.penaltyPct)}
+                        min={0}
+                        max={20}
+                        step={0.001}
+                        placeholder="e.g. 1.0"
+                        disabled={locked}
+                        onChange={e => onChange({ penaltyPct: fromDisplayRate(e.target.value) })}
+                      />,
+                    )}
+                    {field('Penalty Term (months)',
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={p.prepaymentPenaltyTerm || ''}
+                        min={1}
+                        step={1}
+                        placeholder="e.g. 60"
+                        disabled={locked}
+                        onChange={e => onChange({ prepaymentPenaltyTerm: parseInt(e.target.value) || undefined })}
+                      />,
+                    )}
+                  </>
+                )}
+
+                {p.position === 'subordinate' && p.prepaymentPenaltyType === 'make_whole' && (
+                  field('Make-Whole Period (months)',
+                    <input
+                      type="number"
+                      className="field-input"
+                      value={p.makeWholePeriodMonths ?? ''}
+                      min={1}
+                      step={1}
+                      disabled={locked}
+                      onChange={e => onChange({ makeWholePeriodMonths: parseInt(e.target.value, 10) || undefined })}
+                    />,
+                    'Period during which make-whole applies',
+                  )
                 )}
               </div>
             )}
@@ -1287,6 +1478,13 @@ const SUPanel: React.FC<{ stack: CapitalStack }> = ({ stack }) => {
   const sau = computeSourcesAndUses(stack)
   const fmt = (n: number) => fmtCurrency(n)
   const pct = (n: number) => `${(n * 100).toFixed(1)}%`
+  const lastDollarLtv = sau.uses.purchasePrice > 0
+    ? (
+        (sau.sources.byPosition.senior ?? 0)
+        + (sau.sources.byPosition.subordinate ?? 0)
+        + (sau.sources.byPosition.pref_equity ?? 0)
+      ) / sau.uses.purchasePrice
+    : 0
   const lastDollarLtc = sau.uses.total > 0
     ? (
         (sau.sources.byPosition.senior ?? 0)
@@ -1378,13 +1576,13 @@ const SUPanel: React.FC<{ stack: CapitalStack }> = ({ stack }) => {
               <div className="su-metric">
                 <div className="su-metric-label">LTV</div>
                 <div className="su-metric-value">{pct(sau.ltv)}</div>
+                <div className="su-metric-label" style={{ marginTop: 15 }}>Last-Dollar-LTV</div>
+                <div className="su-metric-value">{pct(lastDollarLtv)}</div>
               </div>
               <div className="su-metric">
                 <div className="su-metric-label">LTC</div>
                 <div className="su-metric-value">{pct(sau.ltc)}</div>
-              </div>
-              <div className="su-metric">
-                <div className="su-metric-label">Last-Dollar-LTC</div>
+                <div className="su-metric-label" style={{ marginTop: 15 }}>Last-Dollar-LTC</div>
                 <div className="su-metric-value">{pct(lastDollarLtc)}</div>
               </div>
             </div>
@@ -1426,6 +1624,11 @@ export const SectionA: React.FC<Props> = ({ dealId, locked, setTab }) => {
   const stack       = deal.capitalStack ?? emptyStack()
   const closingCostsMode = stack.closingCostsMode ?? 'percent'
   const closingCostsPct = stack.closingCostsPct ?? 0
+  const lpEquityPct = Math.min(1, Math.max(0, stack.lpEquityPct ?? 0.9))
+  const gpEquityPct = 1 - lpEquityPct
+  const equityPlug = computeSourcesAndUses(stack).sources.equity
+  const lpEquityAmount = equityPlug * lpEquityPct
+  const gpEquityAmount = equityPlug * gpEquityPct
   const instruments = stack.instruments
   const errors      = validateSectionA(deal)
   const canComplete = errors.length === 0 && stack.purchasePrice > 0
@@ -1664,12 +1867,47 @@ export const SectionA: React.FC<Props> = ({ dealId, locked, setTab }) => {
                 />
               </div>
             </div>
+
+            <div className="instrument-form-section-title" style={{ marginTop: 20, marginBottom: 12 }}>
+              EQUITY STRUCTURE
+            </div>
+
+            <div className="instrument-form-grid">
+              <div className="field-group">
+                <label className="field-label">LP Equity (%)</label>
+                <input
+                  type="number"
+                  className="field-input"
+                  value={toDisplayRate(lpEquityPct)}
+                  min={0}
+                  max={100}
+                  step={0.001}
+                  disabled={locked}
+                  onChange={e => patchStack({ lpEquityPct: fromDisplayRate(e.target.value) })}
+                />
+                <p className="field-hint">LP share of total equity. Auto-calculates dollar amount based on equity plug.</p>
+                <p className="field-hint">Current: <strong>{fmtCurrency(lpEquityAmount)}</strong></p>
+              </div>
+
+              <div className="field-group">
+                <label className="field-label">GP Equity (%)</label>
+                <input
+                  type="text"
+                  className="field-input"
+                  value={`${(gpEquityPct * 100).toFixed(3).replace(/\.000$/, '')}%`}
+                  disabled
+                  readOnly
+                />
+                <p className="field-hint">GP co-invest. Auto-calculated.</p>
+                <p className="field-hint">Current: <strong>{fmtCurrency(gpEquityAmount)}</strong></p>
+              </div>
+            </div>
           </div>
 
-          {/* ── Debt instruments ── */}
+          {/* ── Financing instruments ── */}
           <div className="form-section">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h2 className="form-section-title" style={{ margin: 0 }}>Debt Instruments</h2>
+              <h2 className="form-section-title" style={{ margin: 0 }}>Financing Instruments</h2>
               {!locked && instruments.length < 5 && (
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
