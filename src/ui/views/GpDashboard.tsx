@@ -33,6 +33,12 @@ function fmtPeriod(p: string): string {
   return `${names[parseInt(mo, 10) - 1]} ${year}`
 }
 
+function periodMonthLabel(p: string): string {
+  const mo = parseInt(p.split('-')[1] || '1', 10)
+  const names = ['January','February','March','April','May','June','July','August','September','October','November','December']
+  return names[Math.max(0, Math.min(11, mo - 1))]
+}
+
 function fmtRelTime(timestamp: string): string {
   const diff = Date.now() - new Date(timestamp).getTime()
   const mins = Math.floor(diff / 60_000)
@@ -256,6 +262,11 @@ export const GpDashboard: React.FC = () => {
 
   const now = new Date()
   const curPeriod = currentPeriod()
+  const latestSubmittedPeriod = useMemo(() => {
+    if (!allEntries.length) return null
+    const sortedPeriods = allEntries.map((e) => e.period).sort()
+    return sortedPeriods[sortedPeriods.length - 1] || null
+  }, [allEntries])
 
   // ── Section 1: Portfolio Summary ────────────────────────────────────────────
 
@@ -310,10 +321,15 @@ export const GpDashboard: React.FC = () => {
         const totalEquity = lpEquity + prop.waterfall.gpEquity
         const prefPct     = prop.waterfall.lpPrefRateAnnual * 100
 
-        // YTD distributions
-        const ytdYear   = now.getFullYear()
+        // YTD distributions (anchored to most recent submitted period for this property)
+        const latestPropertyPeriod = entries.length ? entries[entries.length - 1].period : null
+        const ytdYear   = latestPropertyPeriod ? parseInt(latestPropertyPeriod.slice(0, 4), 10) : now.getFullYear()
         const ytdDist   = entries
-          .filter((e) => e.period.startsWith(String(ytdYear)))
+          .filter((e) => {
+            if (!e.period.startsWith(String(ytdYear))) return false
+            if (!latestPropertyPeriod) return true
+            return e.period <= latestPropertyPeriod
+          })
           .reduce((s, e) => s + e.distributions.actualLPDistribution, 0)
         const actualYTD = lpEquity > 0 ? (ytdDist / lpEquity) * 100 : 0
         const diff      = actualYTD - prefPct
@@ -328,7 +344,11 @@ export const GpDashboard: React.FC = () => {
 
         // CoC (YTD annual distributions / total equity)
         const ytdTotalDist = entries
-          .filter((e) => e.period.startsWith(String(ytdYear)))
+          .filter((e) => {
+            if (!e.period.startsWith(String(ytdYear))) return false
+            if (!latestPropertyPeriod) return true
+            return e.period <= latestPropertyPeriod
+          })
           .reduce((s, e) => s + e.distributions.actualLPDistribution + e.distributions.actualGPDistribution, 0)
         const coc = totalEquity > 0 ? (ytdTotalDist / totalEquity) * 100 : null
 
@@ -760,7 +780,7 @@ export const GpDashboard: React.FC = () => {
                   <th>Total Cap.</th>
                   <th>LP Equity</th>
                   <th>Pref %</th>
-                  <th>YTD Return</th>
+                  <th>{latestSubmittedPeriod ? `YTD ${periodMonthLabel(latestSubmittedPeriod)} Return` : 'YTD Return'}</th>
                   <th>vs Projected</th>
                   <th>IRR</th>
                   <th>CoC</th>
