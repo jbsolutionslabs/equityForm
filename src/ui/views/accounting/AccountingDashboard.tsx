@@ -1,8 +1,7 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAccountingStore } from '../../../state/accountingStore'
 import { useAppStore } from '../../../state/store'
-import { MonthYearPicker } from '../../components/MonthYearPicker'
 import {
   computePrefGapSummary,
   computeIncomeStatement,
@@ -239,18 +238,29 @@ function PropertyWorkspace({
   const gap     = computePrefGapSummary(entries)
   const [workspace, setWorkspace] = useState<'overview' | 'entry' | 'statements'>('overview')
   const [entryPeriod, setEntryPeriod] = useState('')
+  const [entryTiming, setEntryTiming] = useState<'monthly' | 'ytd' | 't6' | 't12'>('monthly')
   const deleteEntry = useAccountingStore((s) => s.deleteEntry)
   const deleteProperty = useAccountingStore((s) => s.deleteProperty)
 
   const now           = new Date()
-  const defaultPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  const [newEntryPeriod, setNewEntryPeriod] = useState(defaultPeriod)
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear())
+  const [lastMonth, setLastMonth] = useState(now.getMonth() + 1)
+
+  const selectedEntryPeriod = useMemo(() => {
+    return `${selectedYear}-${String(lastMonth).padStart(2, '0')}`
+  }, [selectedYear, lastMonth])
+
+  const selectableYears = useMemo(() => {
+    const current = now.getFullYear()
+    return Array.from({ length: 7 }, (_, i) => current - 5 + i)
+  }, [now])
 
   if (workspace === 'entry' && entryPeriod) {
     return (
       <LineItemEntry
         property={property}
         period={entryPeriod}
+        calcTiming={entryTiming}
         onSaved={() => setWorkspace('overview')}
         onCancel={() => setWorkspace('overview')}
       />
@@ -335,12 +345,45 @@ function PropertyWorkspace({
       {/* Action bar */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 24, alignItems: 'center', flexWrap: 'wrap' }}>
         <div className="entry-period-picker">
-          <MonthYearPicker value={newEntryPeriod} onChange={setNewEntryPeriod} />
+          <select
+            className="field-input field-input--sm"
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
+            title="Year"
+          >
+            {selectableYears.map((year) => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
+          <select
+            className="field-input field-input--sm"
+            value={lastMonth}
+            onChange={(e) => setLastMonth(parseInt(e.target.value, 10))}
+            title="Last Month"
+          >
+            {[
+              'January', 'February', 'March', 'April', 'May', 'June',
+              'July', 'August', 'September', 'October', 'November', 'December',
+            ].map((label, idx) => (
+              <option key={label} value={idx + 1}>{label}</option>
+            ))}
+          </select>
+          <select
+            className="field-input field-input--sm"
+            value={entryTiming}
+            onChange={(e) => setEntryTiming(e.target.value as 'monthly' | 'ytd' | 't6' | 't12')}
+            title="Timing"
+          >
+            <option value="monthly">Monthly</option>
+            <option value="ytd">YTD</option>
+            <option value="t6">T-6</option>
+            <option value="t12">T-12</option>
+          </select>
           <button
             type="button"
             className="btn btn-primary"
-            disabled={!newEntryPeriod}
-            onClick={() => { setEntryPeriod(newEntryPeriod); setWorkspace('entry') }}
+            disabled={!selectedEntryPeriod}
+            onClick={() => { setEntryPeriod(selectedEntryPeriod); setWorkspace('entry') }}
           >
             + Enter Data
           </button>
@@ -393,12 +436,45 @@ function PropertyWorkspace({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h3 style={{ margin: 0 }}>Monthly Entries</h3>
           <div className="entry-period-picker">
-            <MonthYearPicker value={newEntryPeriod} onChange={setNewEntryPeriod} />
+            <select
+              className="field-input field-input--sm"
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
+              title="Year"
+            >
+              {selectableYears.map((year) => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+            <select
+              className="field-input field-input--sm"
+              value={lastMonth}
+              onChange={(e) => setLastMonth(parseInt(e.target.value, 10))}
+              title="Last Month"
+            >
+              {[
+                'January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December',
+              ].map((label, idx) => (
+                <option key={label} value={idx + 1}>{label}</option>
+              ))}
+            </select>
+            <select
+              className="field-input field-input--sm"
+              value={entryTiming}
+              onChange={(e) => setEntryTiming(e.target.value as 'monthly' | 'ytd' | 't6' | 't12')}
+              title="Timing"
+            >
+              <option value="monthly">Monthly</option>
+              <option value="ytd">YTD</option>
+              <option value="t6">T-6</option>
+              <option value="t12">T-12</option>
+            </select>
             <button
               type="button"
               className="btn btn-secondary btn-sm"
-              disabled={!newEntryPeriod}
-              onClick={() => { setEntryPeriod(newEntryPeriod); setWorkspace('entry') }}
+              disabled={!selectedEntryPeriod}
+              onClick={() => { setEntryPeriod(selectedEntryPeriod); setWorkspace('entry') }}
             >
               + New Entry
             </button>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useMatch } from 'react-router-dom'
 import { useAppStore, isSpvFormed } from '../../state/store'
 import { useEconomicsStore, isEconomicsLocked } from '../../state/economicsStore'
@@ -182,6 +182,10 @@ function TopLevelSidebar() {
   const [confirmReset, setConfirmReset] = useState(false)
   const [acctOpen, setAcctOpen]         = useState(loc.pathname.startsWith('/accounting'))
 
+  useEffect(() => {
+    setAcctOpen(loc.pathname.startsWith('/accounting'))
+  }, [loc.pathname])
+
   const handleAcctClick = () => {
     const next = !acctOpen
     setAcctOpen(next)
@@ -223,6 +227,8 @@ function TopLevelSidebar() {
             <span className="sidebar-dashboard-sub">Deal formation &amp; legal</span>
           </div>
         </Link>
+
+   
 
         {/* ══ Accounting module ══ */}
         <button
@@ -269,6 +275,22 @@ function TopLevelSidebar() {
             </Link>
           </div>
         )}
+
+             {/* ══ Compliance ══ */}
+        <Link
+          to="/compliance"
+          className={[
+            'sidebar-dashboard-link',
+            loc.pathname === '/compliance' ? 'sidebar-dashboard-link--active' : '',
+          ].filter(Boolean).join(' ')}
+          aria-current={loc.pathname === '/compliance' ? 'page' : undefined}
+        >
+          <div className="sidebar-dashboard-icon" aria-hidden="true">✓</div>
+          <div className="sidebar-dashboard-text">
+            <span className="sidebar-dashboard-title">Compliance</span>
+            <span className="sidebar-dashboard-sub">DE tax reminders & filing</span>
+          </div>
+        </Link>
 
       </nav>
 

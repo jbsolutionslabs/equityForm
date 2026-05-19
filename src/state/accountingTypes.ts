@@ -269,11 +269,12 @@ export type ComputedStatement = {
 
 /* ─── Period helpers ─────────────────────────────────────────────────────────── */
 
-export type PeriodType = 'month' | 'quarter' | 'year'
+export type PeriodType = 'month' | 'quarter' | 'year' | 'ytd' | 'ltm' | 'ye'
 
 export type PeriodSelection = {
   type:    PeriodType
   year:    number
   month?:  number   // 1–12 (for monthly view)
   quarter?: 1 | 2 | 3 | 4
+  throughMonth?: number // 1–12 (for YTD / LTM cutoffs)
 }

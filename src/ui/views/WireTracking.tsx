@@ -1,6 +1,8 @@
 import React, { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useAppStore } from '../../state/store'
+import { useEconomicsStore } from '../../state/economicsStore'
+import { computeSourcesAndUses } from '../../utils/sourcesAndUses'
 import { HelpCard } from '../components/HelpCard'
 import { CurrencyInput } from '../components/CurrencyInput'
 import ModuleProgress from '../components/ModuleProgress'
@@ -12,6 +14,7 @@ export const WireTracking: React.FC = () => {
   const subscriptions = data?.subscriptions ?? []
   const banking      = data?.banking ?? {}
   const recordWirePayment = useAppStore((s) => s.recordWirePayment)
+  const economicsDeal = useEconomicsStore((s) => s.deals.find((d) => d.dealId === dealId))
 
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
   const [wireModal, setWireModal] = useState<{ investorId: string; name: string } | null>(null)
@@ -28,10 +31,27 @@ export const WireTracking: React.FC = () => {
   const getSub = (investorId: string) =>
     subscriptions.find((s) => s.investorId === investorId)
 
-  const totalCommitted = investors.reduce((sum, inv) => sum + (inv.subscriptionAmount || 0), 0)
+  const lpTargetFromEconomics = (() => {
+    const stack = economicsDeal?.capitalStack
+    if (!stack) return 0
+    const sources = computeSourcesAndUses(stack)
+    const equity = Math.max(0, sources.sources.equity)
+    const lpPct = Math.min(1, Math.max(0, stack.lpEquityPct ?? 0.9))
+    return equity * lpPct
+  })()
+
+  const totalCommittedFromSubs = investors.reduce((sum, inv) => sum + (inv.subscriptionAmount || 0), 0)
+  const investorTargetAmount = (subscriptionAmount?: number | null) => {
+    const amount = subscriptionAmount || 0
+    if (lpTargetFromEconomics <= 0 || totalCommittedFromSubs <= 0) return amount
+    return (amount / totalCommittedFromSubs) * lpTargetFromEconomics
+  }
+
+  const totalCommitted = investors.reduce((sum, inv) => sum + investorTargetAmount(inv.subscriptionAmount), 0)
   const totalReceived  = investors.reduce((sum, inv) => {
     const sub = getSub(inv.id)
-    return sub?.status === 'paid' ? sum + (inv.subscriptionAmount || 0) : sum
+    if (sub?.status !== 'paid') return sum
+    return sum + (sub.paidAmount ?? investorTargetAmount(inv.subscriptionAmount))
   }, 0)
   const totalAwaiting  = totalCommitted - totalReceived
 
@@ -63,6 +83,15 @@ export const WireTracking: React.FC = () => {
       return
     }
     if (wireModal) {
+      const investor = investors.find((i) => i.id === wireModal.investorId)
+      const target = investorTargetAmount(investor?.subscriptionAmount)
+      const enteredAmount = wireAmt > 0 ? wireAmt : target
+      const gpPortion = Math.max(0, totalCommittedFromSubs - lpTargetFromEconomics)
+      const overage = Math.max(0, enteredAmount - target)
+      if (overage > gpPortion) {
+        notify(`Amount exceeds LP target by $${Math.round(overage).toLocaleString()}, but GP portion is only $${Math.round(gpPortion).toLocaleString()}. Please use a lower override.`, 'error')
+        return
+      }
       recordWirePayment(dealId!, wireModal.investorId, wireConf.trim(), wireAmt > 0 ? wireAmt : undefined, wireDate || undefined)
       notify(`Wire confirmed for ${wireModal.name}.`)
       setWireModal(null)
@@ -182,6 +211,9 @@ export const WireTracking: React.FC = () => {
               {investors.map((inv) => {
                 const sub = getSub(inv.id)
                 const canConfirm = sub?.status === 'signed' || sub?.status === 'paid'
+                const target = investorTargetAmount(inv.subscriptionAmount)
+                const received = sub?.status === 'paid' ? (sub.paidAmount ?? target) : 0
+                const overage = Math.max(0, received - target)
 
                 return (
                   <tr key={inv.id}>
@@ -189,11 +221,16 @@ export const WireTracking: React.FC = () => {
                       <div style={{ fontWeight: 500 }}>{inv.fullLegalName}</div>
                       <div style={{ fontSize: 12, color: 'var(--color-slate-500)' }}>{inv.email}</div>
                     </td>
-                    <td>{inv.subscriptionAmount ? `$${Number(inv.subscriptionAmount).toLocaleString()}` : '—'}</td>
+                    <td>${Math.round(target).toLocaleString()}</td>
                     <td>
                       <span className={`status-badge ${statusClass(sub?.status)}`}>
                         {statusLabel(sub?.status)}
                       </span>
+                      {sub?.status === 'paid' && overage > 0 && (
+                        <div style={{ fontSize: 11, color: 'var(--color-slate-500)', marginTop: 4 }}>
+                          +${Math.round(overage).toLocaleString()} over target (from GP portion)
+                        </div>
+                      )}
                     </td>
                     <td style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>
                       {sub?.wireConfirmationNumber || '—'}
@@ -272,6 +309,26 @@ export const WireTracking: React.FC = () => {
                   />
                 </div>
               </div>
+              {(() => {
+                const investor = investors.find((i) => i.id === wireModal.investorId)
+                const target = investorTargetAmount(investor?.subscriptionAmount)
+                const enteredAmount = wireAmt > 0 ? wireAmt : target
+                const gpPortion = Math.max(0, totalCommittedFromSubs - lpTargetFromEconomics)
+                const overage = Math.max(0, enteredAmount - target)
+                return (
+                  <div className="info-box" style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 13, color: 'var(--color-slate-600)' }}>
+                      LP pro-rated target: <strong>${Math.round(target).toLocaleString()}</strong>
+                      {overage > 0 && (
+                        <> · Override overage: <strong>${Math.round(overage).toLocaleString()}</strong> (reduces GP portion)</>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--color-slate-500)', marginTop: 4 }}>
+                      Available GP portion for overages: ${Math.round(gpPortion).toLocaleString()}
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
             <div className="modal-footer">
               <button type="button" className="btn btn-primary" onClick={confirmWire}>

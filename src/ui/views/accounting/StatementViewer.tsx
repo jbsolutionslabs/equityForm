@@ -58,6 +58,16 @@ function PeriodSelector({
               {t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
+          {(['ytd', 'ltm', 'ye'] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              className={`toggle-btn toggle-btn--sm ${sel.type === t ? 'toggle-btn--active' : ''}`}
+              onClick={() => onChange({ ...sel, type: t })}
+            >
+              {t.toUpperCase()}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -99,6 +109,23 @@ function PeriodSelector({
             className="field-input field-input--sm"
             value={sel.month ?? 1}
             onChange={(e) => onChange({ ...sel, month: parseInt(e.target.value) })}
+          >
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+              <option key={m} value={m}>
+                {new Date(2000, m - 1).toLocaleDateString('en-US', { month: 'long' })}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {(sel.type === 'ytd' || sel.type === 'ltm') && (
+        <div className="period-selector-group">
+          <label className="period-selector-label">Through Month</label>
+          <select
+            className="field-input field-input--sm"
+            value={sel.throughMonth ?? sel.month ?? 12}
+            onChange={(e) => onChange({ ...sel, throughMonth: parseInt(e.target.value) })}
           >
             {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
               <option key={m} value={m}>
@@ -321,7 +348,6 @@ export const StatementViewer: React.FC<Props> = ({ property, entries }) => {
           image:       { type: 'jpeg', quality: 0.98 },
           html2canvas: { scale: 2, useCORS: true },
           jsPDF:       { unit: 'mm', format: 'letter', orientation: 'portrait' },
-          pagebreak:   { mode: ['avoid-all', 'css', 'legacy'] },
         })
         .from(printRef.current)
         .save()

@@ -47,6 +47,8 @@ export function fmtPct(n: number | null | undefined): string {
 
 /** Return all "YYYY-MM" strings covered by a PeriodSelection */
 export function periodsForSelection(sel: PeriodSelection): string[] {
+  const clampMonth = (m?: number) => Math.min(12, Math.max(1, m ?? 12))
+
   if (sel.type === 'month') {
     const m = String(sel.month ?? 1).padStart(2, '0')
     return [`${sel.year}-${m}`]
@@ -56,16 +58,41 @@ export function periodsForSelection(sel: PeriodSelection): string[] {
     const start = (q - 1) * 3 + 1
     return [start, start + 1, start + 2].map((m) => `${sel.year}-${String(m).padStart(2, '0')}`)
   }
-  // year
+  if (sel.type === 'ytd') {
+    const through = clampMonth(sel.throughMonth ?? sel.month)
+    return Array.from({ length: through }, (_, i) => `${sel.year}-${String(i + 1).padStart(2, '0')}`)
+  }
+  if (sel.type === 'ltm') {
+    const endMonth = clampMonth(sel.throughMonth ?? sel.month)
+    const out: string[] = []
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(sel.year, endMonth - 1 - i, 1)
+      out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    }
+    return out
+  }
+  // year / ye
   return Array.from({ length: 12 }, (_, i) => `${sel.year}-${String(i + 1).padStart(2, '0')}`)
 }
 
 export function periodLabel(sel: PeriodSelection): string {
+  const clampMonth = (m?: number) => Math.min(12, Math.max(1, m ?? 12))
   if (sel.type === 'month') {
     const d = new Date(sel.year, (sel.month ?? 1) - 1)
     return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
   }
   if (sel.type === 'quarter') return `Q${sel.quarter} ${sel.year}`
+  if (sel.type === 'ytd') {
+    const through = clampMonth(sel.throughMonth ?? sel.month)
+    const d = new Date(sel.year, through - 1, 1)
+    return `YTD through ${d.toLocaleDateString('en-US', { month: 'long' })} ${sel.year}`
+  }
+  if (sel.type === 'ltm') {
+    const through = clampMonth(sel.throughMonth ?? sel.month)
+    const d = new Date(sel.year, through - 1, 1)
+    return `LTM through ${d.toLocaleDateString('en-US', { month: 'long' })} ${sel.year}`
+  }
+  if (sel.type === 'ye') return `Year Ended December 31, ${sel.year}`
   return `Year Ended December 31, ${sel.year}`
 }
 
@@ -226,6 +253,12 @@ function buildMFIncomeStatement(
   const lpDist   = entries.reduce((s, e) => s + e.distributions.actualLPDistribution, 0)
   const gpDist   = entries.reduce((s, e) => s + e.distributions.actualGPDistribution, 0)
   const totalDist= lpDist + gpDist
+  const lpPreferredReturn = entries.reduce((s, e) => s + e.distributions.calculatedLPPref, 0)
+  const lpReturnOfCapital = Math.min(lpDist, property.waterfall.lpEquity)
+  const lpPromote         = Math.max(0, lpDist - lpReturnOfCapital - lpPreferredReturn)
+  const gpPreferredReturn = entries.length * ((property.waterfall.gpEquity * property.waterfall.lpPrefRateAnnual) / 12)
+  const gpReturnOfCapital = Math.min(gpDist, property.waterfall.gpEquity)
+  const gpPromote         = Math.max(0, gpDist - gpReturnOfCapital - gpPreferredReturn)
   const netIncome= noi - da - interest  // Net Income Per Books (principal is B/S, distributions are draws)
 
   const vacancyRate = gpr > 0 ? (vacancy + conc) / gpr : 0
@@ -280,9 +313,13 @@ function buildMFIncomeStatement(
     total('ncf',       'NET FREE CASH FLOW TO INVESTORS',          ncf),
     spacer('s6'),
 
-    hdr('dist-hdr',    'LP DISTRIBUTION WATERFALL'),
-    line('lp-dist',    'Actual LP Distributions Paid',            -lpDist),
-    line('gp-dist',    'Actual GP Distributions Paid',            -gpDist),
+    hdr('dist-hdr',    'DISTRIBUTIONS'),
+    line('lp-roc',     'LP — Return of Capital',                  -lpReturnOfCapital),
+    line('lp-pref',    'LP — Preferred Return (from Economics)',  -lpPreferredReturn),
+    line('lp-promote', 'LP — Promote',                            -lpPromote),
+    line('gp-roc',     'GP — Return of Capital',                  -gpReturnOfCapital),
+    line('gp-pref',    'GP — Preferred Return (from Economics)',  -gpPreferredReturn),
+    line('gp-promote', 'GP — Promote',                            -gpPromote),
     subtotal('total-dist', 'Total Distributions to Partners',     -totalDist),
     spacer('s7'),
 
@@ -351,6 +388,12 @@ function buildHotelIncomeStatement(
   const lpDist   = entries.reduce((s, e) => s + e.distributions.actualLPDistribution, 0)
   const gpDist   = entries.reduce((s, e) => s + e.distributions.actualGPDistribution, 0)
   const totalDist= lpDist + gpDist
+  const lpPreferredReturn = entries.reduce((s, e) => s + e.distributions.calculatedLPPref, 0)
+  const lpReturnOfCapital = Math.min(lpDist, _property.waterfall.lpEquity)
+  const lpPromote         = Math.max(0, lpDist - lpReturnOfCapital - lpPreferredReturn)
+  const gpPreferredReturn = entries.length * ((_property.waterfall.gpEquity * _property.waterfall.lpPrefRateAnnual) / 12)
+  const gpReturnOfCapital = Math.min(gpDist, _property.waterfall.gpEquity)
+  const gpPromote         = Math.max(0, gpDist - gpReturnOfCapital - gpPreferredReturn)
   const netIncome= ebitda - da - interest
 
   return [
@@ -414,9 +457,13 @@ function buildHotelIncomeStatement(
     total('ncf',        'NET FREE CASH FLOW TO INVESTORS',          ncf),
     spacer('s9'),
 
-    hdr('dist-hdr', 'LP DISTRIBUTION WATERFALL'),
-    line('lp-dist',     'Actual LP Distributions Paid',            -lpDist),
-    line('gp-dist',     'Actual GP / Promote Distributions Paid',  -gpDist),
+    hdr('dist-hdr', 'DISTRIBUTIONS'),
+    line('lp-roc',      'LP — Return of Capital',                  -lpReturnOfCapital),
+    line('lp-pref',     'LP — Preferred Return (from Economics)',  -lpPreferredReturn),
+    line('lp-promote',  'LP — Promote',                            -lpPromote),
+    line('gp-roc',      'GP — Return of Capital',                  -gpReturnOfCapital),
+    line('gp-pref',     'GP — Preferred Return (from Economics)',  -gpPreferredReturn),
+    line('gp-promote',  'GP — Promote',                            -gpPromote),
     subtotal('total-dist','Total Distributions to Partners',       -totalDist),
     spacer('s10'),
 
@@ -707,7 +754,7 @@ export function computeCashFlowStatement(
   return {
     title:    'Statement of Cash Flows',
     subtitle: 'ASC 230 — Indirect Method | Operating / Investing / Financing Activities',
-    period:   `Year Ended ${periodLabel(sel)}`,
+    period:   periodLabel(sel),
     entity:   property.name,
     ein:      property.ein,
     rows,

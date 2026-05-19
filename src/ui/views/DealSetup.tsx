@@ -26,6 +26,8 @@ const schema = z.object({
   registeredAgentName:      z.string().optional(),
   registeredAgentAddress:   z.string().optional(),
   dealPurpose:              z.string().optional(),
+  propertyName:             z.string().optional(),
+  assetClass:               z.enum(['multifamily', 'hotel']).optional(),
   propertyAddress:          z.string().optional(),
   propertyCity:             z.string().optional(),
   propertyState:            z.string().optional(),
@@ -36,7 +38,6 @@ const schema = z.object({
   minimumInvestment:        z.number().nullable().optional(),
   closingDate:              z.string().optional(),
   solicitationMethod:       z.string().optional(),
-  gpCapitalContribution:    z.number().nullable().optional(),
 }).superRefine((vals, ctx) => {
   if (vals.offeringExemption === '506(b)' && !vals.solicitationMethod) {
     ctx.addIssue({
@@ -72,6 +73,7 @@ export const DealSetup: React.FC = () => {
     defaultValues: {
       ...(dealData     as Partial<FormValues>),
       ...(offeringData as Partial<FormValues>),
+      assetClass: (dealData as Partial<FormValues>).assetClass ?? 'multifamily',
     },
     mode: 'onBlur',
   })
@@ -108,6 +110,8 @@ export const DealSetup: React.FC = () => {
       registeredAgentName:      vals.registeredAgentName,
       registeredAgentAddress:   vals.registeredAgentAddress,
       dealPurpose:              vals.dealPurpose,
+      propertyName:             vals.propertyName,
+      assetClass:               vals.assetClass,
       propertyAddress:          vals.propertyAddress,
       propertyCity:             vals.propertyCity,
       propertyState:            vals.propertyState,
@@ -120,7 +124,6 @@ export const DealSetup: React.FC = () => {
       minimumInvestment:  vals.minimumInvestment,
       closingDate:        vals.closingDate,
       solicitationMethod: vals.solicitationMethod,
-      gpCapitalContribution: vals.gpCapitalContribution,
     })
   }
 
@@ -328,6 +331,38 @@ export const DealSetup: React.FC = () => {
                 The investment property details will appear in the Operating Agreement, subscription
                 agreements, and cap table documents.
               </p>
+
+              <div className="field-group">
+                <label className="field-label" htmlFor="propertyName">Property Name</label>
+                <FieldHelp text="A short property name used across legal and accounting workflows (e.g. Sunset Ridge Apartments)." />
+                <input
+                  id="propertyName"
+                  className="field-input"
+                  placeholder="e.g. Sunset Ridge Apartments"
+                  {...form.register('propertyName')}
+                />
+              </div>
+
+              <div className="field-group">
+                <label className="field-label">Asset Class</label>
+                <FieldHelp text="Select the property asset class. Additional options may be added later." />
+                <div className="toggle-group">
+                  <button
+                    type="button"
+                    className={`toggle-btn ${form.watch('assetClass') === 'multifamily' ? 'toggle-btn--active' : ''}`}
+                    onClick={() => form.setValue('assetClass', 'multifamily')}
+                  >
+                    Multifamily
+                  </button>
+                  <button
+                    type="button"
+                    className={`toggle-btn ${form.watch('assetClass') === 'hotel' ? 'toggle-btn--active' : ''}`}
+                    onClick={() => form.setValue('assetClass', 'hotel')}
+                  >
+                    Hotel
+                  </button>
+                </div>
+              </div>
 
               <div className="field-group">
                 <label className="field-label" htmlFor="propertyAddress">Property Street Address</label>
@@ -611,23 +646,6 @@ export const DealSetup: React.FC = () => {
                   />
                 </div>
 
-                <div className="field-group">
-                  <label className="field-label" htmlFor="gpCapitalContribution">GP Capital Contribution ($)</label>
-                  <FieldHelp text="If the GP is co-investing, enter the GP capital amount. This flows to Cap Table ownership calculations." />
-                  <Controller
-                    control={form.control}
-                    name="gpCapitalContribution"
-                    render={({ field }) => (
-                      <CurrencyInput
-                        id="gpCapitalContribution"
-                        className="field-input"
-                        placeholder="e.g. 50000"
-                        value={field.value ?? 0}
-                        onChange={(v) => field.onChange(v || null)}
-                      />
-                    )}
-                  />
-                </div>
               </div>
             </div>
           </Step>
