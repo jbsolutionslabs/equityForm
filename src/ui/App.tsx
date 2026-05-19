@@ -12,6 +12,7 @@ import { WireTracking }         from './views/WireTracking'
 import { CapTable }             from './views/CapTable'
 import { AccountingDashboard }  from './views/accounting/AccountingDashboard'
 import { Economics }            from './views/economics/Economics'
+import { Compliance }           from './views/Compliance'
 
 export const App: React.FC = () => (
   <Shell>
@@ -20,6 +21,7 @@ export const App: React.FC = () => (
       <Route path="/"           element={<Navigate to="/deals" replace />} />
       <Route path="/dashboard"  element={<GpDashboard />} />
       <Route path="/accounting" element={<AccountingDashboard />} />
+      <Route path="/compliance" element={<Compliance />} />
       <Route path="/deals"      element={<DealsList />} />
 
       {/* Per-deal routes */}
