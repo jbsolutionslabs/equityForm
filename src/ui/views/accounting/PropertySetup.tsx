@@ -209,11 +209,15 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, availableDeal
     // From AppData: property address + EIN (available as soon as a deal exists)
     if (appData) {
       // Property name fallback from questionnaire/deal context
-      if (appData.deal.propertyAddress) {
+      if (appData.deal.propertyName) {
+        corePatch.name = appData.deal.propertyName
+      } else if (appData.deal.propertyAddress) {
         corePatch.name = appData.deal.propertyAddress
       } else if (appData.deal.entityName) {
         corePatch.name = appData.deal.entityName
       }
+
+      if (appData.deal.assetClass) corePatch.assetClass = appData.deal.assetClass
 
       if (appData.deal.propertyAddress) advPatch.address = appData.deal.propertyAddress
       if (appData.deal.propertyCity)    advPatch.city    = appData.deal.propertyCity

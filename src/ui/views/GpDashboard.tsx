@@ -150,11 +150,11 @@ function computeAnnualIRR(
   return annual > -100 && annual < 1000 ? annual : null
 }
 
-/** Last 6 YYYY-MM periods ending with the current month */
-function getLast6Periods(): string[] {
+/** Last 12 YYYY-MM periods ending with the current month (LTM) */
+function getLast12Periods(): string[] {
   const now = new Date()
-  return Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
+  return Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1)
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   })
 }
@@ -193,6 +193,7 @@ type DealRow = {
   lastDistAmount: number
   cashOnHand: number
   dealStatus: string
+  lpCount: number
   missingData: boolean
   route: string
 }
@@ -258,14 +259,24 @@ export const GpDashboard: React.FC = () => {
 
   // ── Section 1: Portfolio Summary ────────────────────────────────────────────
 
-  const { totalAUM, totalInvestorCapital, totalDistributions, activeDealCount } = useMemo(() => {
+  const { totalAUM, totalInvestorCapital, totalDistributions, activeDealCount, totalLpsAcrossDeals } = useMemo(() => {
+    const capTableLpCountForDeal = (dealId: string): number => {
+      const d = deals[dealId]?.data
+      if (!d) return 0
+      const paidInvestorIds = new Set((d.subscriptions ?? []).filter((s) => s.status === 'paid').map((s) => s.investorId))
+      if (paidInvestorIds.size > 0) return paidInvestorIds.size
+      return (d.investors ?? []).length
+    }
+
     if (allProperties.length > 0) {
+      const totalLps = allProperties.reduce((sum, p) => sum + capTableLpCountForDeal(p.dealId), 0)
       return {
         totalAUM: allProperties.reduce((s, p) => s + propertyTotalSourcesAndUsesBasis(p), 0),
         totalInvestorCapital: allProperties.reduce((s, p) => s + p.waterfall.lpEquity, 0),
         totalDistributions: allEntries.reduce((s, e) =>
           s + e.distributions.actualLPDistribution + e.distributions.actualGPDistribution, 0),
         activeDealCount: allProperties.length,
+        totalLpsAcrossDeals: totalLps,
       }
     }
     // Fallback: Phase 1 data only
@@ -281,8 +292,9 @@ export const GpDashboard: React.FC = () => {
       totalInvestorCapital: totalCommitted,
       totalDistributions: 0,
       activeDealCount: deal.entityName ? 1 : 0,
+      totalLpsAcrossDeals: investors.length,
     }
-  }, [allProperties, allEntries, deal, investors, subscriptions])
+  }, [allProperties, allEntries, deal, investors, subscriptions, deals])
 
   // ── Section 2: Deal Portfolio Table ────────────────────────────────────────
 
@@ -350,6 +362,10 @@ export const GpDashboard: React.FC = () => {
         const lastEntry  = entries[entries.length - 1]
         const cashOnHand = lastEntry?.workingCapital.cashEnding ?? 0
 
+        const dealData = deals[prop.dealId]?.data
+        const paidInvestorIds = new Set((dealData?.subscriptions ?? []).filter((s) => s.status === 'paid').map((s) => s.investorId))
+        const lpCount = paidInvestorIds.size > 0 ? paidInvestorIds.size : (dealData?.investors?.length ?? 0)
+
         return {
           id:                  prop.id,
           name:                prop.name || prop.address,
@@ -369,6 +385,7 @@ export const GpDashboard: React.FC = () => {
           lastDistAmount,
           cashOnHand,
           dealStatus:          deal.dealStatus || 'Active',
+          lpCount,
           missingData:         entries.length === 0,
           route:               '/accounting',
         }
@@ -398,10 +415,11 @@ export const GpDashboard: React.FC = () => {
       lastDistAmount:      0,
       cashOnHand:          0,
       dealStatus:          deal.dealStatus || 'Raising',
+      lpCount:             investors.length,
       missingData:         true,
       route:               primaryId ? `/deals/${primaryId}/questionnaire` : '/deals',
     }]
-  }, [allProperties, allEntries, deal, offering, investors, subscriptions, now, primaryId])
+  }, [allProperties, allEntries, deal, offering, investors, subscriptions, now, primaryId, deals])
 
   // ── Section 3: Cash Flow ────────────────────────────────────────────────────
 
@@ -410,7 +428,7 @@ export const GpDashboard: React.FC = () => {
     const mtdIn  = curEntries.reduce((s, e) => s + entryRevenue(e), 0)
     const mtdOut = curEntries.reduce((s, e) => s + entryOutflows(e), 0)
 
-    const periods = getLast6Periods()
+    const periods = getLast12Periods()
     const chart: ChartPoint[] = periods.map((p) => {
       const pe = allEntries.filter((e) => e.period === p)
       return {
@@ -708,6 +726,11 @@ export const GpDashboard: React.FC = () => {
             <div className="dash-stat-value dash-stat-value--count">{activeDealCount}</div>
             <div className="dash-stat-sub">Raising or active</div>
           </div>
+          <div className="dash-stat-card">
+            <div className="dash-stat-label">LPs (Cap Tables)</div>
+            <div className="dash-stat-value dash-stat-value--count">{totalLpsAcrossDeals}</div>
+            <div className="dash-stat-sub">Counted per deal</div>
+          </div>
         </div>
       </div>
 
@@ -731,6 +754,7 @@ export const GpDashboard: React.FC = () => {
                 <tr>
                   <th>Property</th>
                   <th>Status</th>
+                  <th>LPs</th>
                   <th>Asset Class</th>
                   <th>Acquired</th>
                   <th>Total Cap.</th>
@@ -762,6 +786,7 @@ export const GpDashboard: React.FC = () => {
                       )}
                     </td>
                     <td>{statusBadge(row.dealStatus)}</td>
+                    <td>{row.lpCount}</td>
                     <td>{row.assetClass}</td>
                     <td>{row.acquisitionDate ? fmtDate(row.acquisitionDate) : '—'}</td>
                     <td>{fmtCurrency(row.totalCapitalization)}</td>
@@ -826,7 +851,7 @@ export const GpDashboard: React.FC = () => {
 
           {/* Bar chart */}
           <div className="dash-chart-wrap">
-            <div className="dash-chart-title">Last 6 Months — Inflows vs. Outflows</div>
+            <div className="dash-chart-title">LTM (Last 12 Months) — Inflows vs. Outflows</div>
             {chartData.every((d) => d.inflows === 0 && d.outflows === 0) ? (
               <div className="dash-empty" style={{ height: 160 }}>No financial data entered yet</div>
             ) : (

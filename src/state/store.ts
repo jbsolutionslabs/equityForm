@@ -90,6 +90,8 @@ export type ActivityEvent = {
 
 export type Deal = {
   entityName?: string
+  propertyName?: string
+  assetClass?: 'multifamily' | 'hotel'
   formationState?: string
   effectiveDate?: string
   principalAddress?: string
@@ -180,6 +182,7 @@ export type Subscription = {
   paidAt?: string
   wireConfirmationNumber?: string
   wireDate?: string
+  paidAmount?: number
   generatedText?: string
 }
 
@@ -660,6 +663,7 @@ export const useAppStore = create<AppState>()(
                 ...ss,
                 status:                 'paid',
                 wireConfirmationNumber: confirmation,
+                paidAmount:             _amount,
                 paidAt:                 date || new Date().toISOString(),
               }
             : ss,

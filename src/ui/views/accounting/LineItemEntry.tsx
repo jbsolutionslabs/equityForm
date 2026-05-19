@@ -32,6 +32,7 @@ import { applyImportedValues, type EntryDraft } from './applyImportedValues'
 type Props = {
   property: AccountingProperty
   period: string        // "YYYY-MM"
+  calcTiming?: 'monthly' | 'ytd' | 't6' | 't12'
   onSaved?: () => void
   onCancel?: () => void
   readOnly?: boolean
@@ -107,6 +108,7 @@ function SectionHeader({ label, right }: { label: string; right?: React.ReactNod
 export const LineItemEntry: React.FC<Props> = ({
   property,
   period,
+  calcTiming = 'monthly',
   onSaved,
   onCancel,
   readOnly = false,
@@ -130,11 +132,32 @@ export const LineItemEntry: React.FC<Props> = ({
 
   const [entry, setEntry] = useState<Omit<MonthlyEntry, 'id' | 'createdAt' | 'updatedAt'>>(buildInitial)
 
-  // Auto-calc below-line values from property
-  const autoDebt    = getMonthlyDebtService(property, period)
-  const autoDep     = getMonthlyDepreciation(property)
-  const autoFinAmort= getMonthlyFinancingCostAmortization(property)
-  const autoLPPref  = getCalculatedLPPref(property)
+  const timingMonths = useMemo(() => {
+    const [y, m] = period.split('-').map(Number)
+    const count = calcTiming === 'ytd' ? m : calcTiming === 't6' ? 6 : calcTiming === 't12' ? 12 : 1
+    const out: string[] = []
+    for (let i = count - 1; i >= 0; i--) {
+      const d = new Date(y, m - 1 - i, 1)
+      out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    }
+    return out
+  }, [period, calcTiming])
+
+  // Auto-calc below-line values from property + selected timing window
+  const autoDebt = useMemo(() => {
+    return timingMonths.reduce(
+      (acc, p) => {
+        const ds = getMonthlyDebtService(property, p)
+        return { interest: acc.interest + ds.interest, principal: acc.principal + ds.principal }
+      },
+      { interest: 0, principal: 0 },
+    )
+  }, [property, timingMonths])
+
+  const autoDebtBalance = getMonthlyDebtService(property, period).remainingBalance
+  const autoDep      = getMonthlyDepreciation(property) * timingMonths.length
+  const autoFinAmort = getMonthlyFinancingCostAmortization(property) * timingMonths.length
+  const autoLPPref   = getCalculatedLPPref(property) * timingMonths.length
 
   // Seed auto-calcs when not overridden
   useEffect(() => {
@@ -153,7 +176,7 @@ export const LineItemEntry: React.FC<Props> = ({
         actualLPDistribution: prev.distributions.isOverridden ? prev.distributions.actualLPDistribution : autoLPPref,
       },
     }))
-  }, [period, property.id]) // eslint-disable-line
+  }, [period, property.id, autoDep, autoFinAmort, autoDebt.interest, autoDebt.principal, autoLPPref])
 
   const notify = (msg: string, type: 'success' | 'error' = 'success') => {
     setNotification({ msg, type })
@@ -712,14 +735,14 @@ export const LineItemEntry: React.FC<Props> = ({
               value={bl.depreciation}
               onChange={(v) => patchBelow('depreciation', v)}
               readOnly={readOnly || !bl.depreciationOverridden}
-              hint={bl.depreciationOverridden ? '' : `Auto: ${fmtCurrency(autoDep)}/mo`}
+              hint={bl.depreciationOverridden ? '' : `Auto (${calcTiming.toUpperCase()}): ${fmtCurrency(autoDep)}`}
             />
             <NumRow
               label="Amortization of Deferred Financing Costs"
               value={bl.amortizationFinancingCosts}
               onChange={(v) => patchBelow('amortizationFinancingCosts', v)}
               readOnly={readOnly || !bl.depreciationOverridden}
-              hint={bl.depreciationOverridden ? '' : `Auto: ${fmtCurrency(autoFinAmort)}/mo`}
+              hint={bl.depreciationOverridden ? '' : `Auto (${calcTiming.toUpperCase()}): ${fmtCurrency(autoFinAmort)}`}
             />
 
             <SectionHeader
@@ -739,14 +762,14 @@ export const LineItemEntry: React.FC<Props> = ({
               value={bl.debtServiceInterest}
               onChange={(v) => patchBelow('debtServiceInterest', v)}
               readOnly={readOnly || !bl.debtServiceOverridden}
-              hint={bl.debtServiceOverridden ? '' : `Auto: ${fmtCurrency(autoDebt.interest)}/mo`}
+              hint={bl.debtServiceOverridden ? '' : `Auto (${calcTiming.toUpperCase()}): ${fmtCurrency(autoDebt.interest)}`}
             />
             <NumRow
               label="Principal"
               value={bl.debtServicePrincipal}
               onChange={(v) => patchBelow('debtServicePrincipal', v)}
               readOnly={readOnly || !bl.debtServiceOverridden}
-              hint={bl.debtServiceOverridden ? '' : `Auto: ${fmtCurrency(autoDebt.principal)}/mo`}
+              hint={bl.debtServiceOverridden ? '' : `Auto (${calcTiming.toUpperCase()}): ${fmtCurrency(autoDebt.principal)}`}
             />
             <div className="line-item-subtotal">
               <span>Total Debt Service</span>
@@ -754,7 +777,7 @@ export const LineItemEntry: React.FC<Props> = ({
             </div>
             {!bl.debtServiceOverridden && (
               <div style={{ fontSize: 12, color: 'var(--color-slate-500)', padding: '4px 0 12px 16px' }}>
-                Remaining balance this month: {fmtCurrency(autoDebt.remainingBalance)}
+                Remaining balance this month: {fmtCurrency(autoDebtBalance)}
               </div>
             )}
 
@@ -956,7 +979,7 @@ export const LineItemEntry: React.FC<Props> = ({
               label="Calculated LP Pref (auto)"
               value={dist.calculatedLPPref}
               readOnly
-              hint={`LP Equity × Annual Pref Rate ÷ 12 = ${fmtCurrency(autoLPPref)}/mo`}
+               hint={`Auto (${calcTiming.toUpperCase()}): ${fmtCurrency(autoLPPref)}`}
             />
 
             <div className="line-item-row line-item-row--highlight">
