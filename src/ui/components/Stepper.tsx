@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 
 type StepperProps = React.PropsWithChildren<{
   startIndex?: number
+  value?: number                        // controlled mode — overrides internal state
+  onStepChange?: (index: number) => void
   onFinish?: () => void
   finishLabel?: string
   nextDisabled?: (index: number) => boolean
@@ -11,19 +13,29 @@ type StepperProps = React.PropsWithChildren<{
 export const Stepper: React.FC<StepperProps> = ({
   children,
   startIndex = 0,
+  value,
+  onStepChange,
   onFinish,
   finishLabel = 'Finish',
   nextDisabled,
   scopeLabel = 'This page',
 }) => {
   const steps = React.Children.toArray(children)
-  const [index, setIndex]   = useState(startIndex)
+  const [internalIndex, setInternalIndex] = useState(startIndex)
   const [shaking, setShaking] = useState(false)
+
+  // If value prop is provided, use it (controlled). Otherwise use internal state.
+  const index = value !== undefined ? value : internalIndex
 
   const isFirst = index === 0
   const isLast  = index === steps.length - 1
   const pct     = Math.round(((index + 1) / steps.length) * 100)
   const isNextDisabled = nextDisabled ? nextDisabled(index) : false
+
+  const setIndex = (i: number) => {
+    if (value === undefined) setInternalIndex(i)
+    onStepChange?.(i)
+  }
 
   const goNext = () => {
     if (isNextDisabled) {
@@ -31,14 +43,14 @@ export const Stepper: React.FC<StepperProps> = ({
       return
     }
     if (!isLast) {
-      setIndex((i) => i + 1)
+      setIndex(index + 1)
     } else if (onFinish) {
       onFinish()
     }
   }
 
   const goBack = () => {
-    if (!isFirst) setIndex((i) => i - 1)
+    if (!isFirst) setIndex(index - 1)
   }
 
   const triggerShake = () => {

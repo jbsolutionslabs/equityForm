@@ -1,0 +1,349 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  GP
+  LP
+  VIEWER
+}
+
+enum OaStatus {
+  NOT_GENERATED
+  GENERATED
+  SENT_FOR_SIGNATURE
+  SIGNED
+}
+
+enum SubscriptionStatus {
+  PENDING
+  GENERATED
+  SENT
+  SIGNED
+  PAID
+}
+
+model Firm {
+  id          String    @id @default(cuid())
+  name        String
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  memberships  UserFirmMembership[]
+  deals        Deal[]
+  templates    FirmTemplate[]
+  compliance   ComplianceEntity[]
+
+  @@map("firms")
+}
+
+model User {
+  id        String   @id
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  memberships UserFirmMembership[]
+
+  @@map("users")
+}
+
+model UserFirmMembership {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  firmId    String   @map("firm_id")
+  role      Role     @default(GP)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+  firm Firm @relation(fields: [firmId], references: [id])
+
+  @@unique([userId, firmId])
+  @@map("user_firm_memberships")
+}
+
+model Deal {
+  id               String    @id @default(cuid())
+  firmId           String    @map("firm_id")
+  name             String
+  propertyAddress  String?   @map("property_address")
+  propertyState    String?   @map("property_state")
+  assetClass       String?   @map("asset_class")
+  stage            Int       @default(1)
+  capTableLockedAt DateTime? @map("cap_table_locked_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  firm               Firm                @relation(fields: [firmId], references: [id])
+  offering           DealOffering?
+  banking            DealBanking?
+  spvFormation       SpvFormation?
+  operatingAgreement OperatingAgreement?
+  investors          Investor[]
+  subscriptions      Subscription[]
+  blueSkyFilings     BlueSkyFiling[]
+  activityFeed       ActivityFeedEntry[]
+  economics          EconomicsDeal?
+  documents          Document[]
+
+  @@map("deals")
+}
+
+model DealOffering {
+  id        String   @id @default(cuid())
+  dealId    String   @unique @map("deal_id")
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  deal Deal @relation(fields: [dealId], references: [id])
+
+  @@map("deal_offerings")
+}
+
+model DealBanking {
+  id        String   @id @default(cuid())
+  dealId    String   @unique @map("deal_id")
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  deal Deal @relation(fields: [dealId], references: [id])
+
+  @@map("deal_banking")
+}
+
+model SpvFormation {
+  id                   String    @id @default(cuid())
+  dealId               String    @unique @map("deal_id")
+  entityName           String?   @map("entity_name")
+  registeredAgent      Json?     @map("registered_agent")
+  certOfFormation      Json?     @map("cert_of_formation")
+  einObtained          Boolean   @default(false) @map("ein_obtained")
+  foreignQualification Json?     @map("foreign_qualification")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  deal Deal @relation(fields: [dealId], references: [id])
+
+  @@map("spv_formations")
+}
+
+model OperatingAgreement {
+  id          String    @id @default(cuid())
+  dealId      String    @unique @map("deal_id")
+  status      OaStatus  @default(NOT_GENERATED)
+  documentKey String?   @map("document_key")
+  generatedAt DateTime? @map("generated_at")
+  sentAt      DateTime? @map("sent_at")
+  signedAt    DateTime? @map("signed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  deal Deal @relation(fields: [dealId], references: [id])
+
+  @@map("operating_agreements")
+}
+
+model Investor {
+  id            String    @id @default(cuid())
+  dealId        String    @map("deal_id")
+  firmId        String    @map("firm_id")
+  name          String
+  email         String
+  accreditation String?
+  payload       Json
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  deal          Deal           @relation(fields: [dealId], references: [id])
+  subscriptions Subscription[]
+
+  @@map("investors")
+}
+
+model Subscription {
+  id          String             @id @default(cuid())
+  dealId      String             @map("deal_id")
+  investorId  String             @map("investor_id")
+  firmId      String             @map("firm_id")
+  amount      Decimal            @db.Decimal(18, 2)
+  status      SubscriptionStatus @default(PENDING)
+  signedAt    DateTime?          @map("signed_at")
+  paidAt      DateTime?          @map("paid_at")
+  documentKey String?            @map("document_key")
+  payload     Json?
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  deal     Deal     @relation(fields: [dealId], references: [id])
+  investor Investor @relation(fields: [investorId], references: [id])
+
+  @@map("subscriptions")
+}
+
+model BlueSkyFiling {
+  id        String   @id @default(cuid())
+  dealId    String   @map("deal_id")
+  stateCode String   @map("state_code")
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  deal Deal @relation(fields: [dealId], references: [id])
+
+  @@unique([dealId, stateCode])
+  @@map("blue_sky_filings")
+}
+
+model ActivityFeedEntry {
+  id        String   @id @default(cuid())
+  dealId    String?  @map("deal_id")
+  firmId    String   @map("firm_id")
+  userId    String   @map("user_id")
+  action    String
+  payload   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  deal Deal? @relation(fields: [dealId], references: [id])
+
+  @@map("activity_feed_entries")
+}
+
+model AccountingProperty {
+  id         String    @id @default(cuid())
+  dealId     String    @map("deal_id")
+  firmId     String    @map("firm_id")
+  name       String
+  assetClass String    @map("asset_class")
+  payload    Json
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  monthlyEntries MonthlyEntry[]
+
+  @@map("accounting_properties")
+}
+
+model MonthlyEntry {
+  id             String   @id @default(cuid())
+  propertyId     String   @map("property_id")
+  firmId         String   @map("firm_id")
+  period         String
+  pnl            Json
+  belowLine      Json     @map("below_line")
+  workingCapital Json     @map("working_capital")
+  distributions  Json
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  property AccountingProperty @relation(fields: [propertyId], references: [id])
+
+  @@unique([propertyId, period])
+  @@map("monthly_entries")
+}
+
+model EconomicsDeal {
+  id               String    @id @default(cuid())
+  dealId           String    @unique @map("deal_id")
+  firmId           String    @map("firm_id")
+  capitalStack     Json      @map("capital_stack")
+  profitSplit      Json      @map("profit_split")
+  fees             Json
+  sectionAComplete Boolean   @default(false) @map("section_a_complete")
+  sectionBComplete Boolean   @default(false) @map("section_b_complete")
+  sectionCComplete Boolean   @default(false) @map("section_c_complete")
+  lockedAt         DateTime? @map("locked_at")
+  lockedBy         String?   @map("locked_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  deal         Deal                  @relation(fields: [dealId], references: [id])
+  auditEntries EconomicsAuditEntry[]
+
+  @@map("economics_deals")
+}
+
+model EconomicsAuditEntry {
+  id              String   @id @default(cuid())
+  economicsDealId String   @map("economics_deal_id")
+  userId          String   @map("user_id")
+  action          String
+  snapshot        Json
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  economicsDeal EconomicsDeal @relation(fields: [economicsDealId], references: [id])
+
+  @@map("economics_audit_entries")
+}
+
+model FirmTemplate {
+  id        String    @id @default(cuid())
+  firmId    String    @map("firm_id")
+  type      String
+  name      String
+  payload   Json
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  firm Firm @relation(fields: [firmId], references: [id])
+
+  @@map("firm_templates")
+}
+
+model ComplianceEntity {
+  id        String    @id @default(cuid())
+  firmId    String    @map("firm_id")
+  payload   Json
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  firm          Firm                    @relation(fields: [firmId], references: [id])
+  notifications ComplianceNotification[]
+
+  @@map("compliance_entities")
+}
+
+model ComplianceNotification {
+  id                 String    @id @default(cuid())
+  complianceEntityId String    @map("compliance_entity_id")
+  firmId             String    @map("firm_id")
+  type               String
+  dueDate            DateTime  @map("due_date")
+  sentAt             DateTime? @map("sent_at")
+  payload            Json?
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  entity ComplianceEntity @relation(fields: [complianceEntityId], references: [id])
+
+  @@map("compliance_notifications")
+}
+
+model Document {
+  id         String   @id @default(cuid())
+  dealId     String   @map("deal_id")
+  firmId     String   @map("firm_id")
+  type       String
+  investorId String?  @map("investor_id")
+  storageKey String   @map("storage_key")
+  version    Int      @default(1)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  deal Deal @relation(fields: [dealId], references: [id])
+
+  @@map("documents")
+}

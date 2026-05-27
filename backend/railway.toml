@@ -1,0 +1,14 @@
+[build]
+builder = "nixpacks"
+# Install from repo root so @equityform/shared workspace symlink is created,
+# then generate the Prisma client from the backend directory.
+buildCommand = "cd .. && npm ci && cd backend && npx prisma generate"
+
+[deploy]
+# Run migrations then start with tsx (handles @equityform/shared TypeScript imports natively).
+# ../node_modules/.bin/tsx is available because npm ci ran from the repo root.
+startCommand = "npx prisma migrate deploy && ../node_modules/.bin/tsx src/index.ts"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
