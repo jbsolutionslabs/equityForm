@@ -22,7 +22,7 @@ export const SignIn: React.FC = () => {
       minHeight: '100vh',
       background: 'var(--color-navy-900)',
     }}>
-      <ClerkSignIn fallbackRedirectUrl="/" />
+      <ClerkSignIn forceRedirectUrl="/" />
     </div>
   )
 }
