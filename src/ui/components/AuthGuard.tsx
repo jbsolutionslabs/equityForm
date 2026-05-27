@@ -1,25 +1,27 @@
-import React from 'react'
-import { Navigate } from 'react-router-dom'
-import { useAuth } from '@clerk/react'
+import React, { useEffect } from 'react'
+import { useAuth, useClerk } from '@clerk/react'
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined
 
 // Only called when ClerkProvider is mounted above
 const ClerkGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isLoaded, isSignedIn } = useAuth()
+  const { redirectToSignIn } = useClerk()
 
-  console.log('[AuthGuard] key:', PUBLISHABLE_KEY?.slice(0, 12), 'isLoaded:', isLoaded, 'isSignedIn:', isSignedIn)
+  useEffect(() => {
+    if (isLoaded && !isSignedIn) {
+      // Pass the app root as redirect_url so Clerk sends users back to / after
+      // sign-in, not back to /#/sign-in which would cause an infinite loop.
+      redirectToSignIn({ redirectUrl: window.location.origin + '/' })
+    }
+  }, [isLoaded, isSignedIn, redirectToSignIn])
 
-  if (!isLoaded) {
+  if (!isLoaded || !isSignedIn) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
         <div className="spinner" />
       </div>
     )
-  }
-
-  if (!isSignedIn) {
-    return <Navigate to="/sign-in" replace />
   }
 
   return <>{children}</>
