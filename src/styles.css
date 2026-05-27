@@ -5257,7 +5257,64 @@ pre {
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  gap: 8px;
 }
+
+.deal-card-confirm-delete {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.deal-card-confirm-label {
+  font-size: 13px;
+  color: var(--color-error);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Danger button variant */
+.btn-danger {
+  background: var(--color-error);
+  color: #fff;
+  border: none;
+}
+.btn-danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+/* Refresh bar — subtle top indicator when re-fetching over existing data */
+.deals-refresh-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--color-accent) 0%, transparent 100%);
+  background-size: 200% 100%;
+  animation: deals-refresh-slide 1.2s ease-in-out infinite;
+  margin-bottom: 16px;
+}
+@keyframes deals-refresh-slide {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Skeleton cards */
+.deal-card--skeleton {
+  pointer-events: none;
+}
+.skel {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--color-slate-100) 25%, var(--color-slate-200) 50%, var(--color-slate-100) 75%);
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skel-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.skel--name     { height: 20px; width: 55%; margin-bottom: 8px; }
+.skel--address  { height: 14px; width: 35%; margin-bottom: 16px; }
+.skel--progress { height: 12px; width: 80%; margin-bottom: 10px; }
+.skel--meta     { height: 12px; width: 45%; }
+.skel--btn      { height: 32px; width: 100px; border-radius: 8px; }
 
 /* Empty state */
 .deals-empty {
@@ -5320,3 +5377,57 @@ pre {
   justify-content: flex-end;
 }
 
+
+/* ─── Save Indicator ──────────────────────────────────────────────────────── */
+.main-topbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 8px 32px 0;
+  min-height: 32px;
+}
+
+.save-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-slate-500);
+  transition: opacity 0.3s ease;
+}
+
+.save-indicator__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.save-indicator__dot--pending { background: var(--color-warning); }
+.save-indicator__dot--saved   { background: var(--color-success); }
+.save-indicator__dot--error   { background: var(--color-error); }
+
+.save-indicator__spinner {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--color-slate-300);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.save-indicator__label { line-height: 1; }
+
+.save-indicator__retry {
+  background: none;
+  border: 1px solid var(--color-error);
+  color: var(--color-error);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.save-indicator__retry:hover { background: var(--color-error); color: #fff; }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Stepper, { Step } from '../components/Stepper'
 import { FieldHelp, Tooltip, HelpCard } from '../components/HelpCard'
 import { CurrencyInput } from '../components/CurrencyInput'
@@ -8,6 +8,8 @@ import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useAppStore, OaStatus } from '../../state/store'
+import { useDealSave, useOfferingSave } from '../../api/hooks/useDealMutations'
+import { useDealSync } from '../../api/hooks/useDealSync'
 import { AddressAutocompleteInput, ParsedAddress } from '../components/AddressAutocompleteInput'
 
 // ── Combined schema (deal + offering) ─────────────────────────────────────
@@ -53,12 +55,28 @@ type FormValues = z.infer<typeof schema>
 export const DealSetup: React.FC = () => {
   const { dealId }    = useParams<{ dealId: string }>()
   const navigate      = useNavigate()
-  const setDeal       = useAppStore((s) => s.setDeal)
-  const setOffering   = useAppStore((s) => s.setOffering)
   const resetOaStatus = useAppStore((s) => s.resetOaStatus)
   const dealData      = useAppStore((s) => s.deals[dealId!]?.data.deal      ?? {})
   const offeringData  = useAppStore((s) => s.deals[dealId!]?.data.offering  ?? {})
   const oaStatus: OaStatus = useAppStore((s) => s.deals[dealId!]?.data.operatingAgreement?.status ?? 'not_generated')
+  const { update: updateDeal,     flush: flushDeal }     = useDealSave(dealId!)
+  const { update: updateOffering, flush: flushOffering } = useOfferingSave(dealId!)
+  const syncQuery   = useDealSync(dealId) // hydrate from DB on direct URL navigation
+  const hasHydratedRef = useRef(false)
+
+  // Controlled stepper step — initialised from store (may be 0 before sync)
+  const [currentStep, setCurrentStep] = useState(() => {
+    const d = useAppStore.getState().deals[dealId!]?.data?.deal ?? {}
+    return (d as any).questionnaireStep ?? 0
+  })
+  // True once we have deal data in the store — false only on a hard refresh
+  const dealInStore = useAppStore((s) => !!s.deals[dealId!])
+
+  const handleStepChange = (i: number) => {
+    setCurrentStep(i)
+    updateDeal({ questionnaireStep: i })
+    flushDeal() // save step immediately so refresh restores it
+  }
 
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
   const [pendingVals, setPendingVals]   = useState<FormValues | null>(null)
@@ -83,6 +101,19 @@ export const DealSetup: React.FC = () => {
   // ── Offering field watchers ───────────────────────────────────────────────
   const exemption = watch('offeringExemption')
 
+  // ── One-time form + step reset after DB sync ─────────────────────────────
+  // useDealSync's internal hydration effect runs before this one (hooks execute in order),
+  // so useAppStore.getState() gives us the already-hydrated data.
+  useEffect(() => {
+    if (hasHydratedRef.current || !syncQuery.isSuccess) return
+    hasHydratedRef.current = true
+    const state = useAppStore.getState()
+    const d = (state.deals[dealId!]?.data?.deal     ?? {}) as Partial<FormValues>
+    const o = (state.deals[dealId!]?.data?.offering ?? {}) as Partial<FormValues>
+    form.reset({ ...d, ...o, assetClass: d.assetClass ?? 'multifamily' })
+    setCurrentStep((d as any).questionnaireStep ?? 0)
+  }, [syncQuery.isSuccess]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Save helpers ─────────────────────────────────────────────────────────
 
   const doSave = (vals: FormValues) => {
@@ -97,7 +128,7 @@ export const DealSetup: React.FC = () => {
       }
     }
 
-    setDeal(dealId!, {
+    updateDeal({
       entityName:               vals.entityName,
       ein:                      vals.ein,
       formationState:           vals.formationState,
@@ -119,13 +150,22 @@ export const DealSetup: React.FC = () => {
       propertyLegalDescription: vals.propertyLegalDescription,
     })
 
-    setOffering(dealId!, {
+    updateOffering({
       offeringExemption:  vals.offeringExemption,
       minimumInvestment:  vals.minimumInvestment,
       closingDate:        vals.closingDate,
       solicitationMethod: vals.solicitationMethod,
     })
   }
+
+  // Auto-save: sync form changes into Zustand on every field change
+  // useAutoSave inside useDealSave/useOfferingSave will debounce and write to API
+  useEffect(() => {
+    const subscription = watch((vals) => {
+      doSave(vals as FormValues)
+    })
+    return () => subscription.unsubscribe()
+  }, [watch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveProgress = () => {
     const vals = form.getValues()
@@ -134,12 +174,16 @@ export const DealSetup: React.FC = () => {
       return
     }
     doSave(vals)
+    flushDeal()
+    flushOffering()
     notify('Progress saved.')
   }
 
   const confirmChangeAndRegenerate = () => {
     if (pendingVals) {
       doSave(pendingVals)
+      flushDeal()
+      flushOffering()
       resetOaStatus(dealId!)
       notify('Saved. Operating Agreement has been reset — complete Economics and SPV Formation before regenerating.')
     }
@@ -182,8 +226,18 @@ export const DealSetup: React.FC = () => {
         </div>
       )}
 
+      {/* Show spinner on hard refresh while deal data loads from API */}
+      {!dealInStore && syncQuery.isLoading && (
+        <div className="card" style={{ display: 'flex', justifyContent: 'center', padding: '48px 0' }}>
+          <div className="spinner" />
+        </div>
+      )}
+
+      {(dealInStore || syncQuery.isSuccess || syncQuery.isError) && (
       <div className="card">
         <Stepper
+          value={currentStep}
+          onStepChange={handleStepChange}
           onFinish={onFinish}
           finishLabel="Save & Continue to Deal Economics →"
           scopeLabel="Questionnaire section"
@@ -652,6 +706,7 @@ export const DealSetup: React.FC = () => {
 
         </Stepper>
       </div>
+      )} {/* end conditional card render */}
 
       <HelpCard text="Our team can help you verify entity details, choose an offering exemption, or review your legal formation documents. Don't hesitate to reach out." />
 

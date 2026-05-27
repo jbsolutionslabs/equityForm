@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useMatch } from 'react-router-dom'
 import { useAppStore, isSpvFormed } from '../../state/store'
 import { useEconomicsStore, isEconomicsLocked } from '../../state/economicsStore'
+import { SaveIndicator } from './SaveIndicator'
 
 type StageConfig = {
   path:     string
@@ -78,9 +79,7 @@ const STAGES: StageConfig[] = [
 function DealSidebar({ dealId }: { dealId: string }) {
   const loc     = useLocation()
   const deals   = useAppStore((s) => s.deals)
-  const reset   = useAppStore((s) => s.reset)
   const econDeal = useEconomicsStore((s) => s.deals.find((d) => d.dealId === dealId))
-  const [confirmReset, setConfirmReset] = useState(false)
 
   const entry = deals[dealId]
   const data  = entry?.data
@@ -140,35 +139,6 @@ function DealSidebar({ dealId }: { dealId: string }) {
           <span className="sidebar-help-icon" aria-hidden="true">?</span>
           Need help?
         </a>
-        {confirmReset ? (
-          <div className="sidebar-reset-confirm">
-            <span className="sidebar-reset-confirm-label">Clear all data?</span>
-            <div className="sidebar-reset-confirm-actions">
-              <button
-                type="button"
-                className="sidebar-reset-btn sidebar-reset-btn--danger"
-                onClick={() => { reset(); setConfirmReset(false) }}
-              >
-                Yes, reset
-              </button>
-              <button
-                type="button"
-                className="sidebar-reset-btn sidebar-reset-btn--cancel"
-                onClick={() => setConfirmReset(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="sidebar-reset-trigger"
-            onClick={() => setConfirmReset(true)}
-          >
-            Reset demo data
-          </button>
-        )}
       </div>
     </>
   )
@@ -178,8 +148,6 @@ function DealSidebar({ dealId }: { dealId: string }) {
 function TopLevelSidebar() {
   const loc      = useLocation()
   const navigate = useNavigate()
-  const reset    = useAppStore((s) => s.reset)
-  const [confirmReset, setConfirmReset] = useState(false)
   const [acctOpen, setAcctOpen]         = useState(loc.pathname.startsWith('/accounting'))
 
   useEffect(() => {
@@ -299,35 +267,6 @@ function TopLevelSidebar() {
           <span className="sidebar-help-icon" aria-hidden="true">?</span>
           Need help?
         </a>
-        {confirmReset ? (
-          <div className="sidebar-reset-confirm">
-            <span className="sidebar-reset-confirm-label">Clear all data?</span>
-            <div className="sidebar-reset-confirm-actions">
-              <button
-                type="button"
-                className="sidebar-reset-btn sidebar-reset-btn--danger"
-                onClick={() => { reset(); setConfirmReset(false) }}
-              >
-                Yes, reset
-              </button>
-              <button
-                type="button"
-                className="sidebar-reset-btn sidebar-reset-btn--cancel"
-                onClick={() => setConfirmReset(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="sidebar-reset-trigger"
-            onClick={() => setConfirmReset(true)}
-          >
-            Reset demo data
-          </button>
-        )}
       </div>
     </>
   )
@@ -359,6 +298,11 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
 
       {/* ── Main ── */}
       <main className="main-content" id="main-content">
+        {dealId && (
+          <div className="main-topbar">
+            <SaveIndicator />
+          </div>
+        )}
         <div className="main-inner page-enter">
           {children}
         </div>

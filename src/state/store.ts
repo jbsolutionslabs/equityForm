@@ -2,7 +2,6 @@ import create from 'zustand'
 import { devtools } from 'zustand/middleware'
 import { generateOperatingAgreementText, generateSubscriptionAgreementText } from '../utils/pdfTemplate'
 import { generatePlaceholders } from '../utils/placeholders'
-import { seed as demoSeed } from '../mock/seed'
 
 /* ─── SPV Formation ─────────────────────────────────────────────────────── */
 export type SpvFormationItem = {
@@ -112,6 +111,7 @@ export type Deal = {
   ein?: string
   dealStatus?: 'Raising' | 'Active' | 'Exiting'
   currentValuation?: number
+  questionnaireStep?: number   // persisted so refresh returns to the right step
 }
 
 export type Offering = {
@@ -261,9 +261,6 @@ export function canLockCapTable(data: AppData): boolean {
   return relevantSubs.every((s) => s.status === 'paid' || !!s.paidAt)
 }
 
-/* ─── Storage key ────────────────────────────────────────────────────────── */
-const STORAGE_KEY = 'equityform:appdata'
-
 /* ─── Defaults ───────────────────────────────────────────────────────────── */
 const defaultSpvFormation: SpvFormation = {
   entityName:           { complete: false },
@@ -358,53 +355,6 @@ function migrateAppData(data: AppData): AppData {
   return data
 }
 
-/* ─── Deals load / save ──────────────────────────────────────────────────── */
-function loadDeals(): Record<string, AppDealEntry> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-
-    // No stored data — seed if available
-    if (!raw) {
-      if (demoSeed) {
-        const id = 'deal-legacy'
-        const data: AppData = { ...defaultData }
-        Object.assign(data, demoSeed)
-        return { [id]: { id, createdAt: new Date().toISOString(), data: migrateAppData(data) } }
-      }
-      return {}
-    }
-
-    const parsed = JSON.parse(raw)
-
-    // New format: { deals: Record<string, AppDealEntry> }
-    if (parsed.deals && typeof parsed.deals === 'object') {
-      const result: Record<string, AppDealEntry> = {}
-      for (const [id, entry] of Object.entries(parsed.deals as Record<string, AppDealEntry>)) {
-        result[id] = { ...entry, data: migrateAppData({ ...entry.data }) }
-      }
-      return result
-    }
-
-    // Old format: raw AppData (top-level keys: deal, offering, spvFormation, ...)
-    if (parsed.deal !== undefined || parsed.spvFormation !== undefined) {
-      const id = 'deal-legacy'
-      return { [id]: { id, createdAt: new Date().toISOString(), data: migrateAppData(parsed) } }
-    }
-
-    return {}
-  } catch (_) {
-    return {}
-  }
-}
-
-function saveDeals(deals: Record<string, AppDealEntry>) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ deals }))
-  } catch (_) {
-    // ignore
-  }
-}
-
 /* ─── Store Actions Type ─────────────────────────────────────────────────── */
 type AppState = {
   deals: Record<string, AppDealEntry>
@@ -412,6 +362,8 @@ type AppState = {
   // Deal lifecycle
   createDeal: () => string
   deleteDeal: (dealId: string) => void
+  hydrateDeal:  (dealId: string, entry: AppDealEntry) => void
+  hydrateDeals: (entries: AppDealEntry[]) => void
 
   // All mutations take dealId as first param
   setData:          (dealId: string, patch: Partial<AppData>) => void
@@ -436,6 +388,7 @@ type AppState = {
   recordWirePayment:               (dealId: string, investorId: string, confirmation: string, amount?: number, date?: string) => void
   lockCapTable:     (dealId: string) => void
   addActivity:      (dealId: string, event: Omit<ActivityEvent, 'id'>) => void
+  removeDeal:       (dealId: string) => void
   reset:            () => void
 }
 
@@ -458,7 +411,7 @@ function pd(
 /* ─── Store ──────────────────────────────────────────────────────────────── */
 export const useAppStore = create<AppState>()(
   devtools((set, _get) => ({
-    deals: loadDeals(),
+    deals: {},
 
     /* ── Deal lifecycle ── */
     createDeal: () => {
@@ -478,6 +431,15 @@ export const useAppStore = create<AppState>()(
         delete next[dealId]
         return { deals: next }
       }, false, 'deleteDeal'),
+
+    hydrateDeal: (dealId, entry) =>
+      set((s) => ({ deals: { ...s.deals, [dealId]: entry } }), false, 'hydrateDeal'),
+
+    hydrateDeals: (entries) => {
+      const map: Record<string, AppDealEntry> = {}
+      entries.forEach((e) => { map[e.id] = e })
+      set(() => ({ deals: map }), false, 'hydrateDeals')
+    },
 
     setData: (dealId, patch) =>
       set((s) => pd(s, dealId, (d) => ({ ...d, ...patch })), false, 'setData'),
@@ -777,15 +739,18 @@ export const useAppStore = create<AppState>()(
         return { ...d, activityFeed: feed }
       }), false, 'addActivity'),
 
+    removeDeal: (dealId) => {
+      set((s) => {
+        const { [dealId]: _, ...rest } = s.deals
+        return { deals: rest }
+      }, false, 'removeDeal')
+    },
+
     reset: () => {
-      saveDeals({})
       set(() => ({ deals: {} }), false, 'reset')
     },
   })),
 )
-
-/* ─── Persistence ─────────────────────────────────────────────────────────── */
-useAppStore.subscribe((s) => saveDeals(s.deals))
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
 function deriveLastName(full?: string): string {
