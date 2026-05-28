@@ -101,6 +101,14 @@ export const dealsRouter: FastifyPluginAsync = async (fastify) => {
     async (req, reply) => {
       // Extract the nested payload (body is { payload: {...} })
       const { payload } = req.body as { payload: Record<string, unknown> }
+
+      // Verify deal belongs to this firm before mutating
+      const ownedDeal = await prisma.deal.findFirst({
+        where: { id: req.params.dealId, firmId: req.firmId, deletedAt: null },
+        select: { id: true },
+      })
+      if (!ownedDeal) return reply.status(404).send({ error: 'Deal not found' })
+
       // Shallow-merge with existing so concurrent deal+offering saves don't clobber each other.
       // useDealSave writes { deal: {...} } and useOfferingSave writes { offeringExemption, ... }
       // at the top level — a shallow merge keeps both keys intact regardless of write order.
@@ -124,6 +132,14 @@ export const dealsRouter: FastifyPluginAsync = async (fastify) => {
     { preHandler: requireRole('GP', 'ADMIN') },
     async (req, reply) => {
       const payload = req.body as Record<string, unknown>
+
+      // Verify deal belongs to this firm before mutating
+      const ownedDeal = await prisma.deal.findFirst({
+        where: { id: req.params.dealId, firmId: req.firmId, deletedAt: null },
+        select: { id: true },
+      })
+      if (!ownedDeal) return reply.status(404).send({ error: 'Deal not found' })
+
       const result = await prisma.dealBanking.upsert({
         where: { dealId: req.params.dealId },
         update: { payload },

@@ -26,7 +26,9 @@ export async function auditLog(req: FastifyRequest, reply: FastifyReply, payload
         },
       },
     })
-    .catch(() => {/* swallow audit errors */})
+    .catch((err) => {
+      req.log.error({ err }, 'Failed to write activity feed entry')
+    })
 
   return payload
 }

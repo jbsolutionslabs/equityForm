@@ -27,6 +27,13 @@ export const spvRouter: FastifyPluginAsync = async (fastify) => {
       if (!parsed.success) {
         return reply.status(400).send({ error: 'Validation failed', issues: parsed.error.issues })
       }
+      // Verify deal belongs to this firm before mutating
+      const deal = await prisma.deal.findFirst({
+        where: { id: req.params.dealId, firmId: req.firmId, deletedAt: null },
+        select: { id: true },
+      })
+      if (!deal) return reply.status(404).send({ error: 'Deal not found' })
+
       const data = parsed.data
       const result = await prisma.spvFormation.upsert({
         where: { dealId: req.params.dealId },

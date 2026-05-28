@@ -31,6 +31,18 @@ export const subscriptionsRouter: FastifyPluginAsync = async (fastify) => {
       if (!parsed.success) {
         return reply.status(400).send({ error: 'Validation failed', issues: parsed.error.issues })
       }
+      // Verify investor belongs to this deal+firm before creating subscription
+      const investor = await prisma.investor.findFirst({
+        where: {
+          id: parsed.data.investorId,
+          dealId: req.params.dealId,
+          firmId: req.firmId,
+          deletedAt: null,
+        },
+        select: { id: true },
+      })
+      if (!investor) return reply.status(404).send({ error: 'Investor not found' })
+
       const sub = await prisma.subscription.create({
         data: {
           dealId: req.params.dealId,

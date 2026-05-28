@@ -80,6 +80,13 @@ export const accountingRouter: FastifyPluginAsync = async (fastify) => {
       if (!parsed.success) {
         return reply.status(400).send({ error: 'Validation failed', issues: parsed.error.issues })
       }
+      // Verify property belongs to this firm before upserting entries
+      const property = await prisma.accountingProperty.findFirst({
+        where: { id: req.params.id, firmId: req.firmId, deletedAt: null },
+        select: { id: true },
+      })
+      if (!property) return reply.status(404).send({ error: 'Property not found' })
+
       const entry = await prisma.monthlyEntry.upsert({
         where: { propertyId_period: { propertyId: req.params.id, period: parsed.data.period } },
         update: {

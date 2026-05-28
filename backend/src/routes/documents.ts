@@ -37,11 +37,15 @@ export const documentsRouter: FastifyPluginAsync = async (fastify) => {
       })
 
       if (!upstream.ok) {
-        const err = await upstream.text()
-        return reply.status(502).send({ error: 'Doc-gen service error', detail: err })
+        req.log.error({ upstreamStatus: upstream.status, body: await upstream.text() }, 'OA docgen failed')
+        return reply.status(502).send({ error: 'Document generation failed' })
       }
 
       const result = await upstream.json() as { documentKey?: string }
+      if (!result.documentKey) {
+        req.log.error({ result }, 'OA docgen returned no documentKey')
+        return reply.status(502).send({ error: 'Document generation failed' })
+      }
 
       // Record document in DB
       await prisma.document.create({
@@ -49,7 +53,7 @@ export const documentsRouter: FastifyPluginAsync = async (fastify) => {
           dealId: req.params.dealId,
           firmId: req.firmId,
           type: 'oa',
-          storageKey: result.documentKey ?? '',
+          storageKey: result.documentKey,
         },
       })
 
@@ -101,11 +105,15 @@ export const documentsRouter: FastifyPluginAsync = async (fastify) => {
       })
 
       if (!upstream.ok) {
-        const err = await upstream.text()
-        return reply.status(502).send({ error: 'Doc-gen service error', detail: err })
+        req.log.error({ upstreamStatus: upstream.status, body: await upstream.text() }, 'Subscription docgen failed')
+        return reply.status(502).send({ error: 'Document generation failed' })
       }
 
       const result = await upstream.json() as { documentKey?: string }
+      if (!result.documentKey) {
+        req.log.error({ result }, 'Subscription docgen returned no documentKey')
+        return reply.status(502).send({ error: 'Document generation failed' })
+      }
 
       await prisma.document.create({
         data: {
@@ -113,7 +121,7 @@ export const documentsRouter: FastifyPluginAsync = async (fastify) => {
           firmId: req.firmId,
           type: 'subscription',
           investorId: investor.id,
-          storageKey: result.documentKey ?? '',
+          storageKey: result.documentKey,
         },
       })
 

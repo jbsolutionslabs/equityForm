@@ -40,6 +40,7 @@ export const firmsRouter: FastifyPluginAsync = async (fastify) => {
     const membership = await prisma.userFirmMembership.findFirst({
       where: { userId: req.auth.userId },
       include: { firm: true },
+      orderBy: { createdAt: 'asc' },
     })
 
     if (!membership) {
