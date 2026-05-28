@@ -6,7 +6,7 @@ const corsPluginFn: FastifyPluginAsync = async (fastify) => {
   await fastify.register(cors, {
     origin: process.env.FRONTEND_URL ?? 'http://localhost:5173',
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Firm-Id'],
     credentials: true,
   })
 }
