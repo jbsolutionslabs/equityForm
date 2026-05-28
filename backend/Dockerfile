@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:18-slim
 
 # Build context must be the repo root (set in Railway: Builder → Dockerfile,
 # Dockerfile Path: backend/Dockerfile, Root Directory: leave empty / set to /)
