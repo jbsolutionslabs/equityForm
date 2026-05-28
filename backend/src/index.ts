@@ -38,6 +38,12 @@ async function bootstrap() {
   // Health check (unauthenticated)
   server.get('/health', async () => ({ status: 'ok', ts: new Date().toISOString() }))
 
+  // Wildcard OPTIONS route — must exist so Fastify doesn't 405 preflight requests before hooks run.
+  // The cors plugin's onRequest hook sets the actual CORS headers; this route just sends the 204.
+  server.options('/*', async (_req, reply) => {
+    reply.status(204).send()
+  })
+
   // API routes
   const V1 = '/api/v1'
   await server.register(firmsRouter,       { prefix: `${V1}/firms` })

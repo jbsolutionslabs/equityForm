@@ -23,6 +23,7 @@ const authPluginFn: FastifyPluginAsync = async (fastify) => {
 
   fastify.addHook('preHandler', async (req: FastifyRequest, reply: FastifyReply) => {
     if (req.url === '/health') return
+    if (req.method === 'OPTIONS') return  // CORS preflights don't carry auth tokens
 
     const authHeader = req.headers.authorization
     if (!authHeader?.startsWith('Bearer ')) {
