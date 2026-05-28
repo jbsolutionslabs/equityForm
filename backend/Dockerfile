@@ -1,5 +1,8 @@
 FROM node:18-slim
 
+# Prisma's query engine binary requires OpenSSL
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
 # Build context must be the repo root (set in Railway: Builder → Dockerfile,
 # Dockerfile Path: backend/Dockerfile, Root Directory: leave empty / set to /)
 WORKDIR /app
