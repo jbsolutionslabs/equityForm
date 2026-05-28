@@ -1,8 +1,16 @@
 /**
  * Wrappers around Zustand store mutations that also auto-save to the API.
  * Views import these instead of calling the store directly for data mutations.
+ *
+ * Save pattern: every hook that writes to the API must invalidate the relevant
+ * TanStack Query cache so that navigating back to the deals list (or re-entering
+ * a deal view) always shows fresh data rather than stale cache.
+ *
+ *   - useDealSave   → invalidates ['deals']          (name shows directly in list)
+ *   - all others    → invalidates ['deals', dealId]  (keeps per-deal cache fresh)
  */
 import { useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAppStore, Deal, Offering, Banking, SpvFormationItem, SpvFormation } from '../../state/store'
 import { apiClient } from '../client'
 import { useAutoSave } from './useAutoSave'
@@ -10,6 +18,7 @@ import { useAutoSave } from './useAutoSave'
 // ─── Per-section save functions ───────────────────────────────────────────────
 
 export function useOfferingSave(dealId: string) {
+  const qc          = useQueryClient()
   const setOffering = useAppStore((s) => s.setOffering)
   const offering    = useAppStore((s) => s.deals[dealId]?.data?.offering ?? {})
 
@@ -18,6 +27,7 @@ export function useOfferingSave(dealId: string) {
     offering,
     async (data) => {
       await apiClient.put(`/deals/${dealId}/offering`, { payload: data })
+      qc.invalidateQueries({ queryKey: ['deals', dealId] })
     }
   )
 
@@ -29,6 +39,7 @@ export function useOfferingSave(dealId: string) {
 }
 
 export function useDealSave(dealId: string) {
+  const qc      = useQueryClient()
   const setDeal = useAppStore((s) => s.setDeal)
   const deal    = useAppStore((s) => s.deals[dealId]?.data?.deal ?? {})
 
@@ -43,6 +54,8 @@ export function useDealSave(dealId: string) {
       if (data.assetClass)      body.assetClass      = data.assetClass
       if (Object.keys(body).length > 0) {
         await apiClient.patch(`/deals/${dealId}`, body)
+        // Invalidate list so updated name/address is reflected immediately
+        qc.invalidateQueries({ queryKey: ['deals'] })
       }
       // Also persist full deal payload in offering record
       await apiClient.put(`/deals/${dealId}/offering`, { payload: { deal: data } })
@@ -57,6 +70,7 @@ export function useDealSave(dealId: string) {
 }
 
 export function useBankingSave(dealId: string) {
+  const qc         = useQueryClient()
   const setBanking = useAppStore((s) => s.setBanking)
   const banking    = useAppStore((s) => s.deals[dealId]?.data?.banking ?? {})
 
@@ -65,6 +79,7 @@ export function useBankingSave(dealId: string) {
     banking,
     async (data) => {
       await apiClient.put(`/deals/${dealId}/banking`, { payload: data })
+      qc.invalidateQueries({ queryKey: ['deals', dealId] })
     }
   )
 
@@ -76,14 +91,18 @@ export function useBankingSave(dealId: string) {
 }
 
 export function useSpvSave(dealId: string) {
-  const markSpvItem = useAppStore((s) => s.markSpvItem)
+  const qc           = useQueryClient()
+  const markSpvItem  = useAppStore((s) => s.markSpvItem)
   const spvFormation = useAppStore((s) => s.deals[dealId]?.data?.spvFormation)
 
   const { flush } = useAutoSave(
     `spv-${dealId}`,
     spvFormation,
     async (data) => {
-      if (data) await apiClient.put(`/deals/${dealId}/spv`, data)
+      if (data) {
+        await apiClient.put(`/deals/${dealId}/spv`, data)
+        qc.invalidateQueries({ queryKey: ['deals', dealId] })
+      }
     }
   )
 
@@ -97,41 +116,65 @@ export function useSpvSave(dealId: string) {
 // ─── One-shot actions (no debounce needed) ────────────────────────────────────
 
 export function useOaActions(dealId: string) {
+  const qc               = useQueryClient()
   const generateOA       = useAppStore((s) => s.generateOA)
   const simulateOaSigned = useAppStore((s) => s.simulateOaSigned)
   const resetOaStatus    = useAppStore((s) => s.resetOaStatus)
   const sendOaForDocuSign = useAppStore((s) => s.sendOaForDocuSign)
 
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['deals', dealId] })
+
   return {
-    generate: () => {
+    generate: async () => {
       generateOA(dealId)
-      apiClient.put(`/deals/${dealId}/oa`, { status: 'GENERATED', generatedAt: new Date().toISOString() }).catch(() => {})
+      try {
+        await apiClient.put(`/deals/${dealId}/oa`, { status: 'GENERATED', generatedAt: new Date().toISOString() })
+        invalidate()
+      } catch {}
     },
-    send: (gpEmail: string) => {
+    send: async (gpEmail: string) => {
       sendOaForDocuSign(dealId, gpEmail)
-      apiClient.put(`/deals/${dealId}/oa`, { status: 'SENT_FOR_SIGNATURE', sentAt: new Date().toISOString() }).catch(() => {})
+      try {
+        await apiClient.put(`/deals/${dealId}/oa`, { status: 'SENT_FOR_SIGNATURE', sentAt: new Date().toISOString() })
+        invalidate()
+      } catch {}
     },
-    markSigned: () => {
+    markSigned: async () => {
       simulateOaSigned(dealId)
-      apiClient.put(`/deals/${dealId}/oa`, { status: 'SIGNED', signedAt: new Date().toISOString() }).catch(() => {})
+      try {
+        await apiClient.put(`/deals/${dealId}/oa`, { status: 'SIGNED', signedAt: new Date().toISOString() })
+        invalidate()
+      } catch {}
     },
-    reset: () => {
+    reset: async () => {
       resetOaStatus(dealId)
-      apiClient.put(`/deals/${dealId}/oa`, { status: 'GENERATED' }).catch(() => {})
+      try {
+        await apiClient.put(`/deals/${dealId}/oa`, { status: 'GENERATED' })
+        invalidate()
+      } catch {}
     },
   }
 }
 
 export function useCapTableActions(dealId: string) {
+  const qc           = useQueryClient()
   const lockCapTable = useAppStore((s) => s.lockCapTable)
 
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['deals', dealId] })
+
   return {
-    lock: () => {
+    lock: async () => {
       lockCapTable(dealId)
-      apiClient.post(`/deals/${dealId}/captable/lock`).catch(() => {})
+      try {
+        await apiClient.post(`/deals/${dealId}/captable/lock`)
+        invalidate()
+      } catch {}
     },
-    unlock: () => {
-      apiClient.delete(`/deals/${dealId}/captable/lock`).catch(() => {})
+    unlock: async () => {
+      try {
+        await apiClient.delete(`/deals/${dealId}/captable/lock`)
+        invalidate()
+      } catch {}
     },
   }
 }
