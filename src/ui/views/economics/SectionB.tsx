@@ -288,7 +288,7 @@ const TierRow: React.FC<TierRowProps> = ({ tier, index, totalTiers, prevTier, lo
               value={toDisplayRate(tier.hurdleIrr)}
               min={0}
               max={100}
-              step={0.1}
+              step={1}
               placeholder="No hurdle"
               disabled={locked}
               onChange={e => {
@@ -487,7 +487,7 @@ const LivePreview: React.FC<LivePreviewProps> = ({ config, capitalStack }) => {
               value={multiple}
               min={1}
               max={10}
-              step={0.1}
+              step={1}
               onChange={e => {
                 const v = parseFloat(e.target.value)
                 if (!isNaN(v) && v >= 1) setMultiple(v)
@@ -807,7 +807,7 @@ export const SectionB: React.FC<Props> = ({ dealId, locked, setTab }) => {
                       value={toDisplayRate(pref.rate)}
                       min={0}
                       max={50}
-                      step={0.1}
+                      step={1}
                       placeholder="e.g. 8.0"
                       disabled={locked}
                       onChange={e => patchPref({ rate: fromDisplayRate(e.target.value) })}

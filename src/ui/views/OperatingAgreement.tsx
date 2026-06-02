@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { useAppStore, canGenerateOA, isSpvFormed } from '../../state/store'
 import { useEconomicsStore, isEconomicsLocked } from '../../state/economicsStore'
@@ -63,9 +63,10 @@ export const OperatingAgreement: React.FC = () => {
   const spvOk  = data ? isSpvFormed(data) : false
   const canGen = data ? canGenerateOA(data) && econLocked : false
 
-  // Derive current sub-step from OA status
+  // Derive current sub-step from OA status.
+  // When outdated, always land on step 1 so the user sees the banner + Regenerate CTA.
   const deriveSubStep = (): SubStep => {
-    if (!oa?.status || oa.status === 'not_generated') return 1
+    if (!oa?.status || oa.status === 'not_generated' || oa.isOutdated) return 1
     if (oa.status === 'generated') return 2
     return 3  // sent_for_signature | signed
   }
@@ -75,6 +76,12 @@ export const OperatingAgreement: React.FC = () => {
   const [gpEmail, setGpEmail] = useState(oa?.gpEmail || data?.deal.gpSignerName ? '' : '')
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
   const docRef = useRef<HTMLDivElement>(null)
+
+  // If OA becomes outdated while the component is mounted (e.g. user confirmed
+  // questionnaire changes in the same session), snap back to step 1.
+  useEffect(() => {
+    if (oa?.isOutdated) setSubStep(1)
+  }, [oa?.isOutdated])
 
   const notify = (msg: string, type: 'success' | 'error' = 'success') => {
     setNotification({ msg, type })
@@ -102,8 +109,20 @@ export const OperatingAgreement: React.FC = () => {
     }
     generateOA(dealId!)
     setSubStep(2)
+    setAcks({ a: false, b: false, c: false })
     notify('Operating Agreement generated. Please review and acknowledge below.')
   }
+
+  const handleRegenerate = useCallback(() => {
+    if (!canGen) {
+      notify('SPV Formation and locked Deal Economics are still required to regenerate.', 'error')
+      return
+    }
+    generateOA(dealId!)
+    setSubStep(2)
+    setAcks({ a: false, b: false, c: false })
+    notify('Operating Agreement regenerated with updated deal information. Please re-review and re-sign.')
+  }, [canGen, dealId, generateOA]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSendDocuSign = () => {
     if (!acks.a || !acks.b || !acks.c) {
@@ -182,6 +201,24 @@ export const OperatingAgreement: React.FC = () => {
       {notification && (
         <div className={`notification notification--${notification.type}`} role="alert">
           {notification.type === 'success' ? '✓ ' : '⚠ '}{notification.msg}
+        </div>
+      )}
+
+      {/* Outdated banner — shown when core deal data changed after generation */}
+      {oa?.isOutdated && (
+        <div className="state-banner state-banner--warning" style={{ marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <span>
+            <strong>Operating Agreement is outdated.</strong> Deal information has changed since this document was generated.
+            Regenerate to reflect the latest entity, property, and offering details.
+          </span>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={handleRegenerate}
+            disabled={!canGen}
+          >
+            Regenerate OA
+          </button>
         </div>
       )}
 
