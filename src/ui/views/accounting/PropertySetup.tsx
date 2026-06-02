@@ -636,7 +636,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, availableDeal
                   type="number"
                   className="field-input"
                   value={seniorDebtPctInput || ''}
-                  step={0.01}
+                  step={1}
                   onChange={(e) => {
                     const pct = parseFloat(e.target.value) || 0
                     setSeniorDebtPctInput(pct)
@@ -697,7 +697,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, availableDeal
                   type="number"
                   className="field-input"
                   value={subDebtPctInput || ''}
-                  step={0.01}
+                  step={1}
                   onChange={(e) => {
                     const pct = parseFloat(e.target.value) || 0
                     setSubDebtPctInput(pct)
@@ -758,7 +758,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, availableDeal
                   type="number"
                   className="field-input"
                   value={initialEquityPctInput || ''}
-                  step={0.01}
+                  step={1}
                   onChange={(e) => {
                     const pct = parseFloat(e.target.value) || 0
                     setInitialEquityPctInput(pct)
@@ -853,7 +853,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, availableDeal
                 type="number"
                 className="field-input"
                 value={(core.lpPrefRateAnnual * 100).toFixed(2) || ''}
-                step={0.25}
+                step={1}
                 disabled={!lpPrefRateManualOverride}
                 onChange={(e) => patchCore('lpPrefRateAnnual', (parseFloat(e.target.value) || 0) / 100)}
               />
@@ -941,7 +941,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, availableDeal
               <div className="field-group">
                 <label className="field-label">Annual Interest Rate</label>
                 <div className="input-with-adornment">
-                  <input type="number" className="field-input" step={0.125} value={adv.annualInterestRate * 100 || ''} onChange={(e) => patchAdv('annualInterestRate', (parseFloat(e.target.value) || 0) / 100)} />
+                  <input type="number" className="field-input" step={1} value={adv.annualInterestRate * 100 || ''} onChange={(e) => patchAdv('annualInterestRate', (parseFloat(e.target.value) || 0) / 100)} />
                   <span className="field-adornment">%</span>
                 </div>
               </div>
@@ -1012,7 +1012,7 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, availableDeal
               <div className="field-group">
                 <label className="field-label">GP Ownership %</label>
                 <div className="input-with-adornment">
-                  <input type="number" className="field-input" step={0.1} value={(adv.gpOwnershipPct * 100) || ''} onChange={(e) => patchAdv('gpOwnershipPct', (parseFloat(e.target.value) || 0) / 100)} />
+                  <input type="number" className="field-input" step={1} value={(adv.gpOwnershipPct * 100) || ''} onChange={(e) => patchAdv('gpOwnershipPct', (parseFloat(e.target.value) || 0) / 100)} />
                   <span className="field-adornment">%</span>
                 </div>
               </div>

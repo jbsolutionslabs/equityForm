@@ -135,11 +135,31 @@ export function useDealSync(dealId: string | undefined) {
 
   useEffect(() => {
     if (!query.data) return
-    const api = query.data
+    const api      = query.data
+    const existing = useAppStore.getState().deals[api.id]
+    const fromApi  = apiDealToAppData(api)
+
+    // Preserve local spvFormation when the API doesn't have it yet.
+    // For operatingAgreement: documentText and isOutdated are frontend-only fields
+    // that are never stored on the backend, so always carry them forward from local.
+    const localOa = existing?.data.operatingAgreement
+    const data: AppData = {
+      ...fromApi,
+      spvFormation: api.spvFormation
+        ? fromApi.spvFormation
+        : (existing?.data.spvFormation ?? fromApi.spvFormation),
+      operatingAgreement: {
+        ...(api.operatingAgreement ? fromApi.operatingAgreement : (localOa ?? fromApi.operatingAgreement)),
+        // Frontend-only fields — never on the API, must survive every hydration
+        ...(localOa?.documentText  !== undefined && { documentText: localOa.documentText }),
+        ...(localOa?.isOutdated    !== undefined && { isOutdated:   localOa.isOutdated }),
+      },
+    }
+
     const entry: AppDealEntry = {
       id:        api.id,
       createdAt: api.createdAt,
-      data:      apiDealToAppData(api),
+      data,
     }
     hydrateDeal(api.id, entry)
   }, [query.data, hydrateDeal])

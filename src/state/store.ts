@@ -170,6 +170,8 @@ export type OperatingAgreement = {
   gpSigned?: boolean
   gpSignerName?: string
   gpSignedAt?: string
+  /** Set when core deal data changes after the OA has been generated */
+  isOutdated?: boolean
 }
 
 export type Subscription = {
@@ -511,6 +513,7 @@ export const useAppStore = create<AppState>()(
           generated:   true,
           generatedAt: new Date().toISOString(),
           documentText,
+          isOutdated:  false,
         }
         return { ...d, operatingAgreement: oa }
       }), false, 'generateOA'),
@@ -542,20 +545,12 @@ export const useAppStore = create<AppState>()(
         return { ...d, operatingAgreement: oa }
       }), false, 'simulateOaSigned'),
 
-    /* ── Stage 3: Reset OA ── */
+    /* ── Stage 3: Mark OA as outdated (core deal data changed post-generation) ── */
     resetOaStatus: (dealId) =>
-      set((s) => pd(s, dealId, (d) => {
-        const { values } = generatePlaceholders(d)
-        const documentText = generateOperatingAgreementText(values)
-        const oa: OperatingAgreement = {
-          status:      'generated',
-          generated:   true,
-          generatedAt: new Date().toISOString(),
-          documentText,
-          gpSigned:    false,
-        }
-        return { ...d, operatingAgreement: oa }
-      }), false, 'resetOaStatus'),
+      set((s) => pd(s, dealId, (d) => ({
+        ...d,
+        operatingAgreement: { ...d.operatingAgreement, isOutdated: true },
+      })), false, 'resetOaStatus'),
 
     /* ── Legacy GP-sign button ── */
     gpSignOA: (dealId, gpSignerName) =>

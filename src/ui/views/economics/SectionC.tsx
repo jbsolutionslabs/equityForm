@@ -122,7 +122,7 @@ const FeeRow: React.FC<FeeRowProps> = ({ fee, locked, onToggle, onChange, onRemo
                   value={fee.rate != null ? parseFloat((fee.rate * 100).toFixed(4)) : ''}
                   min={0}
                   max={20}
-                  step={0.001}
+                  step={1}
                   placeholder="e.g. 1.0"
                   disabled={locked}
                   onChange={e => {

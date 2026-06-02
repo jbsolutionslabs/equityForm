@@ -292,7 +292,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
           type="number"
           className="field-input"
           value={toDisplayRate(p.spread)}
-          min={0} max={20} step={0.001}
+          min={0} max={20} step={1}
           placeholder="e.g. 2.5"
           disabled={locked}
           onChange={e => onChange({ spread: fromDisplayRate(e.target.value) })}
@@ -329,7 +329,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
           type="number"
           className="field-input"
           value={toDisplayRate(p.manualRate)}
-          min={0} max={30} step={0.001}
+          min={0} max={30} step={1}
           placeholder="e.g. 8.0"
           disabled={locked}
           onChange={e => onChange({ manualRate: fromDisplayRate(e.target.value) })}
@@ -398,7 +398,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                   value={toDisplayRate(loanAmountLtcPct)}
                   min={0}
                   max={100}
-                  step={0.001}
+                  step={1}
                   disabled={locked}
                   onChange={e => {
                     const nextPct = fromDisplayRate(e.target.value)
@@ -478,7 +478,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                 type="number"
                 className="field-input"
                 value={toDisplayRate(p.prefEquityRate)}
-                min={0} max={50} step={0.001}
+                min={0} max={50} step={1}
                 placeholder="e.g. 8.0"
                 disabled={locked}
                 onChange={e => onChange({ prefEquityRate: fromDisplayRate(e.target.value) })}
@@ -529,7 +529,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                       value={toDisplayRate(prefExitFeePct)}
                       min={0}
                       max={20}
-                      step={0.001}
+                      step={1}
                       disabled={locked}
                       onChange={e => {
                         const nextPct = fromDisplayRate(e.target.value)
@@ -587,7 +587,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                       value={toDisplayRate(prefOriginationFeePct)}
                       min={0}
                       max={20}
-                      step={0.001}
+                      step={1}
                       disabled={locked}
                       onChange={e => {
                         const nextPct = fromDisplayRate(e.target.value)
@@ -620,7 +620,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                 value={toDisplayRate(prefCurrentPayPortionPct)}
                 min={0}
                 max={100}
-                step={0.001}
+                step={1}
                 placeholder="e.g. 60"
                 disabled={locked}
                 onChange={e => onChange({ prefCurrentPayPortionPct: fromDisplayRate(e.target.value) })}
@@ -725,7 +725,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                         value={toDisplayRate(p.redemptionPremiumPct)}
                         min={0}
                         max={20}
-                        step={0.001}
+                        step={1}
                         placeholder="e.g. 1.0"
                         disabled={locked}
                         onChange={e => onChange({ redemptionPremiumPct: fromDisplayRate(e.target.value) })}
@@ -800,7 +800,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                     value={toDisplayRate(p.mezzPikPortionPct)}
                     min={0}
                     max={100}
-                    step={0.001}
+                    step={1}
                     placeholder="e.g. 40"
                     disabled={locked}
                     onChange={e => onChange({ mezzPikPortionPct: fromDisplayRate(e.target.value) })}
@@ -845,7 +845,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                     type="number"
                     className="field-input"
                     value={toDisplayRate(p.fixedRate)}
-                    min={0} max={30} step={0.001}
+                    min={0} max={30} step={1}
                     placeholder="e.g. 6.5"
                     disabled={locked}
                     onChange={e => onChange({ fixedRate: fromDisplayRate(e.target.value) })}
@@ -902,7 +902,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                         type="number"
                         className="field-input"
                         value={toDisplayRate(p.fixedRate)}
-                        min={0} max={30} step={0.001}
+                        min={0} max={30} step={1}
                         placeholder="e.g. 7.0"
                         disabled={locked}
                         onChange={e => onChange({ fixedRate: fromDisplayRate(e.target.value) })}
@@ -954,7 +954,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                         type="number"
                         className="field-input"
                         value={toDisplayRate(p.fixedRate)}
-                        min={0} max={30} step={0.001}
+                        min={0} max={30} step={1}
                         placeholder="e.g. 6.5"
                         disabled={locked}
                         onChange={e => onChange({ fixedRate: fromDisplayRate(e.target.value) })}
@@ -1011,7 +1011,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                         type="number"
                         className="field-input"
                         value={toDisplayRate(p.fixedRate)}
-                        min={0} max={30} step={0.001}
+                        min={0} max={30} step={1}
                         placeholder="e.g. 7.5"
                         disabled={locked}
                         onChange={e => onChange({ fixedRate: fromDisplayRate(e.target.value) })}
@@ -1063,7 +1063,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                         type="number"
                         className="field-input"
                         value={toDisplayRate(p.permRate)}
-                        min={0} max={30} step={0.001}
+                        min={0} max={30} step={1}
                         placeholder="e.g. 6.0"
                         disabled={locked}
                         onChange={e => onChange({ permRate: fromDisplayRate(e.target.value) })}
@@ -1130,7 +1130,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                       type="number"
                       className="field-input"
                       value={toDisplayRate(p.capStrikeRate)}
-                      min={0} max={30} step={0.001}
+                      min={0} max={30} step={1}
                       placeholder="e.g. 5.0"
                       disabled={locked}
                       onChange={e => onChange({ capStrikeRate: fromDisplayRate(e.target.value) })}
@@ -1209,7 +1209,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                         value={toDisplayRate(originationFeePct)}
                         min={0}
                         max={20}
-                        step={0.001}
+                        step={1}
                         placeholder="e.g. 1.0"
                         disabled={locked}
                         onChange={e => {
@@ -1267,7 +1267,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                         value={toDisplayRate(exitFeePct)}
                         min={0}
                         max={20}
-                        step={0.001}
+                        step={1}
                         disabled={locked}
                         onChange={e => {
                           const nextPct = fromDisplayRate(e.target.value)
@@ -1414,7 +1414,7 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                         value={toDisplayRate(p.penaltyPct)}
                         min={0}
                         max={20}
-                        step={0.001}
+                        step={1}
                         placeholder="e.g. 1.0"
                         disabled={locked}
                         onChange={e => onChange({ penaltyPct: fromDisplayRate(e.target.value) })}
@@ -1803,7 +1803,7 @@ export const SectionA: React.FC<Props> = ({ dealId, locked, setTab }) => {
                       value={toDisplayRate(closingCostsPct)}
                       min={0}
                       max={20}
-                      step={0.001}
+                      step={1}
                       disabled={locked}
                       onChange={e => patchStack({ closingCostsPct: fromDisplayRate(e.target.value) })}
                       placeholder="e.g. 2.0"
@@ -1881,7 +1881,7 @@ export const SectionA: React.FC<Props> = ({ dealId, locked, setTab }) => {
                   value={toDisplayRate(lpEquityPct)}
                   min={0}
                   max={100}
-                  step={0.001}
+                  step={1}
                   disabled={locked}
                   onChange={e => patchStack({ lpEquityPct: fromDisplayRate(e.target.value) })}
                 />

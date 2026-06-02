@@ -377,7 +377,7 @@ export const Offering: React.FC = () => {
                           placeholder="e.g. 8"
                           min={0}
                           max={100}
-                          step={0.5}
+                          step={1}
                           aria-invalid={prefRateRequired}
                           {...form.register('preferredReturnRate', { valueAsNumber: true })}
                         />
@@ -399,7 +399,7 @@ export const Offering: React.FC = () => {
                         className={`field-input${errors.irrRate ? ' field-input--error' : ''}`}
                         placeholder="e.g. 10"
                         min={0}
-                        step={0.5}
+                        step={1}
                         style={{ maxWidth: 160 }}
                         aria-invalid={!!errors.irrRate}
                         {...form.register('irrRate', { valueAsNumber: true })}

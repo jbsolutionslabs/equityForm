@@ -52,6 +52,42 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>
 
+const OA_CORE_FIELDS: Array<keyof FormValues> = [
+  'entityName',
+  'ein',
+  'formationState',
+  'effectiveDate',
+  'principalAddress',
+  'gpEntityName',
+  'gpEntityState',
+  'gpSignerName',
+  'gpSignerTitle',
+  'registeredAgentName',
+  'registeredAgentAddress',
+  'dealPurpose',
+  'propertyName',
+  'assetClass',
+  'propertyAddress',
+  'propertyCity',
+  'propertyState',
+  'propertyZip',
+  'propertyLegalDescription',
+  'offeringExemption',
+  'minimumInvestment',
+  'closingDate',
+  'solicitationMethod',
+]
+
+function normalizeComparableValue(value: unknown) {
+  return value == null ? '' : String(value).trim()
+}
+
+function hasOaCoreChanges(vals: Partial<FormValues>, current: Partial<FormValues>) {
+  return OA_CORE_FIELDS.some((field) => {
+    return normalizeComparableValue(vals[field]) !== normalizeComparableValue(current[field])
+  })
+}
+
 export const DealSetup: React.FC = () => {
   const { dealId }    = useParams<{ dealId: string }>()
   const navigate      = useNavigate()
@@ -63,6 +99,7 @@ export const DealSetup: React.FC = () => {
   const { update: updateOffering, flush: flushOffering } = useOfferingSave(dealId!)
   const syncQuery   = useDealSync(dealId) // hydrate from DB on direct URL navigation
   const hasHydratedRef = useRef(false)
+  const suppressOaChangeGuardRef = useRef(false)
 
   // Controlled stepper step — initialised from store (may be 0 before sync)
   const [currentStep, setCurrentStep] = useState(() => {
@@ -110,8 +147,12 @@ export const DealSetup: React.FC = () => {
     const state = useAppStore.getState()
     const d = (state.deals[dealId!]?.data?.deal     ?? {}) as Partial<FormValues>
     const o = (state.deals[dealId!]?.data?.offering ?? {}) as Partial<FormValues>
+    // Suppress OA guard while resetting the form with loaded data —
+    // this is a hydration reset, not a user-initiated change
+    suppressOaChangeGuardRef.current = true
     form.reset({ ...d, ...o, assetClass: d.assetClass ?? 'multifamily' })
     setCurrentStep((d as any).questionnaireStep ?? 0)
+    window.setTimeout(() => { suppressOaChangeGuardRef.current = false }, 0)
   }, [syncQuery.isSuccess]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Save helpers ─────────────────────────────────────────────────────────
@@ -162,14 +203,35 @@ export const DealSetup: React.FC = () => {
   // useAutoSave inside useDealSave/useOfferingSave will debounce and write to API
   useEffect(() => {
     const subscription = watch((vals) => {
-      doSave(vals as FormValues)
+      const nextVals = vals as FormValues
+      const persistedVals = {
+        ...(dealData     as Partial<FormValues>),
+        ...(offeringData as Partial<FormValues>),
+        assetClass: (dealData as Partial<FormValues>).assetClass ?? 'multifamily',
+      }
+
+      if (
+        oaStatus !== 'not_generated' &&
+        !suppressOaChangeGuardRef.current &&
+        hasOaCoreChanges(nextVals, persistedVals)
+      ) {
+        setPendingVals(nextVals)
+        return
+      }
+
+      doSave(nextVals)
     })
     return () => subscription.unsubscribe()
-  }, [watch]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [watch, oaStatus, dealData, offeringData]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveProgress = () => {
     const vals = form.getValues()
-    if (oaStatus !== 'not_generated') {
+    const persistedVals = {
+      ...(dealData     as Partial<FormValues>),
+      ...(offeringData as Partial<FormValues>),
+      assetClass: (dealData as Partial<FormValues>).assetClass ?? 'multifamily',
+    }
+    if (oaStatus !== 'not_generated' && hasOaCoreChanges(vals, persistedVals)) {
       setPendingVals(vals)
       return
     }
@@ -181,21 +243,45 @@ export const DealSetup: React.FC = () => {
 
   const confirmChangeAndRegenerate = () => {
     if (pendingVals) {
+      suppressOaChangeGuardRef.current = true
       doSave(pendingVals)
       flushDeal()
       flushOffering()
       resetOaStatus(dealId!)
-      notify('Saved. Operating Agreement has been reset — complete Economics and SPV Formation before regenerating.')
+      notify('Saved. The Operating Agreement is now outdated — visit the Operating Agreement step to regenerate it.')
+      window.setTimeout(() => {
+        suppressOaChangeGuardRef.current = false
+      }, 0)
     }
     setPendingVals(null)
   }
 
+  const cancelPendingOaChange = () => {
+    const currentVals = {
+      ...(dealData     as Partial<FormValues>),
+      ...(offeringData as Partial<FormValues>),
+      assetClass: (dealData as Partial<FormValues>).assetClass ?? 'multifamily',
+    }
+    suppressOaChangeGuardRef.current = true
+    form.reset(currentVals)
+    setPendingVals(null)
+    notify('Changes cancelled. Existing Operating Agreement remains unchanged.')
+    window.setTimeout(() => {
+      suppressOaChangeGuardRef.current = false
+    }, 0)
+  }
+
   const onFinish = () => {
     form.handleSubmit((vals) => {
+      const persistedVals = {
+        ...(dealData     as Partial<FormValues>),
+        ...(offeringData as Partial<FormValues>),
+        assetClass: (dealData as Partial<FormValues>).assetClass ?? 'multifamily',
+      }
       doSave(vals)
-      if (oaStatus !== 'not_generated') {
+      if (oaStatus !== 'not_generated' && hasOaCoreChanges(vals, persistedVals)) {
         resetOaStatus(dealId!)
-        notify('Deal details updated. The Operating Agreement has been reset and will need to be regenerated after Economics is locked.')
+        notify('Deal details updated. The Operating Agreement is now outdated — visit the Operating Agreement step to regenerate it.')
       }
       navigate(`/deals/${dealId}/economics`)
     })()
@@ -728,7 +814,7 @@ export const DealSetup: React.FC = () => {
               <button type="button" className="btn btn-primary" onClick={confirmChangeAndRegenerate}>
                 Save &amp; Reset OA
               </button>
-              <button type="button" className="btn btn-ghost" onClick={() => setPendingVals(null)}>
+              <button type="button" className="btn btn-ghost" onClick={cancelPendingOaChange}>
                 Cancel Change
               </button>
             </div>
