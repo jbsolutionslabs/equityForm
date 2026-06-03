@@ -1478,6 +1478,11 @@ const SUPanel: React.FC<{ stack: CapitalStack }> = ({ stack }) => {
   const sau = computeSourcesAndUses(stack)
   const fmt = (n: number) => fmtCurrency(n)
   const pct = (n: number) => `${(n * 100).toFixed(1)}%`
+
+  // LTC always comes from the senior instrument's LTC plug percentage
+  const seniorInst  = stack.instruments.find(i => i.position === 'senior')
+  const displayLtc  = seniorInst?.loanAmountLtcPct ?? sau.ltc
+
   const lastDollarLtv = sau.uses.purchasePrice > 0
     ? (
         (sau.sources.byPosition.senior ?? 0)
@@ -1581,7 +1586,7 @@ const SUPanel: React.FC<{ stack: CapitalStack }> = ({ stack }) => {
               </div>
               <div className="su-metric">
                 <div className="su-metric-label">LTC</div>
-                <div className="su-metric-value">{pct(sau.ltc)}</div>
+                <div className="su-metric-value">{pct(displayLtc)}</div>
                 <div className="su-metric-label" style={{ marginTop: 15 }}>Last-Dollar-LTC</div>
                 <div className="su-metric-value">{pct(lastDollarLtc)}</div>
               </div>
