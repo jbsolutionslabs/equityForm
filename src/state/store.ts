@@ -170,11 +170,17 @@ export type OperatingAgreement = {
   gpSigned?: boolean
   gpSignerName?: string
   gpSignedAt?: string
+  reviewAcks?: {
+    a: boolean
+    b: boolean
+    c: boolean
+  }
   /** Set when core deal data changes after the OA has been generated */
   isOutdated?: boolean
 }
 
 export type Subscription = {
+  id?: string
   investorId: string
   status: 'pending' | 'generated' | 'sent' | 'signed' | 'paid'
   docusignEnvelopeId?: string
@@ -383,8 +389,10 @@ type AppState = {
   sendOaForDocuSign:(dealId: string, gpEmail: string) => void
   simulateOaSigned: (dealId: string) => void
   resetOaStatus:    (dealId: string) => void
+  setOperatingAgreementDraft: (dealId: string, patch: Partial<OperatingAgreement>) => void
   gpSignOA:         (dealId: string, gpSignerName?: string) => void
   generateSubscriptionForInvestor: (dealId: string, investorId: string) => void
+  setSubscriptionFields:           (dealId: string, investorId: string, patch: Partial<Subscription>) => void
   sendSubscriptionForSignature:    (dealId: string, investorId: string) => void
   markSubscriptionSigned:          (dealId: string, investorId: string) => void
   recordWirePayment:               (dealId: string, investorId: string, confirmation: string, amount?: number, date?: string) => void
@@ -552,6 +560,12 @@ export const useAppStore = create<AppState>()(
         operatingAgreement: { ...d.operatingAgreement, isOutdated: true },
       })), false, 'resetOaStatus'),
 
+    setOperatingAgreementDraft: (dealId, patch) =>
+      set((s) => pd(s, dealId, (d) => ({
+        ...d,
+        operatingAgreement: { ...d.operatingAgreement, ...patch },
+      })), false, 'setOperatingAgreementDraft'),
+
     /* ── Legacy GP-sign button ── */
     gpSignOA: (dealId, gpSignerName) =>
       set((s) => pd(s, dealId, (d) => {
@@ -587,6 +601,14 @@ export const useAppStore = create<AppState>()(
         }
         return { ...d, subscriptions: [...d.subscriptions, sub] }
       }), false, 'generateSubscriptionForInvestor'),
+
+    setSubscriptionFields: (dealId, investorId, patch) =>
+      set((s) => pd(s, dealId, (d) => ({
+        ...d,
+        subscriptions: d.subscriptions.map((ss) =>
+          ss.investorId === investorId ? { ...ss, ...patch } : ss,
+        ),
+      })), false, 'setSubscriptionFields'),
 
     sendSubscriptionForSignature: (dealId, investorId) =>
       set((s) => pd(s, dealId, (d) => {

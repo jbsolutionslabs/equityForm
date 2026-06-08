@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAppStore, isSpvFormed } from '../../state/store'
+import { useDealSave, useSpvSave } from '../../api/hooks/useDealMutations'
 import { HelpCard } from '../components/HelpCard'
 import ModuleProgress from '../components/ModuleProgress'
 import {
@@ -14,12 +15,23 @@ import {
   type ForeignQualResult,
 } from '../../api/legalFormation'
 
+const EMPTY_SPV_FORMATION = {
+  entityName: { complete: false },
+  registeredAgent: { complete: false },
+  certOfFormation: { complete: false },
+  einObtained: { complete: false },
+  foreignQualification: { complete: false },
+}
+
 export const SpvFormation: React.FC = () => {
   const { dealId }   = useParams<{ dealId: string }>()
-  const spvFormation = useAppStore((s) => s.deals[dealId!]?.data.spvFormation)
+  const navigate     = useNavigate()
+  const spvFormation = useAppStore((s) => s.deals[dealId!]?.data.spvFormation ?? EMPTY_SPV_FORMATION)
   const markSpvItem  = useAppStore((s) => s.markSpvItem)
   const setDeal      = useAppStore((s) => s.setDeal)
   const data         = useAppStore((s) => s.deals[dealId!]?.data)
+  const { update: updateSpv, flush: flushSpv } = useSpvSave(dealId!)
+  const { update: updateDeal, flush: flushDeal } = useDealSave(dealId!)
   const formed       = data ? isSpvFormed(data) : false
   const deal         = data?.deal ?? {}
 
@@ -44,6 +56,13 @@ export const SpvFormation: React.FC = () => {
   // ── Step 1: Entity Name ─────────────────────────────────────────────────
   const [nameInput,     setNameInput]     = useState(spvFormation.entityName?.entityName || deal.entityName || '')
   const [nameConfirmed, setNameConfirmed] = useState(false)
+
+  const handleNameBlur = async () => {
+    const name = nameInput.trim()
+    updateSpv('entityName', { entityName: name, complete: !!spvFormation.entityName?.complete, nameLocked: !!spvFormation.entityName?.nameLocked })
+    updateDeal({ entityName: name, formationState: 'DE' })
+    await Promise.all([flushSpv(), flushDeal()])
+  }
 
   const handleLockName = () => {
     const name = nameInput.trim()
@@ -145,6 +164,13 @@ export const SpvFormation: React.FC = () => {
   // ── Step 4: EIN ─────────────────────────────────────────────────────────
   const [einInput, setEinInput] = useState(spvFormation.einObtained?.ein || deal.ein || '')
 
+  const handleEinBlur = async () => {
+    const ein = einInput.trim()
+    updateSpv('einObtained', { ein, complete: !!spvFormation.einObtained?.complete })
+    updateDeal({ ein })
+    await Promise.all([flushSpv(), flushDeal()])
+  }
+
   const handleSaveEin = () => {
     const ein = einInput.trim()
     if (!ein) { notify('Enter your EIN to continue.', 'error'); return }
@@ -241,8 +267,21 @@ export const SpvFormation: React.FC = () => {
       )}
 
       {formed && (
-        <div className="state-banner state-banner--success" style={{ marginBottom: 20 }}>
-          <span>✓</span> All five formation steps complete — proceed to the Operating Agreement.
+        <div className="state-banner state-banner--success" style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span><span>✓</span> All five formation steps complete — you successfully completed SPV Formation.</span>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => navigate(`/deals/${dealId}/oa`)}
+          >
+            Continue to Operating Agreement →
+          </button>
+        </div>
+      )}
+
+      {!formed && (
+        <div className="state-banner state-banner--warning" style={{ marginBottom: 20 }}>
+          <span>⚠</span> SPV Formation is not complete yet. Finish all 5 steps below to unlock the Operating Agreement.
         </div>
       )}
 
@@ -286,6 +325,7 @@ export const SpvFormation: React.FC = () => {
                     placeholder="e.g. Oakwood Capital LLC"
                     value={nameInput}
                     onChange={(e) => setNameInput(e.target.value)}
+                    onBlur={() => { void handleNameBlur() }}
                     style={{ marginTop: 4, maxWidth: 420 }}
                   />
                   <div className="field-hint" style={{ marginTop: 4 }}>
@@ -614,6 +654,7 @@ export const SpvFormation: React.FC = () => {
                         placeholder="e.g. 12-3456789"
                         value={einInput}
                         onChange={(e) => setEinInput(e.target.value)}
+                        onBlur={() => { void handleEinBlur() }}
                         style={{ marginTop: 4, maxWidth: 280 }}
                       />
                       <div className="field-hint" style={{ marginTop: 4 }}>Format: XX-XXXXXXX</div>
@@ -670,6 +711,7 @@ export const SpvFormation: React.FC = () => {
                         placeholder="e.g. 12-3456789"
                         value={einInput}
                         onChange={(e) => setEinInput(e.target.value)}
+                        onBlur={() => { void handleEinBlur() }}
                       />
                       <div className="field-hint">Format: XX-XXXXXXX</div>
                     </div>

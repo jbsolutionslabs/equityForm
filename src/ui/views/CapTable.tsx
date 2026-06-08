@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAppStore, canLockCapTable } from '../../state/store'
+import { useCapTableActions } from '../../api/hooks/useDealMutations'
 import { HelpCard } from '../components/HelpCard'
 import { generatePlaceholders } from '../../utils/placeholders'
 import { generateOperatingAgreementHtml, generateOperatingAgreementWordHtml } from '../../utils/pdfTemplate'
@@ -9,10 +10,11 @@ import ModuleProgress from '../components/ModuleProgress'
 
 export const CapTable: React.FC = () => {
   const { dealId }  = useParams<{ dealId: string }>()
+  const navigate    = useNavigate()
   const data        = useAppStore((s) => s.deals[dealId!]?.data)
   const investors   = data?.investors ?? []
   const deal        = data?.deal ?? {}
-  const lockCapTable = useAppStore((s) => s.lockCapTable)
+  const capTableActions = useCapTableActions(dealId!)
 
   const [showConfirm, setShowConfirm] = useState(false)
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
@@ -56,10 +58,14 @@ export const CapTable: React.FC = () => {
   // For display, add a GP row representing 0-unit management interest
   const gpName = deal.gpEntityName || deal.gpSignerName || 'GP / Managing Member'
 
-  const handleLock = () => {
-    lockCapTable(dealId!)
-    setShowConfirm(false)
-    notify('Cap table locked. Closing documents are ready to download.')
+  const handleLock = async () => {
+    try {
+      await capTableActions.lock()
+      setShowConfirm(false)
+      notify('Cap table locked. Closing documents are ready to download.')
+    } catch {
+      notify('Failed to lock the cap table. Please try again.', 'error')
+    }
   }
 
   // ── K-1 Exhibit ──────────────────────────────────────────────────────────
@@ -290,6 +296,23 @@ export const CapTable: React.FC = () => {
       {notification && (
         <div className={`notification notification--${notification.type}`} role="alert">
           {notification.type === 'success' ? '✓ ' : '⚠ '}{notification.msg}
+        </div>
+      )}
+
+      {isLocked ? (
+        <div className="state-banner state-banner--success" style={{ marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <span><span>✓</span> Cap Table Lock complete. This deal has been finalized successfully.</span>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => navigate('/deals')}
+          >
+            Return to Deals →
+          </button>
+        </div>
+      ) : (
+        <div className="state-banner state-banner--warning" style={{ marginBottom: 20 }}>
+          <span>⚠</span> Cap Table Lock is not complete yet. Confirm all paid subscriptions before finalizing the deal.
         </div>
       )}
 
