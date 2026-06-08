@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '../client'
-import { useAppStore, AppDealEntry, AppData, defaultData, SpvFormation, OperatingAgreement, BlueSkyFilingStatus } from '../../state/store'
+import { useAppStore, AppDealEntry, AppData, defaultData, SpvFormation, SpvFormationItem, OperatingAgreement, BlueSkyFilingStatus } from '../../state/store'
 
 // ─── API shape (what the backend returns) ────────────────────────────────────
 interface ApiDeal {
@@ -75,14 +75,15 @@ function apiDealToAppData(api: ApiDeal): AppData {
 
   // Investors
   const investors = (api.investors ?? []).map((i) => ({
+    ...(i.payload as any),
     id: i.id,
     fullLegalName: i.name,
     email: i.email,
-    ...(i.payload as any),
   }))
 
   // Subscriptions
   const subscriptions = (api.subscriptions ?? []).map((s) => ({
+    id:                    s.id,
     investorId:            s.investorId,
     status:                s.status.toLowerCase() as any,
     signedAt:              s.signedAt,
@@ -120,6 +121,17 @@ function apiDealToAppData(api: ApiDeal): AppData {
   }
 }
 
+function mergeSpvItem(
+  localItem: SpvFormationItem | undefined,
+  apiItem: SpvFormationItem | undefined,
+): SpvFormationItem {
+  return {
+    complete: apiItem?.complete ?? localItem?.complete ?? false,
+    ...(localItem ?? {}),
+    ...(apiItem ?? {}),
+  }
+}
+
 // ─── Hook: fetch + hydrate a single deal ─────────────────────────────────────
 export function useDealSync(dealId: string | undefined) {
   const hydrateDeal = useAppStore((s) => s.hydrateDeal)
@@ -138,6 +150,7 @@ export function useDealSync(dealId: string | undefined) {
     const api      = query.data
     const existing = useAppStore.getState().deals[api.id]
     const fromApi  = apiDealToAppData(api)
+    const localSpv = existing?.data.spvFormation
 
     // Preserve local spvFormation when the API doesn't have it yet.
     // For operatingAgreement: documentText and isOutdated are frontend-only fields
@@ -146,13 +159,22 @@ export function useDealSync(dealId: string | undefined) {
     const data: AppData = {
       ...fromApi,
       spvFormation: api.spvFormation
-        ? fromApi.spvFormation
+        ? {
+            ...fromApi.spvFormation,
+            entityName: mergeSpvItem(localSpv?.entityName, fromApi.spvFormation.entityName),
+            registeredAgent: mergeSpvItem(localSpv?.registeredAgent, fromApi.spvFormation.registeredAgent),
+            certOfFormation: mergeSpvItem(localSpv?.certOfFormation, fromApi.spvFormation.certOfFormation),
+            einObtained: mergeSpvItem(localSpv?.einObtained, fromApi.spvFormation.einObtained),
+            foreignQualification: mergeSpvItem(localSpv?.foreignQualification, fromApi.spvFormation.foreignQualification),
+          }
         : (existing?.data.spvFormation ?? fromApi.spvFormation),
       operatingAgreement: {
         ...(api.operatingAgreement ? fromApi.operatingAgreement : (localOa ?? fromApi.operatingAgreement)),
         // Frontend-only fields — never on the API, must survive every hydration
         ...(localOa?.documentText  !== undefined && { documentText: localOa.documentText }),
         ...(localOa?.isOutdated    !== undefined && { isOutdated:   localOa.isOutdated }),
+        ...(localOa?.gpEmail       !== undefined && { gpEmail:      localOa.gpEmail }),
+        ...(localOa?.reviewAcks    !== undefined && { reviewAcks:   localOa.reviewAcks }),
       },
     }
 

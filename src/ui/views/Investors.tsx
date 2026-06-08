@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useForm, useFieldArray, Controller, useWatch } from 'react-hook-form'
 import type { SubmitHandler } from 'react-hook-form'
 import type { FieldErrors } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useAppStore, Investor, canSendSubAgreements } from '../../state/store'
+import { useInvestorActions, useSubscriptionActions } from '../../api/hooks/useDealMutations'
 import { v4 as uuidv4 } from 'uuid'
 import { generateSubscriptionAgreementHtml } from '../../utils/pdfTemplate'
 import { generatePlaceholders } from '../../utils/placeholders'
@@ -258,20 +259,16 @@ const STATUS_CLASS: Record<string, string> = {
 /* ─── Component ──────────────────────────────────────────────────────────── */
 export const Investors: React.FC = () => {
   const { dealId }                  = useParams<{ dealId: string }>()
+  const navigate                    = useNavigate()
   const data                        = useAppStore((s) => s.deals[dealId!]?.data.investors ?? [])
   const blueSkyFilings              = useAppStore((s) => s.deals[dealId!]?.data.blueSkyFilings ?? {})
-  const addInvestor                 = useAppStore((s) => s.addInvestor)
-  const updateInvestor              = useAppStore((s) => s.updateInvestor)
-  const removeInvestor              = useAppStore((s) => s.removeInvestor)
   const setBlueSkyFilingStep        = useAppStore((s) => s.setBlueSkyFilingStep)
   const syncBlueSkyFilingsForStates = useAppStore((s) => s.syncBlueSkyFilingsForStates)
-  const generateSubscriptionForInvestor = useAppStore((s) => s.generateSubscriptionForInvestor)
-  const sendSubscriptionForSignature    = useAppStore((s) => s.sendSubscriptionForSignature)
-  const markSubscriptionSigned          = useAppStore((s) => s.markSubscriptionSigned)
-  const recordWirePayment               = useAppStore((s) => s.recordWirePayment)
   const appData    = useAppStore((s) => s.deals[dealId!]?.data)
   const subscriptions = appData?.subscriptions ?? []
   const offering   = appData?.offering ?? {}
+  const investorActions = useInvestorActions(dealId!)
+  const subscriptionActions = useSubscriptionActions(dealId!)
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -404,10 +401,14 @@ export const Investors: React.FC = () => {
     setExpanded((prev) => ({ ...prev, [newIdx]: true }))
   }
 
-  const onRemove = (idx: number, id: string) => {
+  const onRemove = async (idx: number, id: string) => {
     remove(idx)
     if (data.some((inv) => inv.id === id)) {
-      removeInvestor(dealId!, id)
+      try {
+        await investorActions.remove(id)
+      } catch {
+        notify('Failed to remove investor. Please try again.', 'error')
+      }
     }
     setExpanded((prev) => {
       const next = { ...prev }
@@ -416,7 +417,7 @@ export const Investors: React.FC = () => {
     })
   }
 
-  const onSave: SubmitHandler<FormValues> = (vals) => {
+  const onSave: SubmitHandler<FormValues> = async (vals) => {
     const nonAccredited = vals.investors.filter((inv) => inv.accreditedInvestor !== true)
 
     if (offering.offeringExemption === '506(c)') {
@@ -460,20 +461,27 @@ export const Investors: React.FC = () => {
       return
     }
 
-    vals.investors.forEach((inv) => {
-      const payload: Partial<Investor> = {
-        ...inv,
-        derivedLastName:
-          (inv as Investor).derivedLastName ??
-          (inv.fullLegalName ? inv.fullLegalName.split(' ').slice(-1)[0] : ''),
-      }
+    try {
+      for (const inv of vals.investors) {
+        const payload: Partial<Investor> = {
+          ...inv,
+          derivedLastName:
+            (inv as Investor).derivedLastName ??
+            (inv.fullLegalName ? inv.fullLegalName.split(' ').slice(-1)[0] : ''),
+        }
 
-      if (data.some((existing) => existing.id === inv.id)) {
-        updateInvestor(dealId!, inv.id, payload)
-      } else {
-        addInvestor(dealId!, payload as Investor)
+        if (data.some((existing) => existing.id === inv.id)) {
+          await investorActions.update(inv.id, payload, payload as Record<string, unknown>)
+        } else {
+          await investorActions.create(payload as Investor)
+        }
       }
-    })
+    } catch {
+      notify('Failed to save investors. Please try again.', 'error')
+      return
+    }
+
+    window.scrollTo({ top: 0, behavior: 'smooth' })
 
     if (nonAccredited.length > 0) {
       notify(
@@ -510,6 +518,7 @@ export const Investors: React.FC = () => {
   }
 
   const canGenerateSub = appData ? canSendSubAgreements(appData) : false
+  const investorIntakeComplete = data.length > 0
   const watchedInvestors = useWatch({ control: form.control, name: 'investors' }) || []
   const blueSkyStates = useMemo(() => {
     const byState = new Map<string, number>()
@@ -589,6 +598,23 @@ export const Investors: React.FC = () => {
       {notification && (
         <div className={`notification notification--${notification.type}`} role="alert">
           {notification.type === 'success' ? '✓ ' : '⚠ '}{notification.msg}
+        </div>
+      )}
+
+      {!investorIntakeComplete ? (
+        <div className="state-banner state-banner--warning" style={{ marginBottom: 16 }}>
+          <span>⚠</span> Investor Intake is not complete yet. Add and save at least one investor to continue.
+        </div>
+      ) : (
+        <div className="state-banner state-banner--success" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <span><span>✓</span> Investor Intake complete. Your investors have been saved successfully.</span>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => navigate(`/deals/${dealId}/signatures`)}
+          >
+            Continue to E-Signatures →
+          </button>
         </div>
       )}
 
@@ -808,9 +834,13 @@ export const Investors: React.FC = () => {
                         className="btn btn-primary btn-sm"
                         disabled={!canGenerateSub}
                         title={!canGenerateSub ? 'Operating Agreement must be GP-signed (Stage 3) before generating subscription agreements' : undefined}
-                        onClick={() => {
-                          generateSubscriptionForInvestor(dealId!, f.id)
-                          notify(`Subscription generated for ${name}.`)
+                        onClick={async () => {
+                          try {
+                            await subscriptionActions.generate(f.id)
+                            notify(`Subscription generated for ${name}.`)
+                          } catch {
+                            notify(`Failed to generate subscription for ${name}.`, 'error')
+                          }
                         }}
                       >
                         Generate subscription
@@ -820,9 +850,13 @@ export const Investors: React.FC = () => {
                         className="btn btn-secondary btn-sm"
                         disabled={!canGenerateSub}
                         title={!canGenerateSub ? 'Operating Agreement must be GP-signed (Stage 3) before sending subscription agreements' : undefined}
-                        onClick={() => {
-                          sendSubscriptionForSignature(dealId!, f.id)
-                          notify(`Subscription sent for e-signature for ${name}.`)
+                        onClick={async () => {
+                          try {
+                            await subscriptionActions.send(f.id)
+                            notify(`Subscription sent for e-signature for ${name}.`)
+                          } catch {
+                            notify(`Failed to send subscription for ${name}.`, 'error')
+                          }
                         }}
                       >
                         Send for e-sign
@@ -839,9 +873,13 @@ export const Investors: React.FC = () => {
                       <button
                         type="button"
                         className="link-btn"
-                        onClick={() => {
-                          markSubscriptionSigned(dealId!, f.id)
-                          notify(`Marked as signed for ${name}.`)
+                        onClick={async () => {
+                          try {
+                            await subscriptionActions.markSigned(f.id)
+                            notify(`Marked as signed for ${name}.`)
+                          } catch {
+                            notify(`Failed to mark ${name} as signed.`, 'error')
+                          }
                         }}
                       >
                         Mark signed
@@ -868,13 +906,17 @@ export const Investors: React.FC = () => {
                         <button
                           type="button"
                           className="btn btn-primary btn-sm"
-                          onClick={() => {
+                          onClick={async () => {
                             const conf = wireInput[idx]?.trim()
                             if (conf) {
-                              recordWirePayment(dealId!, f.id, conf)
-                              setShowWire((prev) => ({ ...prev, [idx]: false }))
-                              setWireInput((prev) => ({ ...prev, [idx]: '' }))
-                              notify(`Wire recorded for ${name}.`)
+                              try {
+                                await subscriptionActions.recordWire(f.id, conf)
+                                setShowWire((prev) => ({ ...prev, [idx]: false }))
+                                setWireInput((prev) => ({ ...prev, [idx]: '' }))
+                                notify(`Wire recorded for ${name}.`)
+                              } catch {
+                                notify(`Failed to record wire for ${name}.`, 'error')
+                              }
                             }
                           }}
                         >

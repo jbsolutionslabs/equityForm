@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAppStore, canGenerateOA, isSpvFormed } from '../../state/store'
 import { useEconomicsStore, isEconomicsLocked } from '../../state/economicsStore'
+import { useOperatingAgreementDraftSave } from '../../api/hooks/useDealMutations'
 import { generatePlaceholders } from '../../utils/placeholders'
 import { generateOperatingAgreementHtml, generateOperatingAgreementText, generateOperatingAgreementWordHtml } from '../../utils/pdfTemplate'
 import html2pdf from 'html2pdf.js'
@@ -49,7 +50,10 @@ const TOC_SECTIONS = [
 
 export const OperatingAgreement: React.FC = () => {
   const { dealId }        = useParams<{ dealId: string }>()
+  const navigate          = useNavigate()
   const data              = useAppStore((s) => s.deals[dealId!]?.data)
+  const safeDeal          = data?.deal ?? {}
+  const safeOffering      = data?.offering ?? {}
   const oa                = data?.operatingAgreement
   const generateOA        = useAppStore((s) => s.generateOA)
   const sendOaForDocuSign = useAppStore((s) => s.sendOaForDocuSign)
@@ -72,10 +76,19 @@ export const OperatingAgreement: React.FC = () => {
   }
 
   const [subStep, setSubStep] = useState<SubStep>(deriveSubStep)
-  const [acks, setAcks]       = useState({ a: false, b: false, c: false })
-  const [gpEmail, setGpEmail] = useState(oa?.gpEmail || data?.deal.gpSignerName ? '' : '')
+  const { update: updateOaDraft, flush: flushOaDraft } = useOperatingAgreementDraftSave(dealId!)
+  const [acks, setAcks]       = useState(oa?.reviewAcks ?? { a: false, b: false, c: false })
+  const [gpEmail, setGpEmail] = useState(oa?.gpEmail || '')
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
   const docRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setAcks(oa?.reviewAcks ?? { a: false, b: false, c: false })
+  }, [oa?.reviewAcks])
+
+  useEffect(() => {
+    setGpEmail(oa?.gpEmail || '')
+  }, [oa?.gpEmail])
 
   // If OA becomes outdated while the component is mounted (e.g. user confirmed
   // questionnaire changes in the same session), snap back to step 1.
@@ -88,18 +101,18 @@ export const OperatingAgreement: React.FC = () => {
     window.setTimeout(() => setNotification(null), 4000)
   }
 
-  const entityName = data?.deal.entityName || '—'
-  const formationState = toLegalStateName(data?.deal.formationState || '—')
-  const effectiveDate = toLongDate(data?.deal.effectiveDate || '—')
-  const preferredReturnPct = data?.offering.preferredReturnEnabled
-    ? data.offering.preferredReturnRate != null
-      ? `${data.offering.preferredReturnRate}%`
+  const entityName = safeDeal.entityName || '—'
+  const formationState = toLegalStateName(safeDeal.formationState || '—')
+  const effectiveDate = toLongDate(safeDeal.effectiveDate || '—')
+  const preferredReturnPct = safeOffering.preferredReturnEnabled
+    ? safeOffering.preferredReturnRate != null
+      ? `${safeOffering.preferredReturnRate}%`
       : '—'
     : 'None'
-  const gpPromotePct = data?.offering.gpPromote != null ? `${data.offering.gpPromote}%` : '—'
+  const gpPromotePct = safeOffering.gpPromote != null ? `${safeOffering.gpPromote}%` : '—'
   const lpGpSplit =
-    data?.offering.lpResidual != null && data?.offering.gpPromote != null
-      ? `LP ${data.offering.lpResidual}% / GP ${data.offering.gpPromote}%`
+    safeOffering.lpResidual != null && safeOffering.gpPromote != null
+      ? `LP ${safeOffering.lpResidual}% / GP ${safeOffering.gpPromote}%`
       : '—'
 
   const handleGenerate = () => {
@@ -129,10 +142,23 @@ export const OperatingAgreement: React.FC = () => {
       notify('Please confirm all three acknowledgments before sending.', 'error')
       return
     }
-    const email = gpEmail.trim() || (data?.deal.gpSignerName ? `${data.deal.gpSignerName.toLowerCase().replace(/\s+/g, '.')}@example.com` : 'gp@example.com')
+    const email = gpEmail.trim() || (safeDeal.gpSignerName ? `${safeDeal.gpSignerName.toLowerCase().replace(/\s+/g, '.')}@example.com` : 'gp@example.com')
     sendOaForDocuSign(dealId!, email)
     setSubStep(3)
     notify('Operating Agreement sent for DocuSign signature.')
+  }
+
+  const handleAckChange = async (key: 'a' | 'b' | 'c', checked: boolean) => {
+    const next = { ...acks, [key]: checked }
+    setAcks(next)
+    updateOaDraft({ reviewAcks: next })
+    await flushOaDraft()
+  }
+
+  const handleGpEmailBlur = async () => {
+    const nextEmail = gpEmail.trim()
+    updateOaDraft({ gpEmail: nextEmail })
+    await flushOaDraft()
   }
 
   const handleSimulateSigned = () => {
@@ -222,6 +248,27 @@ export const OperatingAgreement: React.FC = () => {
         </div>
       )}
 
+      {!spvOk || !econLocked ? (
+        <div className="state-banner state-banner--warning" style={{ marginBottom: 20 }}>
+          <span>⚠</span> Operating Agreement is blocked until SPV Formation is complete and Deal Economics are locked.
+        </div>
+      ) : oa?.status === 'signed' ? (
+        <div className="state-banner state-banner--success" style={{ marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <span><span>✓</span> Operating Agreement successfully completed and GP-signed.</span>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => navigate(`/deals/${dealId}/investors`)}
+          >
+            Continue to Investor Intake →
+          </button>
+        </div>
+      ) : (
+        <div className="state-banner state-banner--warning" style={{ marginBottom: 20 }}>
+          <span>⚠</span> Operating Agreement is not complete yet. Generate, review, and collect the GP signature to continue.
+        </div>
+      )}
+
       {/* OA 3-step navigator */}
       <nav className="oa-nav" aria-label="Operating Agreement steps">
         {steps.map((s) => (
@@ -284,23 +331,23 @@ export const OperatingAgreement: React.FC = () => {
           <div className="review-summary-grid" style={{ marginBottom: 24 }}>
             <div className="review-summary-item">
               <div className="review-summary-label">Entity</div>
-              <div className="review-summary-value">{data.deal.entityName || '—'}</div>
+              <div className="review-summary-value">{safeDeal.entityName || '—'}</div>
             </div>
             <div className="review-summary-item">
               <div className="review-summary-label">Formation State</div>
-              <div className="review-summary-value">{data.deal.formationState || '—'}</div>
+              <div className="review-summary-value">{safeDeal.formationState || '—'}</div>
             </div>
             <div className="review-summary-item">
               <div className="review-summary-label">GP Entity</div>
-              <div className="review-summary-value">{data.deal.gpEntityName || '—'}</div>
+              <div className="review-summary-value">{safeDeal.gpEntityName || '—'}</div>
             </div>
             <div className="review-summary-item">
               <div className="review-summary-label">GP Signer</div>
-              <div className="review-summary-value">{data.deal.gpSignerName || '—'}</div>
+              <div className="review-summary-value">{safeDeal.gpSignerName || '—'}</div>
             </div>
             <div className="review-summary-item">
               <div className="review-summary-label">Offering Type</div>
-              <div className="review-summary-value">{data.offering.offeringExemption || '—'}</div>
+              <div className="review-summary-value">{safeOffering.offeringExemption || '—'}</div>
             </div>
             <div className="review-summary-item">
               <div className="review-summary-label">Preferred Return %</div>
@@ -316,7 +363,7 @@ export const OperatingAgreement: React.FC = () => {
             </div>
             <div className="review-summary-item">
               <div className="review-summary-label">Effective Date</div>
-              <div className="review-summary-value">{data.deal.effectiveDate || '—'}</div>
+              <div className="review-summary-value">{safeDeal.effectiveDate || '—'}</div>
             </div>
           </div>
 
@@ -418,7 +465,7 @@ export const OperatingAgreement: React.FC = () => {
                 <input
                   type="checkbox"
                   checked={acks.a}
-                  onChange={(e) => setAcks((prev) => ({ ...prev, a: e.target.checked }))}
+                  onChange={(e) => { void handleAckChange('a', e.target.checked) }}
                 />
                 <span>I have reviewed the full Operating Agreement and confirm the entity, GP, and property details are accurate.</span>
               </label>
@@ -426,7 +473,7 @@ export const OperatingAgreement: React.FC = () => {
                 <input
                   type="checkbox"
                   checked={acks.b}
-                  onChange={(e) => setAcks((prev) => ({ ...prev, b: e.target.checked }))}
+                  onChange={(e) => { void handleAckChange('b', e.target.checked) }}
                 />
                 <span>I confirm the economic terms (preferred return, GP promote, voting thresholds) correctly reflect the agreed terms.</span>
               </label>
@@ -434,7 +481,7 @@ export const OperatingAgreement: React.FC = () => {
                 <input
                   type="checkbox"
                   checked={acks.c}
-                  onChange={(e) => setAcks((prev) => ({ ...prev, c: e.target.checked }))}
+                  onChange={(e) => { void handleAckChange('c', e.target.checked) }}
                 />
                 <span>I understand this document will be sent to the GP for legally binding e-signature via DocuSign.</span>
               </label>
@@ -472,7 +519,7 @@ export const OperatingAgreement: React.FC = () => {
               <div>
                 <div className="docusign-state-title">Operating Agreement Signed</div>
                 <div className="docusign-state-meta">
-                  Signed by {oa.gpSignerName || data.deal.gpSignerName || 'GP'} on{' '}
+                  Signed by {oa.gpSignerName || safeDeal.gpSignerName || 'GP'} on{' '}
                   {oa.signedAt ? new Date(oa.signedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—'}
                   {oa.docusignEnvelopeId && (
                     <span> · Envelope: <code style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{oa.docusignEnvelopeId}</code></span>
@@ -520,6 +567,7 @@ export const OperatingAgreement: React.FC = () => {
                   placeholder="gp@example.com"
                   value={gpEmail}
                   onChange={(e) => setGpEmail(e.target.value)}
+                  onBlur={() => { void handleGpEmailBlur() }}
                 />
               </div>
 
@@ -544,8 +592,15 @@ export const OperatingAgreement: React.FC = () => {
 
           {oa?.status === 'signed' && (
             <div style={{ marginTop: 20 }}>
-              <div className="state-banner state-banner--success">
-                <span>✓</span> GP has signed. You can now send subscription agreements to investors in Stage 4.
+              <div className="state-banner state-banner--success" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+                <span><span>✓</span> GP has signed. This step is complete and you can continue to Investor Intake.</span>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => navigate(`/deals/${dealId}/investors`)}
+                >
+                  Continue to Investor Intake →
+                </button>
               </div>
             </div>
           )}

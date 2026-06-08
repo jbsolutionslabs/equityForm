@@ -1,17 +1,17 @@
 import React, { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAppStore, canSendSubAgreements } from '../../state/store'
+import { useSubscriptionActions } from '../../api/hooks/useDealMutations'
 import { HelpCard } from '../components/HelpCard'
 import ModuleProgress from '../components/ModuleProgress'
 
 export const ESignature: React.FC = () => {
   const { dealId }    = useParams<{ dealId: string }>()
+  const navigate      = useNavigate()
   const data          = useAppStore((s) => s.deals[dealId!]?.data)
   const investors     = data?.investors ?? []
   const subscriptions = data?.subscriptions ?? []
-  const generateSubscriptionForInvestor = useAppStore((s) => s.generateSubscriptionForInvestor)
-  const sendSubscriptionForSignature    = useAppStore((s) => s.sendSubscriptionForSignature)
-  const markSubscriptionSigned          = useAppStore((s) => s.markSubscriptionSigned)
+  const subscriptionActions = useSubscriptionActions(dealId!)
 
   const canSend = data ? canSendSubAgreements(data) : false
 
@@ -29,23 +29,27 @@ export const ESignature: React.FC = () => {
   const sentCount   = subscriptions.filter((s) => s.status === 'sent').length
   const totalCount  = investors.length
 
-  const handleSendAll = () => {
+  const handleSendAll = async () => {
     if (!canSend) {
       notify('The Operating Agreement must be GP-signed before sending subscription agreements.', 'error')
       return
     }
     let sent = 0
-    investors.forEach((inv) => {
-      const sub = getSub(inv.id)
-      if (!sub) {
-        generateSubscriptionForInvestor(dealId!, inv.id)
-        sendSubscriptionForSignature(dealId!, inv.id)
-        sent++
-      } else if (sub.status === 'pending' || sub.status === 'generated') {
-        sendSubscriptionForSignature(dealId!, inv.id)
-        sent++
+    try {
+      for (const inv of investors) {
+        const sub = getSub(inv.id)
+        if (!sub) {
+          await subscriptionActions.send(inv.id)
+          sent++
+        } else if (sub.status === 'pending' || sub.status === 'generated') {
+          await subscriptionActions.send(inv.id)
+          sent++
+        }
       }
-    })
+    } catch {
+      notify('Failed to send one or more subscription agreements. Please try again.', 'error')
+      return
+    }
     if (sent > 0) notify(`Sent ${sent} subscription agreement${sent > 1 ? 's' : ''} for e-signature.`)
     else notify('All investors already have agreements sent or signed.', 'error')
   }
@@ -106,6 +110,27 @@ export const ESignature: React.FC = () => {
         <div className="gate-message" style={{ marginBottom: 20 }}>
           <strong>Gate:</strong> The Operating Agreement must be GP-signed before you can send subscription agreements.
           Complete Stage 3 first.
+        </div>
+      )}
+
+      {!canSend ? (
+        <div className="state-banner state-banner--warning" style={{ marginBottom: 20 }}>
+          <span>⚠</span> E-Signatures is blocked until the Operating Agreement is fully signed.
+        </div>
+      ) : signedCount === totalCount && totalCount > 0 ? (
+        <div className="state-banner state-banner--success" style={{ marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <span><span>✓</span> All investor signature steps are complete.</span>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => navigate(`/deals/${dealId}/wires`)}
+          >
+            Continue to Wire Tracking →
+          </button>
+        </div>
+      ) : (
+        <div className="state-banner state-banner--warning" style={{ marginBottom: 20 }}>
+          <span>⚠</span> E-Signatures is still in progress. Send and collect all investor signatures to continue.
         </div>
       )}
 
@@ -191,10 +216,13 @@ export const ESignature: React.FC = () => {
                             className="btn btn-primary btn-sm"
                             disabled={!canSend}
                             title={!canSend ? 'Complete OA signing first' : undefined}
-                            onClick={() => {
-                              generateSubscriptionForInvestor(dealId!, inv.id)
-                              sendSubscriptionForSignature(dealId!, inv.id)
-                              notify(`Agreement sent to ${inv.fullLegalName}.`)
+                            onClick={async () => {
+                              try {
+                                await subscriptionActions.send(inv.id)
+                                notify(`Agreement sent to ${inv.fullLegalName}.`)
+                              } catch {
+                                notify(`Failed to send agreement to ${inv.fullLegalName}.`, 'error')
+                              }
                             }}
                           >
                             Send Now
@@ -204,9 +232,13 @@ export const ESignature: React.FC = () => {
                           <button
                             type="button"
                             className="btn btn-primary btn-sm"
-                            onClick={() => {
-                              sendSubscriptionForSignature(dealId!, inv.id)
-                              notify(`Agreement sent to ${inv.fullLegalName}.`)
+                            onClick={async () => {
+                              try {
+                                await subscriptionActions.send(inv.id)
+                                notify(`Agreement sent to ${inv.fullLegalName}.`)
+                              } catch {
+                                notify(`Failed to send agreement to ${inv.fullLegalName}.`, 'error')
+                              }
                             }}
                           >
                             Send Now
@@ -224,9 +256,13 @@ export const ESignature: React.FC = () => {
                             <button
                               type="button"
                               className="btn btn-ghost btn-sm"
-                              onClick={() => {
-                                markSubscriptionSigned(dealId!, inv.id)
-                                notify(`Marked as signed for ${inv.fullLegalName}.`)
+                              onClick={async () => {
+                                try {
+                                  await subscriptionActions.markSigned(inv.id)
+                                  notify(`Marked as signed for ${inv.fullLegalName}.`)
+                                } catch {
+                                  notify(`Failed to mark ${inv.fullLegalName} as signed.`, 'error')
+                                }
                               }}
                             >
                               Mark Signed
@@ -249,8 +285,15 @@ export const ESignature: React.FC = () => {
       )}
 
       {signedCount === totalCount && totalCount > 0 && (
-        <div className="state-banner state-banner--success" style={{ marginTop: 20 }}>
-          <span>✓</span> All investors have signed. Proceed to Stage 6 to confirm wire transfers.
+        <div className="state-banner state-banner--success" style={{ marginTop: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <span><span>✓</span> All investors have signed. You can continue to Wire Tracking.</span>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => navigate(`/deals/${dealId}/wires`)}
+          >
+            Continue to Wire Tracking →
+          </button>
         </div>
       )}
 

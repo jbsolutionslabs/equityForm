@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAppStore } from '../../state/store'
+import { useSubscriptionActions } from '../../api/hooks/useDealMutations'
 import { useEconomicsStore } from '../../state/economicsStore'
 import { computeSourcesAndUses } from '../../utils/sourcesAndUses'
 import { HelpCard } from '../components/HelpCard'
@@ -9,11 +10,12 @@ import ModuleProgress from '../components/ModuleProgress'
 
 export const WireTracking: React.FC = () => {
   const { dealId }   = useParams<{ dealId: string }>()
+  const navigate     = useNavigate()
   const data         = useAppStore((s) => s.deals[dealId!]?.data)
   const investors    = data?.investors ?? []
   const subscriptions = data?.subscriptions ?? []
   const banking      = data?.banking ?? {}
-  const recordWirePayment = useAppStore((s) => s.recordWirePayment)
+  const subscriptionActions = useSubscriptionActions(dealId!)
   const economicsDeal = useEconomicsStore((s) => s.deals.find((d) => d.dealId === dealId))
 
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
@@ -77,7 +79,7 @@ export const WireTracking: React.FC = () => {
     setWireDate('')
   }
 
-  const confirmWire = () => {
+  const confirmWire = async () => {
     if (!wireConf.trim()) {
       notify('Please enter a wire confirmation number.', 'error')
       return
@@ -92,9 +94,18 @@ export const WireTracking: React.FC = () => {
         notify(`Amount exceeds LP target by $${Math.round(overage).toLocaleString()}, but GP portion is only $${Math.round(gpPortion).toLocaleString()}. Please use a lower override.`, 'error')
         return
       }
-      recordWirePayment(dealId!, wireModal.investorId, wireConf.trim(), wireAmt > 0 ? wireAmt : undefined, wireDate || undefined)
-      notify(`Wire confirmed for ${wireModal.name}.`)
-      setWireModal(null)
+      try {
+        await subscriptionActions.recordWire(
+          wireModal.investorId,
+          wireConf.trim(),
+          wireAmt > 0 ? wireAmt : undefined,
+          wireDate || undefined,
+        )
+        notify(`Wire confirmed for ${wireModal.name}.`)
+        setWireModal(null)
+      } catch {
+        notify(`Failed to confirm wire for ${wireModal.name}. Please try again.`, 'error')
+      }
     }
   }
 
@@ -137,6 +148,27 @@ export const WireTracking: React.FC = () => {
       {notification && (
         <div className={`notification notification--${notification.type}`} role="alert">
           {notification.type === 'success' ? '✓ ' : '⚠ '}{notification.msg}
+        </div>
+      )}
+
+      {totalCommitted === 0 ? (
+        <div className="state-banner state-banner--warning" style={{ marginBottom: 20 }}>
+          <span>⚠</span> Wire Tracking is not ready yet. Add investors and complete signatures before confirming funds received.
+        </div>
+      ) : totalReceived === totalCommitted ? (
+        <div className="state-banner state-banner--success" style={{ marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <span><span>✓</span> All capital has been received successfully.</span>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => navigate(`/deals/${dealId}/captable`)}
+          >
+            Continue to Cap Table Lock →
+          </button>
+        </div>
+      ) : (
+        <div className="state-banner state-banner--warning" style={{ marginBottom: 20 }}>
+          <span>⚠</span> Wire Tracking is still in progress. Confirm all incoming wires to continue.
         </div>
       )}
 
@@ -263,8 +295,15 @@ export const WireTracking: React.FC = () => {
       )}
 
       {totalReceived === totalCommitted && totalCommitted > 0 && (
-        <div className="state-banner state-banner--success" style={{ marginTop: 20 }}>
-          <span>✓</span> All capital received. Proceed to Stage 7 to lock the cap table.
+        <div className="state-banner state-banner--success" style={{ marginTop: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <span><span>✓</span> All capital received. You can continue to Cap Table Lock.</span>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => navigate(`/deals/${dealId}/captable`)}
+          >
+            Continue to Cap Table Lock →
+          </button>
         </div>
       )}
 

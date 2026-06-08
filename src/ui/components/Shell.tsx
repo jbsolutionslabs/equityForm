@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useMatch } from 'react-router-dom'
 import { useAppStore, isSpvFormed } from '../../state/store'
 import { useEconomicsStore, isEconomicsLocked } from '../../state/economicsStore'
+import { useDealSync } from '../../api/hooks/useDealSync'
 import { SaveIndicator } from './SaveIndicator'
 
 type StageConfig = {
@@ -276,6 +277,7 @@ function TopLevelSidebar() {
 export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
   const dealMatch = useMatch('/deals/:dealId/*')
   const dealId    = dealMatch?.params?.dealId
+  useDealSync(dealId)
 
   return (
     <div className="app-root">
