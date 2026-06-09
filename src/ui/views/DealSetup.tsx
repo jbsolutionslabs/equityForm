@@ -365,6 +365,24 @@ export const DealSetup: React.FC = () => {
                 )}
               </div>
 
+              <div className="info-box" style={{ marginTop: 12 }}>
+                <div className="info-box-title">Delaware name search</div>
+                <p>
+                  Before moving into SPV Formation, search the Delaware Division of Corporations
+                  database to confirm that your entity legal name is available. The SPV formation
+                  step will pull this exact name from here.
+                </p>
+                <a
+                  href="https://icis.corp.delaware.gov/Ecorp/EntitySearch/NameSearch.aspx"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8 }}
+                >
+                  Search Delaware Entity Names ↗
+                </a>
+              </div>
+
               <div className="field-group">
                 <div className="field-label-row">
                   <label className="field-label" htmlFor="ein">Entity EIN</label>

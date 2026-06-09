@@ -55,8 +55,7 @@ export const SpvFormation: React.FC = () => {
   const completedCount = [s1Done, s2Done, s3Done, s4Done, s5Done].filter(Boolean).length
 
   // ── Step 1: Entity Name ─────────────────────────────────────────────────
-  const [nameInput,     setNameInput]     = useState(spvFormation.entityName?.entityName || deal.entityName || '')
-  const [nameConfirmed, setNameConfirmed] = useState(false)
+  const [nameInput, setNameInput] = useState(spvFormation.entityName?.entityName || deal.entityName || '')
 
   const handleNameBlur = async () => {
     const name = nameInput.trim()
@@ -68,7 +67,6 @@ export const SpvFormation: React.FC = () => {
   const handleLockName = () => {
     const name = nameInput.trim()
     if (!name) { notify('Enter an entity name.', 'error'); return }
-    if (!nameConfirmed) { notify('Confirm you have checked availability on the Delaware website.', 'error'); return }
     markSpvItem(dealId!,'entityName', {
       complete:    true,
       completedAt: new Date().toISOString(),
@@ -81,7 +79,6 @@ export const SpvFormation: React.FC = () => {
 
   const handleUnlockName = () => {
     markSpvItem(dealId!,'entityName', { complete: false, nameLocked: false })
-    setNameConfirmed(false)
   }
 
   // ── Step 2: Registered Agent ────────────────────────────────────────────
@@ -300,7 +297,7 @@ export const SpvFormation: React.FC = () => {
                 <div className="spv-item-subtitle">
                   {s1Done
                     ? `${spvFormation.entityName?.entityName} · Confirmed available and locked`
-                    : 'Verify availability on the Delaware Division of Corporations website, then lock your name'}
+                    : 'Pulled from Questionnaire section 1 — review the legal name that will be used for formation'}
                 </div>
               </div>
               {s1Done && (
@@ -314,7 +311,7 @@ export const SpvFormation: React.FC = () => {
               <div className="spv-item-form">
                 {/* Source badge */}
                 <div className="spv-review-source">
-                  Pre-filled from Deal Setup — review and approve to continue
+                  Pulled from Questionnaire section 1 — review and approve to continue
                 </div>
 
                 {/* Review block: editable name */}
@@ -330,7 +327,7 @@ export const SpvFormation: React.FC = () => {
                     style={{ marginTop: 4, maxWidth: 420 }}
                   />
                   <div className="field-hint" style={{ marginTop: 4 }}>
-                    All Delaware LLCs must include "LLC" or "L.L.C." in the name
+                    This name comes from the questionnaire. If you need to change it, update section 1: Entity legal name.
                   </div>
                 </div>
 
@@ -339,49 +336,11 @@ export const SpvFormation: React.FC = () => {
                   <div className="spv-review-block-value">Delaware (fixed)</div>
                 </div>
 
-                {/* DE name search instruction */}
-                <div style={{
-                  marginTop: 16,
-                  padding: '12px 14px',
-                  background: 'var(--color-slate-50)',
-                  border: '1px solid var(--color-slate-200)',
-                  borderRadius: 8,
-                }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: 'var(--color-navy-900)' }}>
-                    Confirm name availability before approving
-                  </div>
-                  <p style={{ fontSize: 13, color: 'var(--color-slate-600)', margin: '0 0 10px' }}>
-                    Delaware requires a unique entity name. Search the official state database to
-                    confirm your name is available, then check the box below.
-                  </p>
-                  <a
-                    href="https://icis.corp.delaware.gov/Ecorp/EntitySearch/NameSearch.aspx"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn btn-secondary btn-sm"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                  >
-                    Search Delaware Entity Names ↗
-                  </a>
-                </div>
-
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 14, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={nameConfirmed}
-                    onChange={(e) => setNameConfirmed(e.target.checked)}
-                    style={{ marginTop: 2, flexShrink: 0 }}
-                  />
-                  <span style={{ fontSize: 13, color: 'var(--color-slate-700)', lineHeight: 1.5 }}>
-                    I have confirmed this name is available in the Delaware Division of Corporations database
-                  </span>
-                </label>
-
                 <button
                   type="button"
                   className="btn btn-primary btn-sm"
                   style={{ marginTop: 16 }}
-                  disabled={!nameInput.trim() || !nameConfirmed}
+                  disabled={!nameInput.trim()}
                   onClick={handleLockName}
                 >
                   Approve Entity Name &amp; Continue
