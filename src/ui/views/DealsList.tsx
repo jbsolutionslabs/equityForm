@@ -271,9 +271,6 @@ export const DealsList: React.FC = () => {
           <p className="deals-empty-desc">
             Create your first deal to get started with the guided SPV formation workflow.
           </p>
-          <button type="button" className="btn btn-primary" onClick={handleCreate}>
-            Create Your First Deal
-          </button>
         </div>
       ) : (
         <div className="deals-list">

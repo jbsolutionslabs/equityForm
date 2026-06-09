@@ -17,6 +17,12 @@ function fmtPercent(n: any, includeSymbol = true) {
   return includeSymbol ? `${rounded}%` : rounded
 }
 
+// Format a decimal rate (0.08) as a display percent string ("8.0%")
+function fmtRate(decimal: number | null | undefined): string {
+  if (decimal == null) return '[rate missing]'
+  return `${(decimal * 100).toFixed(1)}%`
+}
+
 function replaceTokens(template: string, values: Record<string, any>, investor?: Record<string, any>) {
   return template.replace(/\[([A-Z0-9_]+)\]/g, (match, token, offset, full) => {
     const nextChar = full[offset + match.length]
@@ -40,35 +46,130 @@ function replaceTokens(template: string, values: Record<string, any>, investor?:
   })
 }
 
-function buildPreferredReturnDefinition(values: Record<string, any>) {
-  const prefEnabled = !!values.PREFERRED_RETURN_ENABLED
-  if (!prefEnabled) return ''
-  const prefType = (values.PREFERRED_RETURN_TYPE || '').toLowerCase()
-  if (prefType === 'irr-based') {
-    return `2.7  "IRR"
+// ── Preferred Return definition clause ────────────────────────────────────────
+// Uses ECON_PREF_* placeholders set from locked Deal Economics.
 
-means internal rate of return, computed using [IRR_RATE]% per annum, compounded monthly, based on a 365-day calendar year for the actual number of days elapsed, taking into account the timing and amounts of all Capital Contributions and distributions. IRR shall be calculated using the Excel IRR function or similar method.`
+function buildPreferredReturnDefinition(values: Record<string, any>): string {
+  if (!values.ECON_PREF_ENABLED) return ''
+
+  const rateDisplay = fmtRate(values.ECON_PREF_RATE)
+  const prefType = String(values.ECON_PREF_TYPE || 'simple')
+
+  const typeDesc: Record<string, string> = {
+    simple:       'non-compounding',
+    compound:     'compounded annually',
+    accrual:      'accruing until paid',
+    participating:'participating',
   }
-  const carryText = prefType === 'non-cumulative'
-    ? 'Non-cumulative preferred return is earned only in periods where cash is actually distributed; unpaid amounts do not carry forward.'
-    : 'Unpaid preferred return accrues and carries forward each month until fully paid.'
-  return `2.7  "Preferred Return" (Flat Annual Rate)
+  const desc = typeDesc[prefType] || prefType
 
-means a flat annual rate of [PREFERRED_RETURN_RATE]% on unreturned Capital Contributions of each Class A Member. ${carryText}`
+  return `2.7  "Preferred Return"
+
+means a ${rateDisplay} annual preferred return (${desc}) on each Class A Member's unreturned Capital Contributions, accruing from the date of such Member's Capital Contribution.`
 }
 
-function buildWaterfallSection(values: Record<string, any>) {
-  const prefEnabled = !!values.PREFERRED_RETURN_ENABLED
+// ── Waterfall / distribution waterfall ────────────────────────────────────────
+// Loops over ECON_WATERFALL_TIERS for advanced mode; uses ECON_SIMPLE_*  for simple.
+// Last tier always reads "thereafter". Earlier tiers read "until Class A hits X% IRR".
+
+function buildWaterfallSection(values: Record<string, any>): string {
+  const prefEnabled     = !!values.ECON_PREF_ENABLED
+  const waterfallMode   = values.ECON_WATERFALL_MODE as string | undefined
+  const tiers: any[]    = values.ECON_WATERFALL_TIERS || []
+  const simpleLp        = values.ECON_SIMPLE_LP_SPLIT as number | null
+  const simpleGp        = values.ECON_SIMPLE_GP_SPLIT as number | null
+
+  const letters = 'abcdefghijklmnopqrstuvwxyz'
+  let i = 0
+  const clauses: string[] = []
+
+  // (a) Return of Capital — always first
+  clauses.push(
+    `(${letters[i++]})  Return of Capital — 100% to the Class A Members, pro rata by Class A Units held, ` +
+    `until each Class A Member has received cumulative distributions equal to such Member's aggregate Capital Contributions;`
+  )
+
+  // (b) Preferred Return — only if pref is enabled
   if (prefEnabled) {
-    return `(a)  Class A Preferred Return: First, 100% to the Class A Members, pro rata based on Class A Units held, until each Class A Member has received cumulative distributions equal to the Preferred Return on such Member's Capital Contribution;
-
-(b)  Return of Capital: Second, 100% to the Class A Members, pro rata based on Class A Units held, until each Class A Member has received cumulative distributions equal to such Member's aggregate Capital Contributions;
-
-(c)  Promote Split: Thereafter, [GP_PROMOTE]% to the Class B Members, pro rata based on Class B Units held, and [LP_RESIDUAL]% to the Class A Members, pro rata based on Class A Units held.`
+    const rateDisplay = fmtRate(values.ECON_PREF_RATE)
+    clauses.push(
+      `(${letters[i++]})  Preferred Return — 100% to the Class A Members, pro rata by Class A Units held, ` +
+      `until each Class A Member has received a ${rateDisplay} annual return on contributed capital;`
+    )
   }
-  return `(a)  Return of Capital: First, 100% to the Class A Members, pro rata based on Class A Units held, until each Class A Member has received cumulative distributions equal to such Member's aggregate Capital Contributions;
 
-(b)  Promote Split: Thereafter, [GP_PROMOTE]% to the Class B Members, pro rata based on Class B Units held, and [LP_RESIDUAL]% to the Class A Members, pro rata based on Class A Units held.`
+  // Tier clauses
+  if (waterfallMode === 'advanced' && tiers.length > 0) {
+    tiers.forEach((tier, idx) => {
+      const isLast = idx === tiers.length - 1
+      const lp = tier.lpSplit ?? '__'
+      const gp = tier.gpSplit ?? '__'
+      if (isLast) {
+        clauses.push(
+          `(${letters[i++]})  Tier ${idx + 1} — thereafter: ${lp}% to Class A Members / ${gp}% to Class B Members (Managing Member promote).`
+        )
+      } else {
+        const hurdle = tier.hurdleIrr != null
+          ? `${(tier.hurdleIrr * 100).toFixed(1)}% IRR`
+          : '[hurdle missing]'
+        clauses.push(
+          `(${letters[i++]})  Tier ${idx + 1} — until Class A hits ${hurdle}: ${lp}% Class A / ${gp}% Class B;`
+        )
+      }
+    })
+  } else if (waterfallMode === 'simple' && simpleLp != null) {
+    clauses.push(
+      `(${letters[i++]})  Residual Split — thereafter: ${simpleLp}% to the Class A Members, pro rata by Class A Units held, ` +
+      `and ${simpleGp ?? '__'}% to the Class B Members (Managing Member promote).`
+    )
+  } else {
+    // Fallback when economics aren't loaded (should not reach here post-validation)
+    clauses.push(
+      `(${letters[i++]})  Residual Split — thereafter, [GP_PROMOTE]% to Class B Members and [LP_RESIDUAL]% to Class A Members.`
+    )
+  }
+
+  return clauses.join('\n\n')
+}
+
+// ── Fee schedule article ───────────────────────────────────────────────────────
+// Loops ECON_FEES (only enabled fees). Returns empty string if no fees.
+
+const FEE_BASIS_LABELS: Record<string, string> = {
+  pct_purchase:      'of Purchase Price',
+  pct_raise:         'of Equity Raise',
+  pct_cost:          'of Total Cost',
+  flat:              '',
+  pct_revenue:       'of Annual Revenue',
+  pct_sales_price:   'of Sales Price',
+  pct_loan_proceeds: 'of Loan Proceeds',
+}
+
+function buildFeeSection(values: Record<string, any>): string {
+  const fees: any[] = values.ECON_FEES || []
+  if (fees.length === 0) return ''
+
+  const items = fees.map((fee, idx) => {
+    let amount: string
+    if (fee.basisType === 'flat') {
+      amount = fee.flatAmount != null
+        ? `$${Number(fee.flatAmount).toLocaleString('en-US')}`
+        : '[amount missing]'
+    } else {
+      amount = fmtRate(fee.rate)
+    }
+    const basisSuffix = fee.basisType && fee.basisType !== 'flat'
+      ? ` ${FEE_BASIS_LABELS[fee.basisType] || fee.basisType}`
+      : ''
+    const notes = fee.notes ? `\n     Note: ${fee.notes}` : ''
+    return `${idx + 1}.  ${fee.label}: ${amount}${basisSuffix}${notes}`
+  })
+
+  return `ARTICLE VIII — MANAGEMENT FEES AND COMPENSATION
+
+The Managing Member, or its designated affiliate, shall be entitled to receive the following fees for services rendered to the Company in connection with the Property:
+
+${items.join('\n\n')}`
 }
 
 function toLegalStateName(state: any) {
@@ -94,33 +195,28 @@ function toLongDate(dateLike: any) {
   if (!raw) return ''
   const d = new Date(raw)
   if (Number.isNaN(d.getTime())) return raw
-  return d.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
 export function generateOperatingAgreementText(values: Record<string, any>) {
   const hasDealPurpose = !!String(values.DEAL_PURPOSE || '').trim()
   const purposeSection = hasDealPurpose
-    ? `1.4  Purpose.
-
-The purpose of the company is to [DEAL_PURPOSE], and to engage in any and all activities necessary, convenient, or incidental thereto, including without limitation the acquisition, ownership, financing, development, improvement, leasing, operation, maintenance, and ultimate sale or disposition of the Property (as defined herein).
-
-`
+    ? `1.4  Purpose.\n\nThe purpose of the company is to [DEAL_PURPOSE], and to engage in any and all activities necessary, convenient, or incidental thereto, including without limitation the acquisition, ownership, financing, development, improvement, leasing, operation, maintenance, and ultimate sale or disposition of the Property.\n\n`
     : ''
+
   const legalValues = {
     ...values,
     FORMATION_STATE_LEGAL: toLegalStateName(values.FORMATION_STATE),
     GP_ENTITY_STATE_LEGAL: toLegalStateName(values.GP_ENTITY_STATE),
-    EFFECTIVE_DATE_LONG: toLongDate(values.EFFECTIVE_DATE),
+    EFFECTIVE_DATE_LONG:   toLongDate(values.EFFECTIVE_DATE),
   }
-  const prefDefinition = buildPreferredReturnDefinition(values)
-  const prefDefinitionBlock = prefDefinition ? `${prefDefinition}
 
-` : ''
-  const waterfallSection = buildWaterfallSection(values)
+  const prefDefinition    = buildPreferredReturnDefinition(values)
+  const prefDefinitionBlock = prefDefinition ? `${prefDefinition}\n\n` : ''
+  const waterfallSection  = buildWaterfallSection(values)
+  const feeSection        = buildFeeSection(values)
+  const feeSectionBlock   = feeSection ? `\n\n${feeSection}` : ''
+
   const template = `THE MEMBERSHIP INTERESTS EVIDENCED BY THIS AGREEMENT HAVE NOT BEEN REGISTERED WITH THE SECURITIES AND EXCHANGE COMMISSION, BUT HAVE BEEN ISSUED PURSUANT TO EXEMPTIONS UNDER THE FEDERAL SECURITIES ACT OF 1933, AS AMENDED. THE SALE, TRANSFER, PLEDGE, HYPOTHECATION, OR OTHER DISPOSITION OF ANY OF THESE MEMBERSHIP INTERESTS IS RESTRICTED AND MAY NOT BE ACCOMPLISHED EXCEPT IN ACCORDANCE WITH THIS AGREEMENT, AND AN APPLICABLE REGISTRATION STATEMENT OR AN OPINION OF COUNSEL SATISFACTORY TO THE COMPANY THAT A REGISTRATION STATEMENT IS NOT NECESSARY.
 
 THIS OPERATING AGREEMENT (this "Agreement") is entered into and effective as of [EFFECTIVE_DATE_LONG], by and among [GP_ENTITY_NAME], a [GP_ENTITY_STATE_LEGAL] limited liability company (the "Managing Member" or "General Partner"), and each of the persons or entities who execute a Subscription Agreement and are listed on Exhibit A attached hereto (collectively, the "Members").
@@ -129,39 +225,37 @@ ARTICLE I — FORMATION
 
 1.1  Formation.
 
-The Members hereby form a limited liability company (the "company") pursuant to the laws of the State of [FORMATION_STATE_LEGAL] upon the terms and conditions set forth in this Agreement. The rights and obligations of the Members shall be as provided in the applicable laws of [FORMATION_STATE_LEGAL] governing limited liability companies, except as otherwise expressly provided herein.
+The Members hereby form a limited liability company (the "Company") pursuant to the laws of the State of [FORMATION_STATE_LEGAL] upon the terms and conditions set forth in this Agreement. The rights and obligations of the Members shall be as provided in the applicable laws of [FORMATION_STATE_LEGAL] governing limited liability companies, except as otherwise expressly provided herein.
 
 1.2  Name.
 
-The name of the company shall be [ENTITY_NAME], or such other name as the Managing Member may select from time to time in compliance with applicable law.
+The name of the Company shall be [ENTITY_NAME], or such other name as the Managing Member may select from time to time in compliance with applicable law.
 
 1.3  Principal Place of Business; Registered Agent.
 
-The principal place of business of the company shall be [PRINCIPAL_ADDRESS]. The company's registered agent and registered office in [FORMATION_STATE_LEGAL] shall be [REGISTERED_AGENT_NAME] at [REGISTERED_AGENT_ADDRESS].
-${purposeSection} 1.5  Term.
+The principal place of business of the Company shall be [PRINCIPAL_ADDRESS]. The Company's registered agent and registered office in [FORMATION_STATE_LEGAL] shall be [REGISTERED_AGENT_NAME] at [REGISTERED_AGENT_ADDRESS].
 
+${purposeSection}1.5  Term.
 
-The company shall continue in existence until dissolved in accordance with the provisions of this Agreement or as required by applicable law.
+The Company shall continue in existence until dissolved in accordance with the provisions of this Agreement or as required by applicable law.
 
 1.6  Fiscal Year.
 
-The fiscal year of the company shall end on December 31 of each year, or such other date as determined by the Managing Member with consent of the Members.
+The fiscal year of the Company shall end on December 31 of each year, or such other date as determined by the Managing Member with the consent of the Members.
 
 ARTICLE II — DEFINITIONS
 
-${prefDefinitionBlock}2.11  "Preferred Return"
+${prefDefinitionBlock}2.12  "Property"
 
-means a [PREFERRED_RETURN_RATE]% [PREFERRED_RETURN_TYPE] preferred return on unreturned Capital Contributions of each Class A Member, accruing from the date of such Member's Capital Contribution.
+means the real property located at [PROPERTY_FULL_ADDRESS], together with all improvements thereon and all personal property used in connection therewith, as more particularly described in Exhibit B.
 
-2.12  "Property"
-
-means the real property located at [PROPERTY_ADDRESS], [PROPERTY_CITY], [PROPERTY_STATE] [PROPERTY_ZIP], together with all improvements thereon and all personal property used in connection therewith, as more particularly described in Exhibit B.
+ARTICLE V — DISTRIBUTIONS
 
 6.4  Distributions of Net Cash Flow.
 
-Subject to Section 6.6 and any applicable restrictions imposed by lenders, the Managing Member shall cause the company to distribute Net Cash Flow, to the extent available, in the following order and priority:
+Subject to any applicable restrictions imposed by lenders, the Managing Member shall cause the Company to distribute Net Cash Flow, to the extent available, in the following order and priority:
 
-${waterfallSection}
+${waterfallSection}${feeSectionBlock}
 
 ARTICLE IX — MISCELLANEOUS
 
@@ -189,7 +283,6 @@ LEGAL DESCRIPTION OF PROPERTY
 }
 
 export function generateOperatingAgreementHtml(values: Record<string, any>) {
-  // render a simple HTML document designed for printing to PDF
   const bodyText = generateOperatingAgreementText(values)
   const title = values.ENTITY_NAME || 'Operating Agreement'
   const html = `<!doctype html>
@@ -302,7 +395,7 @@ export function generateSubscriptionAgreementText(values: Record<string, any>, i
     ...values,
     FORMATION_STATE_LEGAL: toLegalStateName(values.FORMATION_STATE),
   }
-  const template = `THIS SUBSCRIPTION AND PARTICIPATION AGREEMENT (this "Agreement") is entered into as of the date indicated on the signature page by and between [ENTITY_NAME], a [FORMATION_STATE] limited liability company (the "Company"), managed by [GP_ENTITY_NAME] (the "Managing Member"), and the undersigned subscriber (the "Subscriber").\n\nARTICLE I — SUBSCRIPTION\n\n1.1  Subscription for Units.\n\nSubject to the terms and conditions of this Agreement and the Operating Agreement of the Company (the "Operating Agreement"), Subscriber hereby irrevocably subscribes for and agrees to purchase Class A Units of the Company representing a [SUBSCRIBER_OWNERSHIP_PCT]% membership interest in the Company, in exchange for a Capital Contribution of $[SUBSCRIBER_CONTRIBUTION] (the "Subscription Amount").\n\n1.2  Payment of Subscription Amount.\n\nSubscriber shall pay the Subscription Amount by wire transfer or ACH transfer to the following account:\n\nBank Name:  [BANK_NAME]\nAccount Name:  [ACCOUNT_NAME]\nAccount Number:  [ACCOUNT_NUMBER]\nRouting Number:  [ROUTING_NUMBER]\nReference:  [ENTITY_NAME] — [SUBSCRIBER_LAST_NAME]\n\nPayment shall be made no later than [CLOSING_DATE]. The Company shall have no obligation to admit Subscriber as a Member until the Subscription Amount has been received in full in immediately available funds.\n\nSUBSCRIBER INFORMATION\n\nFull Legal Name of Subscriber:  ___________________________________\n\nSubscription Amount: $  [SUBSCRIBER_CONTRIBUTION]\n\nClass A Units Subscribed:  [SUBSCRIBER_OWNERSHIP_PCT]\n\nSUBSCRIBER SIGNATURE\n\nBy executing below, Subscriber agrees to be bound by the terms of this Agreement and the Operating Agreement.\n`;
+  const template = `THIS SUBSCRIPTION AND PARTICIPATION AGREEMENT (this "Agreement") is entered into as of the date indicated on the signature page by and between [ENTITY_NAME], a [FORMATION_STATE] limited liability company (the "Company"), managed by [GP_ENTITY_NAME] (the "Managing Member"), and the undersigned subscriber (the "Subscriber").\n\nARTICLE I — SUBSCRIPTION\n\n1.1  Subscription for Units.\n\nSubject to the terms and conditions of this Agreement and the Operating Agreement of the Company (the "Operating Agreement"), Subscriber hereby irrevocably subscribes for and agrees to purchase Class A Units of the Company representing a [SUBSCRIBER_OWNERSHIP_PCT]% membership interest in the Company, in exchange for a Capital Contribution of $[SUBSCRIBER_CONTRIBUTION] (the "Subscription Amount").\n\n1.2  Payment of Subscription Amount.\n\nSubscriber shall pay the Subscription Amount by wire transfer or ACH transfer to the following account:\n\nBank Name:  [BANK_NAME]\nAccount Name:  [ACCOUNT_NAME]\nAccount Number:  [ACCOUNT_NUMBER]\nRouting Number:  [ROUTING_NUMBER]\nReference:  [ENTITY_NAME] — [SUBSCRIBER_LAST_NAME]\n\nPayment shall be made no later than [CLOSING_DATE]. The Company shall have no obligation to admit Subscriber as a Member until the Subscription Amount has been received in full in immediately available funds.\n\nSUBSCRIBER INFORMATION\n\nFull Legal Name of Subscriber:  ___________________________________\n\nSubscription Amount: $  [SUBSCRIBER_CONTRIBUTION]\n\nClass A Units Subscribed:  [SUBSCRIBER_OWNERSHIP_PCT]\n\nSUBSCRIBER SIGNATURE\n\nBy executing below, Subscriber agrees to be bound by the terms of this Agreement and the Operating Agreement.\n`
 
   const legalTemplate = template.replace('[FORMATION_STATE]', '[FORMATION_STATE_LEGAL]')
   return replaceTokens(legalTemplate, legalValues, investor)

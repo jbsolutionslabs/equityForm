@@ -73,9 +73,11 @@ export const WireTracking: React.FC = () => {
   }
 
   const openWireModal = (investorId: string, name: string) => {
+    const investor = investors.find((i) => i.id === investorId)
+    const prefill  = investorTargetAmount(investor?.subscriptionAmount)
     setWireModal({ investorId, name })
     setWireConf('')
-    setWireAmt(0)
+    setWireAmt(prefill > 0 ? prefill : 0)
     setWireDate('')
   }
 
@@ -188,7 +190,11 @@ export const WireTracking: React.FC = () => {
         </div>
         <div className="capital-stat">
           <div className="capital-stat-value">
-            {totalCommitted > 0 ? Math.round((totalReceived / totalCommitted) * 100) : 0}%
+            {totalCommitted > 0
+              ? totalAwaiting <= 0
+                ? 100
+                : Math.floor((totalReceived / totalCommitted) * 100)
+              : 0}%
           </div>
           <div className="capital-stat-label">Capital In</div>
         </div>
@@ -332,10 +338,10 @@ export const WireTracking: React.FC = () => {
                   <CurrencyInput
                     id="wire-amount"
                     className="field-input"
-                    placeholder="Leave blank to use committed amount"
                     value={wireAmt}
                     onChange={(v) => setWireAmt(v)}
                   />
+                  <p className="field-hint">Pre-filled from Investor Intake — edit if the wire amount differs</p>
                 </div>
                 <div className="field-group">
                   <label className="field-label" htmlFor="wire-date">Date Received</label>

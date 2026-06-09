@@ -12,9 +12,12 @@ import { generateSubscriptionAgreementHtml } from '../../utils/pdfTemplate'
 import { generatePlaceholders } from '../../utils/placeholders'
 import { BLUE_SKY_RULE_506_BY_STATE } from '../../utils/blueSkyRules'
 import { FieldHelp, HelpCard } from '../components/HelpCard'
+import { formatEin, formatSsn } from '../../utils/taxIdFormatting'
 import { CurrencyInput } from '../components/CurrencyInput'
 import ModuleProgress from '../components/ModuleProgress'
 import { AddressAutocompleteInput, ParsedAddress } from '../components/AddressAutocompleteInput'
+import { useEconomicsStore, isEconomicsLocked } from '../../state/economicsStore'
+import { computeSourcesAndUses } from '../../utils/sourcesAndUses'
 
 /* ─── Schema helpers ─────────────────────────────────────────────────────── */
 const requiredString = (message: string) => z.string().min(1, message)
@@ -268,6 +271,25 @@ export const Investors: React.FC = () => {
   const subscriptions = appData?.subscriptions ?? []
   const offering   = appData?.offering ?? {}
   const investorActions = useInvestorActions(dealId!)
+
+  const economicsDeal = useEconomicsStore((s) => s.deals.find((d) => d.dealId === dealId))
+  const econLocked    = isEconomicsLocked(economicsDeal)
+
+  // LP equity target from Deal Economics capital stack
+  const lpCapitalTarget = (() => {
+    const stack = economicsDeal?.capitalStack
+    if (!stack) return null
+    const { sources } = computeSourcesAndUses(stack)
+    const equity = Math.max(0, sources.equity)
+    const lpPct  = Math.min(1, Math.max(0, stack.lpEquityPct ?? 1))
+    return equity * lpPct
+  })()
+
+  const totalCommitted = data.reduce((sum, inv) => sum + (inv.subscriptionAmount || 0), 0)
+  const remaining      = lpCapitalTarget != null ? Math.max(0, lpCapitalTarget - totalCommitted) : null
+  const pctFunded      = lpCapitalTarget != null && lpCapitalTarget > 0
+    ? Math.min(100, Math.round((totalCommitted / lpCapitalTarget) * 100))
+    : null
   const subscriptionActions = useSubscriptionActions(dealId!)
 
   const form = useForm<FormValues>({
@@ -593,6 +615,43 @@ export const Investors: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* LP Capital Target — sourced from locked Deal Economics */}
+      <div className="capital-summary" style={{ marginBottom: 24 }}>
+        <div className="capital-stat">
+          <div className="capital-stat-value">
+            {lpCapitalTarget != null
+              ? `$${lpCapitalTarget.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+              : econLocked ? '—' : 'Not set'}
+          </div>
+          <div className="capital-stat-label">LP Capital Target</div>
+        </div>
+        <div className="capital-stat capital-stat--positive">
+          <div className="capital-stat-value">
+            ${totalCommitted.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+          </div>
+          <div className="capital-stat-label">Committed So Far</div>
+        </div>
+        <div className={`capital-stat${remaining != null && remaining > 0 ? ' capital-stat--warning' : ''}`}>
+          <div className="capital-stat-value">
+            {remaining != null
+              ? `$${remaining.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+              : '—'}
+          </div>
+          <div className="capital-stat-label">Remaining to Fill</div>
+        </div>
+        <div className="capital-stat">
+          <div className="capital-stat-value">
+            {pctFunded != null ? `${pctFunded}%` : `${data.length} LP${data.length !== 1 ? 's' : ''}`}
+          </div>
+          <div className="capital-stat-label">{pctFunded != null ? 'Round Filled' : 'Investors Added'}</div>
+        </div>
+      </div>
+      {!econLocked && (
+        <div className="field-hint" style={{ marginBottom: 16, fontSize: 13 }}>
+          LP Capital Target is calculated from Deal Economics (Section A). Lock Deal Economics to see the target.
+        </div>
+      )}
 
       {/* Notification */}
       {notification && (
@@ -978,12 +1037,18 @@ export const Investors: React.FC = () => {
                         </div>
                         <div className="field-group">
                           <label className="field-label" htmlFor={`investor-formstate-${idx}`}>Formation State</label>
-                          <input
+                          <select
                             id={`investor-formstate-${idx}`}
                             className="field-input"
-                            placeholder="e.g. Delaware"
                             {...form.register(`investors.${idx}.formationState` as const)}
-                          />
+                          >
+                            <option value="">Select state…</option>
+                            {Object.entries(STATE_CODE_TO_NAME)
+                              .sort((a, b) => a[1].localeCompare(b[1]))
+                              .map(([code, name]) => (
+                                <option key={code} value={code}>{name}</option>
+                              ))}
+                          </select>
                         </div>
                       </div>
                       <div className="form-row">
@@ -1046,14 +1111,24 @@ export const Investors: React.FC = () => {
                   </div>
 
                   <div className="field-group">
-                    <label className="field-label" htmlFor={`investor-taxid-${idx}`}>Tax ID (EIN / SSN)</label>
+                    <label className="field-label" htmlFor={`investor-taxid-${idx}`}>
+                      {type === 'entity' ? 'Tax ID (EIN)' : 'Tax ID (SSN)'}
+                    </label>
                     <FieldHelp text="Required for Schedule K-1 tax reporting. Keep this confidential." />
                     <input
                       id={`investor-taxid-${idx}`}
                       className="field-input"
-                      placeholder="e.g. 123-45-6789"
+                      placeholder={type === 'entity' ? 'e.g. 12-3456789' : 'e.g. 123-45-6789'}
                       style={{ maxWidth: 220 }}
-                      {...form.register(`investors.${idx}.taxId` as const)}
+                      maxLength={type === 'entity' ? 10 : 11}
+                      {...form.register(`investors.${idx}.taxId` as const, {
+                        onChange: (e) => {
+                          const fmt = type === 'entity' ? formatEin : formatSsn
+                          const formatted = fmt(e.target.value)
+                          e.target.value = formatted
+                          form.setValue(`investors.${idx}.taxId` as const, formatted, { shouldDirty: true })
+                        },
+                      })}
                     />
                   </div>
 

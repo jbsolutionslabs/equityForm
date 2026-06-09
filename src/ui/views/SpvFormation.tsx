@@ -14,6 +14,7 @@ import {
   type CertOfFormationResult,
   type ForeignQualResult,
 } from '../../api/legalFormation'
+import { formatEin } from '../../utils/taxIdFormatting'
 
 const EMPTY_SPV_FORMATION = {
   entityName: { complete: false },
@@ -653,9 +654,10 @@ export const SpvFormation: React.FC = () => {
                         className="field-input"
                         placeholder="e.g. 12-3456789"
                         value={einInput}
-                        onChange={(e) => setEinInput(e.target.value)}
+                        onChange={(e) => setEinInput(formatEin(e.target.value))}
                         onBlur={() => { void handleEinBlur() }}
                         style={{ marginTop: 4, maxWidth: 280 }}
+                        maxLength={10}
                       />
                       <div className="field-hint" style={{ marginTop: 4 }}>Format: XX-XXXXXXX</div>
                     </div>
@@ -710,8 +712,9 @@ export const SpvFormation: React.FC = () => {
                         className="field-input"
                         placeholder="e.g. 12-3456789"
                         value={einInput}
-                        onChange={(e) => setEinInput(e.target.value)}
+                        onChange={(e) => setEinInput(formatEin(e.target.value))}
                         onBlur={() => { void handleEinBlur() }}
+                        maxLength={10}
                       />
                       <div className="field-hint">Format: XX-XXXXXXX</div>
                     </div>

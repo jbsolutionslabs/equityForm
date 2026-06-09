@@ -21,7 +21,9 @@ export type FeeBasisType =
   | 'pct_raise'
   | 'pct_cost'
   | 'flat'
-  | 'pct_revenue';
+  | 'pct_revenue'
+  | 'pct_sales_price'
+  | 'pct_loan_proceeds';
 export type FeeType =
   | 'acquisition'
   | 'asset_management'
