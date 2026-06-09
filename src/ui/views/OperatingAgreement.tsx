@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useAppStore, canGenerateOA, isSpvFormed } from '../../state/store'
 import { useEconomicsStore, isEconomicsLocked } from '../../state/economicsStore'
 import { useOperatingAgreementDraftSave } from '../../api/hooks/useDealMutations'
-import { generatePlaceholders } from '../../utils/placeholders'
+import { generatePlaceholders, validateForGeneration } from '../../utils/placeholders'
 import { generateOperatingAgreementHtml, generateOperatingAgreementText, generateOperatingAgreementWordHtml } from '../../utils/pdfTemplate'
 import html2pdf from 'html2pdf.js'
 import { HelpCard } from '../components/HelpCard'
@@ -58,14 +58,15 @@ export const OperatingAgreement: React.FC = () => {
   const generateOA        = useAppStore((s) => s.generateOA)
   const sendOaForDocuSign = useAppStore((s) => s.sendOaForDocuSign)
   const simulateOaSigned  = useAppStore((s) => s.simulateOaSigned)
-  const { values }        = data ? generatePlaceholders(data) : { values: {} as any }
-  const liveOaText        = data ? generateOperatingAgreementText(values) : ''
-
   const economicsDeal   = useEconomicsStore((s) => s.deals.find((d) => d.dealId === dealId))
   const econLocked      = isEconomicsLocked(economicsDeal)
 
+  const { values }         = data ? generatePlaceholders(data, economicsDeal ?? undefined) : { values: {} as any }
+  const liveOaText         = data ? generateOperatingAgreementText(values) : ''
+  const oaValidationErrors = (data && econLocked) ? validateForGeneration(values) : []
+
   const spvOk  = data ? isSpvFormed(data) : false
-  const canGen = data ? canGenerateOA(data) && econLocked : false
+  const canGen = data ? canGenerateOA(data) && econLocked && oaValidationErrors.length === 0 : false
 
   // Derive current sub-step from OA status.
   // When outdated, always land on step 1 so the user sees the banner + Regenerate CTA.
@@ -104,20 +105,48 @@ export const OperatingAgreement: React.FC = () => {
   const entityName = safeDeal.entityName || '—'
   const formationState = toLegalStateName(safeDeal.formationState || '—')
   const effectiveDate = toLongDate(safeDeal.effectiveDate || '—')
-  const preferredReturnPct = safeOffering.preferredReturnEnabled
-    ? safeOffering.preferredReturnRate != null
-      ? `${safeOffering.preferredReturnRate}%`
-      : '—'
-    : 'None'
-  const gpPromotePct = safeOffering.gpPromote != null ? `${safeOffering.gpPromote}%` : '—'
-  const lpGpSplit =
-    safeOffering.lpResidual != null && safeOffering.gpPromote != null
-      ? `LP ${safeOffering.lpResidual}% / GP ${safeOffering.gpPromote}%`
-      : '—'
+
+  // ── Pull economics fields from locked Deal Economics (not from offering) ──
+  const ps        = economicsDeal?.profitSplit
+  const pref      = ps?.pref
+  const waterfall = ps?.waterfall
+
+  const preferredReturnPct = pref
+    ? pref.type === 'none'
+      ? 'None'
+      : pref.rate != null
+        ? `${(pref.rate * 100).toFixed(2)}% (${pref.type})`
+        : '—'
+    : '—'
+
+  const lpGpSplit = waterfall
+    ? waterfall.mode === 'simple'
+      ? waterfall.simpleLpSplit != null
+        ? `LP ${waterfall.simpleLpSplit}% / GP ${100 - waterfall.simpleLpSplit}%`
+        : '—'
+      : `Advanced — ${waterfall.tiers?.length ?? 0} tier${waterfall.tiers?.length === 1 ? '' : 's'}`
+    : '—'
+
+  const gpPromotePct = waterfall
+    ? waterfall.mode === 'simple' && waterfall.simpleLpSplit != null
+      ? `${100 - waterfall.simpleLpSplit}%`
+      : waterfall.mode === 'advanced'
+        ? 'See waterfall'
+        : '—'
+    : '—'
+
+  const purchasePriceDisplay = economicsDeal?.capitalStack?.purchasePrice
+    ? economicsDeal.capitalStack.purchasePrice.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+    : '—'
 
   const handleGenerate = () => {
     if (!canGen) {
       notify('Complete SPV Formation (Stage 3) and lock Deal Economics (Stage 2) before generating the Operating Agreement.', 'error')
+      return
+    }
+    const errs = validateForGeneration(values)
+    if (errs.length > 0) {
+      notify(errs[0], 'error')
       return
     }
     generateOA(dealId!)
@@ -131,11 +160,16 @@ export const OperatingAgreement: React.FC = () => {
       notify('SPV Formation and locked Deal Economics are still required to regenerate.', 'error')
       return
     }
+    const errs = validateForGeneration(values)
+    if (errs.length > 0) {
+      notify(errs[0], 'error')
+      return
+    }
     generateOA(dealId!)
     setSubStep(2)
     setAcks({ a: false, b: false, c: false })
     notify('Operating Agreement regenerated with updated deal information. Please re-review and re-sign.')
-  }, [canGen, dealId, generateOA]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [canGen, dealId, generateOA, values]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSendDocuSign = () => {
     if (!acks.a || !acks.b || !acks.c) {
@@ -321,9 +355,18 @@ export const OperatingAgreement: React.FC = () => {
             </div>
           )}
 
-          {spvOk && econLocked && (
+          {spvOk && econLocked && oaValidationErrors.length === 0 && (
             <div className="state-banner state-banner--success" style={{ marginBottom: 20 }}>
               <span>✓</span> SPV formed and Economics locked. You're ready to generate the Operating Agreement.
+            </div>
+          )}
+
+          {spvOk && econLocked && oaValidationErrors.length > 0 && (
+            <div className="gate-message" style={{ marginBottom: 20 }}>
+              <strong>Missing data — fix before generating:</strong>
+              <ul style={{ margin: '8px 0 0', paddingLeft: 20, fontSize: 14 }}>
+                {oaValidationErrors.map((e, i) => <li key={i}>{e}</li>)}
+              </ul>
             </div>
           )}
 
@@ -338,6 +381,10 @@ export const OperatingAgreement: React.FC = () => {
               <div className="review-summary-value">{safeDeal.formationState || '—'}</div>
             </div>
             <div className="review-summary-item">
+              <div className="review-summary-label">Effective Date</div>
+              <div className="review-summary-value">{safeDeal.effectiveDate || '—'}</div>
+            </div>
+            <div className="review-summary-item">
               <div className="review-summary-label">GP Entity</div>
               <div className="review-summary-value">{safeDeal.gpEntityName || '—'}</div>
             </div>
@@ -350,20 +397,20 @@ export const OperatingAgreement: React.FC = () => {
               <div className="review-summary-value">{safeOffering.offeringExemption || '—'}</div>
             </div>
             <div className="review-summary-item">
-              <div className="review-summary-label">Preferred Return %</div>
+              <div className="review-summary-label">Purchase Price</div>
+              <div className="review-summary-value">{purchasePriceDisplay}</div>
+            </div>
+            <div className="review-summary-item">
+              <div className="review-summary-label">Preferred Return</div>
               <div className="review-summary-value">{preferredReturnPct}</div>
             </div>
             <div className="review-summary-item">
-              <div className="review-summary-label">GP Promote %</div>
-              <div className="review-summary-value">{gpPromotePct}</div>
-            </div>
-            <div className="review-summary-item">
-              <div className="review-summary-label">LP/GP Split</div>
+              <div className="review-summary-label">LP / GP Split</div>
               <div className="review-summary-value">{lpGpSplit}</div>
             </div>
             <div className="review-summary-item">
-              <div className="review-summary-label">Effective Date</div>
-              <div className="review-summary-value">{safeDeal.effectiveDate || '—'}</div>
+              <div className="review-summary-label">GP Promote</div>
+              <div className="review-summary-value">{gpPromotePct}</div>
             </div>
           </div>
 

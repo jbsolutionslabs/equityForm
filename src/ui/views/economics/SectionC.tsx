@@ -15,11 +15,17 @@ const FEE_TYPE_HINTS: Record<string, string> = {
 }
 
 const BASIS_LABELS: Record<FeeBasisType, string> = {
-  pct_purchase: '% of Purchase Price',
-  pct_raise:    '% of Equity Raise',
-  pct_cost:     '% of Total Cost',
-  flat:         'Flat Dollar Amount',
-  pct_revenue:  '% of Annual Revenue',
+  pct_purchase:      '% of Purchase Price',
+  pct_raise:         '% of Equity Raise',
+  pct_cost:          '% of Total Cost',
+  flat:              'Flat Dollar Amount',
+  pct_revenue:       '% of Annual Revenue',
+  pct_sales_price:   '% of Sales Price',
+  pct_loan_proceeds: '% of Loan Proceeds',
+}
+
+function formatUSD(n: number) {
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 }
 
 // ─── Single fee row ───────────────────────────────────────────────────────────
@@ -30,9 +36,10 @@ interface FeeRowProps {
   onToggle:  (enabled: FeeToggle) => void
   onChange:  (patch: Partial<FeeEntry>) => void
   onRemove?: () => void
+  totalLoanProceeds?: number
 }
 
-const FeeRow: React.FC<FeeRowProps> = ({ fee, locked, onToggle, onChange, onRemove }) => {
+const FeeRow: React.FC<FeeRowProps> = ({ fee, locked, onToggle, onChange, onRemove, totalLoanProceeds }) => {
   const isCustom = fee.type === 'custom'
   const isYes    = fee.enabled === 'yes'
   const isNo     = fee.enabled === 'no'
@@ -105,6 +112,12 @@ const FeeRow: React.FC<FeeRowProps> = ({ fee, locked, onToggle, onChange, onRemo
                 onChange={e => onChange({ basisType: e.target.value as FeeBasisType })}
               >
                 <option value="">— Select basis —</option>
+                {fee.type === 'disposition' && (
+                  <option value="pct_sales_price">% of Sales Price</option>
+                )}
+                {fee.type === 'financing' && (
+                  <option value="pct_loan_proceeds">% of Loan Proceeds</option>
+                )}
                 <option value="pct_purchase">% of Purchase Price</option>
                 <option value="pct_raise">% of Equity Raise</option>
                 <option value="pct_cost">% of Total Cost</option>
@@ -131,6 +144,13 @@ const FeeRow: React.FC<FeeRowProps> = ({ fee, locked, onToggle, onChange, onRemo
                   }}
                 />
                 <p className="field-hint">Enter as percentage — e.g. 1.0 for 1.000%</p>
+                {fee.basisType === 'pct_loan_proceeds' && (
+                  <p className="field-hint" style={{ marginTop: 4 }}>
+                    {totalLoanProceeds
+                      ? <>Loan proceeds (senior + mezz + pref): <strong>{formatUSD(totalLoanProceeds)}</strong>{fee.rate != null ? <> — fee: <strong>{formatUSD(totalLoanProceeds * fee.rate)}</strong></> : null}</>
+                      : 'Add debt instruments in Section A to compute loan proceeds.'}
+                  </p>
+                )}
               </div>
             )}
 
@@ -184,6 +204,10 @@ export const SectionC: React.FC<Props> = ({ dealId, locked }) => {
   const standardFees = deal.fees.filter(f => f.type !== 'custom')
   const customFees   = deal.fees.filter(f => f.type === 'custom')
 
+  const totalLoanProceeds = (deal.capitalStack?.instruments ?? []).reduce(
+    (sum, inst) => sum + (inst.loanAmount ?? 0), 0,
+  )
+
   function handleToggle(feeId: string, enabled: FeeToggle) {
     updateFee(dealId, feeId, { enabled })
     if (deal!.sectionCComplete) setSectionComplete(dealId, 'C', false)
@@ -235,6 +259,7 @@ export const SectionC: React.FC<Props> = ({ dealId, locked }) => {
               locked={locked}
               onToggle={v => handleToggle(fee.id, v)}
               onChange={p => handleChange(fee.id, p)}
+              totalLoanProceeds={fee.type === 'financing' ? totalLoanProceeds : undefined}
             />
           ))}
         </div>

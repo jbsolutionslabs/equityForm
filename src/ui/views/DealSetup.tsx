@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { formatEin } from '../../utils/taxIdFormatting'
 import Stepper, { Step } from '../components/Stepper'
 import { FieldHelp, Tooltip, HelpCard } from '../components/HelpCard'
 import { CurrencyInput } from '../components/CurrencyInput'
@@ -377,7 +378,14 @@ export const DealSetup: React.FC = () => {
                   id="ein"
                   className="field-input"
                   placeholder="e.g. 12-3456789"
-                  {...form.register('ein')}
+                  maxLength={10}
+                  {...form.register('ein', {
+                    onChange: (e) => {
+                      const formatted = formatEin(e.target.value)
+                      e.target.value = formatted
+                      form.setValue('ein', formatted, { shouldDirty: true })
+                    },
+                  })}
                 />
               </div>
 
