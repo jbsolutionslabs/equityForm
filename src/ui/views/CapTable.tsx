@@ -450,6 +450,17 @@ export const CapTable: React.FC = () => {
         </button>
         {isLocked && (
           <>
+            <div className="disclaimer-banner" style={{ marginBottom: 8, width: '100%' }}>
+              <span className="disclaimer-banner-icon">⚠</span>
+              <div className="disclaimer-banner-body">
+                <strong>K-1 &amp; Tax Document Disclaimer</strong>
+                <p>
+                  K-1 exhibits and tax schedules generated here are templates only and are not
+                  official IRS tax documents. Have a licensed CPA review all tax documents before
+                  use in any tax filing. EquityForm is not liable for tax treatment errors.
+                </p>
+              </div>
+            </div>
             <button type="button" className="btn btn-secondary" onClick={handleDownloadK1Pdf}>
               Download K-1 Exhibit (PDF)
             </button>

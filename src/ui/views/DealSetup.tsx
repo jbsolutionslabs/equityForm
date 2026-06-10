@@ -731,6 +731,20 @@ export const DealSetup: React.FC = () => {
                 </select>
               </div>
 
+              {/* Securities offering notice */}
+              <div className="disclaimer-banner disclaimer-banner--info" style={{ marginTop: 12 }}>
+                <span className="disclaimer-banner-icon">ℹ</span>
+                <div className="disclaimer-banner-body">
+                  <strong>Securities Offering Notice</strong>
+                  <p>
+                    Selecting a Regulation D exemption does not constitute SEC registration or
+                    approval. You must file Form D with the SEC within 15 days of the first sale
+                    and comply with state blue sky requirements. EquityForm does not provide
+                    securities law advice — consult a securities attorney.
+                  </p>
+                </div>
+              </div>
+
               {(exemption === '506(b)' || exemption === '506(c)') && (
                 <div className="field-group">
                   <div className="field-label-row">

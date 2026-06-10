@@ -154,6 +154,20 @@ export const ESignature: React.FC = () => {
         </div>
       </div>
 
+      {/* ESIGN Act disclosure */}
+      <div className="disclaimer-banner disclaimer-banner--info">
+        <span className="disclaimer-banner-icon">ℹ</span>
+        <div className="disclaimer-banner-body">
+          <strong>Electronic Signature Disclosure</strong>
+          <p>
+            By sending documents for electronic signature, you confirm that all signatories have
+            provided affirmative consent to sign electronically, per the ESIGN Act and applicable
+            UETA provisions. Electronic signatures are legally binding. Retain signed copies for
+            no less than 7 years.
+          </p>
+        </div>
+      </div>
+
       {/* Bulk actions */}
       {investors.length > 0 && (
         <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>

@@ -4,6 +4,8 @@ import { useAppStore, isSpvFormed } from '../../state/store'
 import { useEconomicsStore, isEconomicsLocked } from '../../state/economicsStore'
 import { useDealSync } from '../../api/hooks/useDealSync'
 import { SaveIndicator } from './SaveIndicator'
+import { BetaBanner } from './BetaBanner'
+import { AcceptTermsModal } from './AcceptTermsModal'
 
 type StageConfig = {
   path:     string
@@ -140,6 +142,8 @@ function DealSidebar({ dealId }: { dealId: string }) {
           <span className="sidebar-help-icon" aria-hidden="true">?</span>
           Need help?
         </a>
+        <Link to="/terms"   className="sidebar-legal-link">Terms of Service</Link>
+        <Link to="/privacy" className="sidebar-legal-link">Privacy Policy</Link>
       </div>
     </>
   )
@@ -268,6 +272,8 @@ function TopLevelSidebar() {
           <span className="sidebar-help-icon" aria-hidden="true">?</span>
           Need help?
         </a>
+        <Link to="/terms"   className="sidebar-legal-link">Terms of Service</Link>
+        <Link to="/privacy" className="sidebar-legal-link">Privacy Policy</Link>
       </div>
     </>
   )
@@ -281,6 +287,7 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
 
   return (
     <div className="app-root">
+      <AcceptTermsModal />
       {/* ── Sidebar ── */}
       <aside className="sidebar" aria-label="Navigation">
         <div className="sidebar-brand">
@@ -300,6 +307,7 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
 
       {/* ── Main ── */}
       <main className="main-content" id="main-content">
+        <BetaBanner />
         {dealId && (
           <div className="main-topbar">
             <SaveIndicator />

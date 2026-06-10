@@ -617,6 +617,20 @@ export const Investors: React.FC = () => {
         </div>
       </div>
 
+      {/* Securities compliance notice */}
+      <div className="disclaimer-banner disclaimer-banner--critical">
+        <span className="disclaimer-banner-icon">ℹ</span>
+        <div className="disclaimer-banner-body">
+          <strong>Securities Compliance Notice</strong>
+          <p>
+            EquityForm does not verify accredited investor status. As the GP, you are solely
+            responsible for ensuring all investors qualify under your offering exemption (Reg D
+            Rule 506(b) or 506(c)). Consult a securities attorney before accepting investor
+            commitments. Non-compliance may result in SEC enforcement.
+          </p>
+        </div>
+      </div>
+
       {/* LP Capital Target — sourced from locked Deal Economics */}
       <div className="capital-summary" style={{ marginBottom: 24 }}>
         <div className="capital-stat">
