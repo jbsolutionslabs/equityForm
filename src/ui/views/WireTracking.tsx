@@ -156,6 +156,20 @@ export const WireTracking: React.FC = () => {
         </div>
       )}
 
+      {/* Wire fraud warning */}
+      <div className="disclaimer-banner disclaimer-banner--critical">
+        <span className="disclaimer-banner-icon">⚠</span>
+        <div className="disclaimer-banner-body">
+          <strong>Wire Transfer Warning</strong>
+          <p>
+            Always verify wire instructions directly with the receiving party before initiating any
+            transfer. EquityForm does not transmit funds and is not responsible for losses from
+            incorrect or fraudulent wire instructions. Wire fraud is prevalent — confirm routing
+            and account numbers via a separate channel before every transfer.
+          </p>
+        </div>
+      </div>
+
       {totalCommitted === 0 ? (
         <div className="state-banner state-banner--warning" style={{ marginBottom: 20 }}>
           <span>⚠</span> Wire Tracking is not ready yet. Add investors and complete signatures before confirming funds received.

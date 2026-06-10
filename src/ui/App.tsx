@@ -17,12 +17,16 @@ import { CapTable }                from './views/CapTable'
 import { AccountingDashboard }     from './views/accounting/AccountingDashboard'
 import { Economics }               from './views/economics/Economics'
 import { Compliance }              from './views/Compliance'
+import { Terms }                   from './views/Terms'
+import { Privacy }                 from './views/Privacy'
 
 export const App: React.FC = () => (
   <Routes>
     {/* Public routes */}
     <Route path="/sign-in" element={<SignIn />} />
     <Route path="/sign-up" element={<SignIn />} />
+    <Route path="/terms"   element={<Terms />} />
+    <Route path="/privacy" element={<Privacy />} />
 
     {/* Protected routes */}
     <Route
