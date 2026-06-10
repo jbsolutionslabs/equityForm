@@ -5,6 +5,7 @@ import { useEconomicsStore } from '../../../state/economicsStore'
 import type { AccountingProperty } from '../../../state/accountingTypes'
 import { CurrencyInput } from '../../components/CurrencyInput'
 import { AddressAutocompleteInput, ParsedAddress } from '../../components/AddressAutocompleteInput'
+import StateSelect from '../../components/StateSelect'
 import ModuleProgress from '../../components/ModuleProgress'
 
 /* ─── Types ── */
@@ -912,9 +913,10 @@ export const PropertySetup: React.FC<Props> = ({ existingProperty, availableDeal
               </div>
               <div className="field-group">
                 <label className="field-label">State</label>
-                <select className="field-input" value={adv.state} onChange={(e) => patchAdv('state', e.target.value)}>
-                  {US_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
+                <StateSelect
+                  value={adv.state}
+                  onChange={(code) => patchAdv('state', code)}
+                />
               </div>
               <div className="field-group">
                 <label className="field-label">EIN</label>

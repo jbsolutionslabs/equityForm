@@ -12,6 +12,7 @@ import { useAppStore, OaStatus } from '../../state/store'
 import { useDealSave, useOfferingSave } from '../../api/hooks/useDealMutations'
 import { useDealSync } from '../../api/hooks/useDealSync'
 import { AddressAutocompleteInput, ParsedAddress } from '../components/AddressAutocompleteInput'
+import StateSelect from '../components/StateSelect'
 
 // ── Combined schema (deal + offering) ─────────────────────────────────────
 
@@ -444,11 +445,10 @@ export const DealSetup: React.FC = () => {
               <div className="field-group">
                 <label className="field-label" htmlFor="formationState">Formation State</label>
                 <FieldHelp text="The state where your LLC is legally formed. Delaware is the most common choice for investment SPVs." />
-                <input
+                <StateSelect
                   id="formationState"
-                  className="field-input"
-                  placeholder="e.g. Delaware"
-                  {...form.register('formationState')}
+                  value={form.watch('formationState') ?? ''}
+                  onChange={(code) => form.setValue('formationState', code, { shouldDirty: true })}
                 />
               </div>
 
@@ -560,12 +560,10 @@ export const DealSetup: React.FC = () => {
                 </div>
                 <div className="field-group">
                   <label className="field-label" htmlFor="propertyState">State</label>
-                  <input
+                  <StateSelect
                     id="propertyState"
-                    className="field-input"
-                    placeholder="CA"
-                    maxLength={2}
-                    {...form.register('propertyState')}
+                    value={form.watch('propertyState') ?? ''}
+                    onChange={(code) => form.setValue('propertyState', code, { shouldDirty: true })}
                   />
                 </div>
                 <div className="field-group">
@@ -633,11 +631,10 @@ export const DealSetup: React.FC = () => {
                 </div>
                 <div className="field-group">
                   <label className="field-label" htmlFor="gpEntityState">GP Entity State</label>
-                  <input
+                  <StateSelect
                     id="gpEntityState"
-                    className="field-input"
-                    placeholder="e.g. California"
-                    {...form.register('gpEntityState')}
+                    value={form.watch('gpEntityState') ?? ''}
+                    onChange={(code) => form.setValue('gpEntityState', code, { shouldDirty: true })}
                   />
                 </div>
               </div>

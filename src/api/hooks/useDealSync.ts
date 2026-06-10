@@ -47,13 +47,28 @@ function apiDealToAppData(api: ApiDeal): AppData {
   const bankingPayload  = (api.banking?.payload  ?? {}) as Record<string, unknown>
 
   // SPV
+  // The backend stores whatever the client PUTs, so spvFormation fields may be
+  // SpvFormationItem objects (new format) rather than the legacy flat types
+  // (entityName: string, einObtained: boolean). Handle both shapes.
   const sf = api.spvFormation
+  const isItem = (v: unknown): v is SpvFormationItem =>
+    typeof v === 'object' && v !== null && 'complete' in v
   const spvFormation: SpvFormation = {
-    entityName:      { complete: !!sf?.entityName, entityName: sf?.entityName },
-    registeredAgent: { complete: !!(sf?.registeredAgent as any)?.complete, ...((sf?.registeredAgent ?? {}) as any) },
-    certOfFormation: { complete: !!(sf?.certOfFormation as any)?.complete,  ...((sf?.certOfFormation ?? {}) as any) },
-    einObtained:     { complete: sf?.einObtained ?? false },
-    foreignQualification: { complete: !!(sf?.foreignQualification as any)?.complete, ...((sf?.foreignQualification ?? {}) as any) },
+    entityName: isItem(sf?.entityName)
+      ? (sf!.entityName as unknown as SpvFormationItem)
+      : { complete: !!sf?.entityName, entityName: sf?.entityName as string | undefined },
+    registeredAgent: isItem(sf?.registeredAgent)
+      ? (sf!.registeredAgent as unknown as SpvFormationItem)
+      : { complete: !!(sf?.registeredAgent as any)?.complete, ...((sf?.registeredAgent ?? {}) as any) },
+    certOfFormation: isItem(sf?.certOfFormation)
+      ? (sf!.certOfFormation as unknown as SpvFormationItem)
+      : { complete: !!(sf?.certOfFormation as any)?.complete, ...((sf?.certOfFormation ?? {}) as any) },
+    einObtained: isItem(sf?.einObtained)
+      ? (sf!.einObtained as unknown as SpvFormationItem)
+      : { complete: typeof sf?.einObtained === 'boolean' ? sf.einObtained : false },
+    foreignQualification: isItem(sf?.foreignQualification)
+      ? (sf!.foreignQualification as unknown as SpvFormationItem)
+      : { complete: !!(sf?.foreignQualification as any)?.complete, ...((sf?.foreignQualification ?? {}) as any) },
   }
 
   // OA
@@ -102,12 +117,12 @@ function apiDealToAppData(api: ApiDeal): AppData {
   return {
     ...defaultData,
     deal: {
+      ...(offeringPayload.deal as any ?? {}),
       entityName:       api.name,
       propertyAddress:  api.propertyAddress,
       propertyState:    api.propertyState,
       assetClass:       api.assetClass as any,
-      capTableLockedAt: api.capTableLockedAt,
-      ...(offeringPayload.deal as any ?? {}),
+      capTableLockedAt: api.capTableLockedAt,  // must stay after offeringPayload spread — API value always wins
     },
     offering:           offeringPayload as any,
     banking:            bankingPayload as any,

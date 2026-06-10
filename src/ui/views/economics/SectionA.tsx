@@ -18,6 +18,7 @@ import type {
   ResetFrequency,
 } from '../../../state/economicsTypes'
 import { CurrencyInput } from '../../components/CurrencyInput'
+import { Tooltip } from '../../components/HelpCard'
 import { fmtCurrency } from '../../../utils/financialComputations'
 import { DebtInstrumentImportModal } from '../../components/DebtInstrumentImportModal'
 
@@ -232,9 +233,17 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
     children:  React.ReactNode,
     hint?:     string,
     fullWidth?: boolean,
+    tooltip?: { title: string; content: string },
   ) => (
     <div className={`field-group${fullWidth ? ' instrument-form-field--full' : ''}`}>
-      <label className="field-label">{label}</label>
+      {tooltip ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label className="field-label" style={{ marginBottom: 0 }}>{label}</label>
+          <Tooltip title={tooltip.title} content={tooltip.content} />
+        </div>
+      ) : (
+        <label className="field-label">{label}</label>
+      )}
       {children}
       {hint && <p className="field-hint">{hint}</p>}
     </div>
@@ -243,7 +252,10 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
   // Rate Type toggle for IO / Hybrid / Construction
   const rateTypeToggle = (
     <div className="field-group">
-      <label className="field-label">Rate Type</label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <label className="field-label" style={{ marginBottom: 0 }}>Rate Type</label>
+        <Tooltip title="Rate Type" content="Fixed Rate stays constant for the entire loan term. Floating Rate adjusts based on a market index (SOFR or Prime Rate) plus a spread, and resets at intervals defined by the reset frequency." />
+      </div>
       <div className="toggle-row">
         <button
           type="button"
@@ -366,6 +378,8 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
             <option value="subordinate">Subordinate (Mezzanine)</option>
             <option value="pref_equity">Preferred Equity</option>
           </select>,
+          undefined, undefined,
+          { title: 'Loan Position', content: 'Senior debt has first claim on assets and cash flows — lowest risk, lowest return. Subordinate (mezzanine) debt sits behind senior but above equity. Preferred equity is treated more like equity and carries a priority return before common equity participates.' },
         )}
         {field(isPrefEq ? 'Commitment Amount' : 'Loan Amount',
           <>
@@ -831,6 +845,8 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                   <option value="hybrid">Hybrid (IO + Amort)</option>
                   <option value="construction">Construction Loan</option>
                 </select>,
+                undefined, undefined,
+                { title: 'Loan Type', content: 'Fixed Rate: constant rate for the full term. Floating Rate: adjusts with market index (SOFR/Prime). Interest Only (IO): no principal payments during the IO period — common on bridge loans. Hybrid: IO period followed by amortizing period. Construction: funds in draws during the build phase with an interest reserve.' },
               )}
             </div>
           </div>

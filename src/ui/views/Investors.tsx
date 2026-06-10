@@ -11,11 +11,12 @@ import { v4 as uuidv4 } from 'uuid'
 import { generateSubscriptionAgreementHtml } from '../../utils/pdfTemplate'
 import { generatePlaceholders } from '../../utils/placeholders'
 import { BLUE_SKY_RULE_506_BY_STATE } from '../../utils/blueSkyRules'
-import { FieldHelp, HelpCard } from '../components/HelpCard'
+import { FieldHelp, Tooltip, HelpCard } from '../components/HelpCard'
 import { formatEin, formatSsn } from '../../utils/taxIdFormatting'
 import { CurrencyInput } from '../components/CurrencyInput'
 import ModuleProgress from '../components/ModuleProgress'
 import { AddressAutocompleteInput, ParsedAddress } from '../components/AddressAutocompleteInput'
+import StateSelect from '../components/StateSelect'
 import { useEconomicsStore, isEconomicsLocked } from '../../state/economicsStore'
 import { computeSourcesAndUses } from '../../utils/sourcesAndUses'
 
@@ -1037,18 +1038,11 @@ export const Investors: React.FC = () => {
                         </div>
                         <div className="field-group">
                           <label className="field-label" htmlFor={`investor-formstate-${idx}`}>Formation State</label>
-                          <select
+                          <StateSelect
                             id={`investor-formstate-${idx}`}
-                            className="field-input"
-                            {...form.register(`investors.${idx}.formationState` as const)}
-                          >
-                            <option value="">Select state…</option>
-                            {Object.entries(STATE_CODE_TO_NAME)
-                              .sort((a, b) => a[1].localeCompare(b[1]))
-                              .map(([code, name]) => (
-                                <option key={code} value={code}>{name}</option>
-                              ))}
-                          </select>
+                            value={form.watch(`investors.${idx}.formationState` as const) ?? ''}
+                            onChange={(code) => form.setValue(`investors.${idx}.formationState` as const, code, { shouldDirty: true })}
+                          />
                         </div>
                       </div>
                       <div className="form-row">
@@ -1111,9 +1105,12 @@ export const Investors: React.FC = () => {
                   </div>
 
                   <div className="field-group">
-                    <label className="field-label" htmlFor={`investor-taxid-${idx}`}>
-                      {type === 'entity' ? 'Tax ID (EIN)' : 'Tax ID (SSN)'}
-                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <label className="field-label" htmlFor={`investor-taxid-${idx}`} style={{ marginBottom: 0 }}>
+                        {type === 'entity' ? 'Tax ID (EIN)' : 'Tax ID (SSN)'}
+                      </label>
+                      <Tooltip title={type === 'entity' ? 'Employer Identification Number (EIN)' : 'Social Security Number (SSN)'} content={type === 'entity' ? 'The 9-digit EIN assigned by the IRS to the investing entity (format: XX-XXXXXXX). Required for K-1 tax reporting and closing documents.' : 'The investor\'s 9-digit Social Security Number (format: XXX-XX-XXXX). Used for Schedule K-1 tax reporting at year-end.'} />
+                    </div>
                     <FieldHelp text="Required for Schedule K-1 tax reporting. Keep this confidential." />
                     <input
                       id={`investor-taxid-${idx}`}
@@ -1174,9 +1171,12 @@ export const Investors: React.FC = () => {
 
                   {isAccredited && (
                     <div className="field-group" style={{ maxWidth: 420, marginTop: 8 }}>
-                      <label className="field-label" htmlFor={`investor-accredited-basis-${idx}`}>
-                        Accredited basis <span className="field-required">*</span>
-                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <label className="field-label" htmlFor={`investor-accredited-basis-${idx}`} style={{ marginBottom: 0 }}>
+                          Accredited basis <span className="field-required">*</span>
+                        </label>
+                        <Tooltip title="Accreditation Basis" content="Income test: individual income exceeding $200k (or $300k joint) in each of the two most recent years with a reasonable expectation of the same. Net worth test: net worth over $1 million, excluding primary residence. This must be self-certified by the investor in the subscription agreement." />
+                      </div>
                       <FieldHelp text="Capture the investor's representation basis for accreditation." />
                       <select
                         id={`investor-accredited-basis-${idx}`}
@@ -1241,7 +1241,11 @@ export const Investors: React.FC = () => {
                     </div>
                     <div className="field-group">
                       <label className="field-label" htmlFor={`investor-state-${idx}`}>State</label>
-                      <input id={`investor-state-${idx}`} className="field-input" maxLength={2} {...form.register(`investors.${idx}.state` as const)} />
+                      <StateSelect
+                        id={`investor-state-${idx}`}
+                        value={form.watch(`investors.${idx}.state` as const) ?? ''}
+                        onChange={(code) => form.setValue(`investors.${idx}.state` as const, code, { shouldDirty: true })}
+                      />
                       {blueSkyStateCode && (
                         <div
                           role="status"
