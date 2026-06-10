@@ -4,7 +4,8 @@ import { useAppStore } from '../../state/store'
 import { useSubscriptionActions } from '../../api/hooks/useDealMutations'
 import { useEconomicsStore } from '../../state/economicsStore'
 import { computeSourcesAndUses } from '../../utils/sourcesAndUses'
-import { HelpCard } from '../components/HelpCard'
+import { formatWireConfirmation } from '../../utils/taxIdFormatting'
+import { Tooltip, HelpCard } from '../components/HelpCard'
 import { CurrencyInput } from '../components/CurrencyInput'
 import ModuleProgress from '../components/ModuleProgress'
 
@@ -43,11 +44,7 @@ export const WireTracking: React.FC = () => {
   })()
 
   const totalCommittedFromSubs = investors.reduce((sum, inv) => sum + (inv.subscriptionAmount || 0), 0)
-  const investorTargetAmount = (subscriptionAmount?: number | null) => {
-    const amount = subscriptionAmount || 0
-    if (lpTargetFromEconomics <= 0 || totalCommittedFromSubs <= 0) return amount
-    return (amount / totalCommittedFromSubs) * lpTargetFromEconomics
-  }
+  const investorTargetAmount = (subscriptionAmount?: number | null) => subscriptionAmount || 0
 
   const totalCommitted = investors.reduce((sum, inv) => sum + investorTargetAmount(inv.subscriptionAmount), 0)
   const totalReceived  = investors.reduce((sum, inv) => {
@@ -82,8 +79,13 @@ export const WireTracking: React.FC = () => {
   }
 
   const confirmWire = async () => {
-    if (!wireConf.trim()) {
+    const cleanConf = wireConf.replace(/-/g, '')
+    if (!cleanConf) {
       notify('Please enter a wire confirmation number.', 'error')
+      return
+    }
+    if (cleanConf.length < 8) {
+      notify('Wire confirmation number must be at least 8 characters.', 'error')
       return
     }
     if (wireModal) {
@@ -93,7 +95,7 @@ export const WireTracking: React.FC = () => {
       const gpPortion = Math.max(0, totalCommittedFromSubs - lpTargetFromEconomics)
       const overage = Math.max(0, enteredAmount - target)
       if (overage > gpPortion) {
-        notify(`Amount exceeds LP target by $${Math.round(overage).toLocaleString()}, but GP portion is only $${Math.round(gpPortion).toLocaleString()}. Please use a lower override.`, 'error')
+        notify(`Amount exceeds investor's committed amount by $${Math.round(overage).toLocaleString()}. ${gpPortion > 0 ? `Only $${Math.round(gpPortion).toLocaleString()} of GP headroom is available to absorb the difference.` : 'No GP headroom is available to absorb overages.'}`, 'error')
         return
       }
       try {
@@ -105,8 +107,9 @@ export const WireTracking: React.FC = () => {
         )
         notify(`Wire confirmed for ${wireModal.name}.`)
         setWireModal(null)
-      } catch {
-        notify(`Failed to confirm wire for ${wireModal.name}. Please try again.`, 'error')
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Please try again.'
+        notify(`Failed to confirm wire for ${wireModal.name}. ${msg}`, 'error')
       }
     }
   }
@@ -322,19 +325,28 @@ export const WireTracking: React.FC = () => {
             </div>
             <div className="modal-body">
               <div className="field-group">
-                <label className="field-label" htmlFor="wire-conf-num">Wire Confirmation Number <span className="field-required">*</span></label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <label className="field-label" htmlFor="wire-conf-num" style={{ marginBottom: 0 }}>Wire Confirmation Number <span className="field-required">*</span></label>
+                  <Tooltip title="Wire Confirmation Number" content="The unique reference number assigned by the sending bank, also called a Fed reference number or IMAD. This number is used to trace and reconcile the incoming transfer. Format varies by bank — typically includes the date and a sequence number." />
+                </div>
                 <input
                   id="wire-conf-num"
                   className="field-input"
-                  placeholder="e.g. FED-20260401-001"
+                  placeholder="e.g. 20260601-MMQFMP2U-000123"
                   value={wireConf}
-                  onChange={(e) => setWireConf(e.target.value)}
+                  onChange={(e) => setWireConf(formatWireConfirmation(e.target.value))}
+                  maxLength={24}
                   autoFocus
+                  spellCheck={false}
+                  style={{ fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}
                 />
               </div>
               <div className="form-row">
                 <div className="field-group">
-                  <label className="field-label" htmlFor="wire-amount">Amount Received ($)</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <label className="field-label" htmlFor="wire-amount" style={{ marginBottom: 0 }}>Amount Received ($)</label>
+                    <Tooltip title="Amount Received" content="Enter the exact dollar amount that arrived in the account. This is pre-filled from the investor's committed subscription amount but can be overridden if the wire differs. Amounts above the LP pro-rated target draw from the GP portion of the capital stack." />
+                  </div>
                   <CurrencyInput
                     id="wire-amount"
                     className="field-input"
@@ -363,14 +375,16 @@ export const WireTracking: React.FC = () => {
                 return (
                   <div className="info-box" style={{ marginTop: 8 }}>
                     <div style={{ fontSize: 13, color: 'var(--color-slate-600)' }}>
-                      LP pro-rated target: <strong>${Math.round(target).toLocaleString()}</strong>
+                      Committed amount: <strong>${Math.round(target).toLocaleString()}</strong>
                       {overage > 0 && (
-                        <> · Override overage: <strong>${Math.round(overage).toLocaleString()}</strong> (reduces GP portion)</>
+                        <> · Overage: <strong>${Math.round(overage).toLocaleString()}</strong> above committed</>
                       )}
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--color-slate-500)', marginTop: 4 }}>
-                      Available GP portion for overages: ${Math.round(gpPortion).toLocaleString()}
-                    </div>
+                    {gpPortion > 0 && (
+                      <div style={{ fontSize: 12, color: 'var(--color-slate-500)', marginTop: 4 }}>
+                        GP headroom available for overages: ${Math.round(gpPortion).toLocaleString()}
+                      </div>
+                    )}
                   </div>
                 )
               })()}

@@ -4,6 +4,7 @@ import { useEconomicsStore } from '../../../state/economicsStore'
 import { validateSectionB } from '../../../utils/economicsValidation'
 import { computeSourcesAndUses } from '../../../utils/sourcesAndUses'
 import { CurrencyInput } from '../../components/CurrencyInput'
+import { Tooltip } from '../../components/HelpCard'
 import type {
   ProfitSplitConfig,
   PrefConfig,
@@ -776,7 +777,10 @@ export const SectionB: React.FC<Props> = ({ dealId, locked, setTab }) => {
 
             {/* Pref type selector */}
             <div className="field-group">
-              <label className="field-label">Preferred Return Type</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <label className="field-label" style={{ marginBottom: 0 }}>Preferred Return Type</label>
+                <Tooltip title="Preferred Return Type" content="None: no priority return for LPs. Simple: calculated on unreturned capital only. Compound: unpaid pref accrues and compounds. Accrual: pref accumulates and is paid at a liquidity event. Participating: LPs receive pref AND continue sharing in distributions above the hurdle." />
+              </div>
               <div className="pref-type-group" role="group" aria-label="Preferred return type">
                 {(Object.keys(PREF_TYPE_LABELS) as PrefType[]).map(t => (
                   <button
@@ -799,7 +803,10 @@ export const SectionB: React.FC<Props> = ({ dealId, locked, setTab }) => {
             {pref.type !== 'none' && (
               <div className="instrument-form-grid" style={{ marginTop: 16 }}>
                 <div className="field-group">
-                  <label className="field-label">Annual Preferred Rate (%)</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <label className="field-label" style={{ marginBottom: 0 }}>Annual Preferred Rate (%)</label>
+                    <Tooltip title="Annual Preferred Rate" content="The annualized return LPs receive before any profit sharing with the GP. Common ranges are 6–8% for value-add deals and 7–10% for opportunistic. This rate compounds or accrues based on the pref type selected." />
+                  </div>
                   <div style={{ position: 'relative' }}>
                     <input
                       type="number"

@@ -260,6 +260,26 @@ export const GpDashboard: React.FC = () => {
     window.setTimeout(() => setNotification(null), 4000)
   }
 
+  const downloadPortfolioSummaryCsv = () => {
+    const rows = [
+      ['Metric', 'Value', 'Notes'],
+      ['Total AUM', String(totalAUM), 'Across all active deals'],
+      ['Total Investor Capital', String(totalInvestorCapital), 'LP equity deployed'],
+      ['Distributions Paid', String(totalDistributions), 'Cumulative to date'],
+      ['Active Deals', String(activeDealCount), 'Raising or active'],
+      ['LPs (Cap Tables)', String(totalLpsAcrossDeals), 'Counted per deal'],
+    ]
+    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `portfolio-summary_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    notify('Portfolio summary downloaded.')
+  }
+
   const now = new Date()
   const curPeriod = currentPeriod()
   const latestSubmittedPeriod = useMemo(() => {
@@ -724,6 +744,9 @@ export const GpDashboard: React.FC = () => {
       <div className="dash-section">
         <div className="dash-section-header">
           <h2 className="dash-section-title">Portfolio Summary</h2>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={downloadPortfolioSummaryCsv}>
+            Download Summary CSV
+          </button>
         </div>
         <div className="dash-stat-grid">
           <div className="dash-stat-card">

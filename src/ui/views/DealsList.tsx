@@ -4,6 +4,7 @@ import { useAppStore, isSpvFormed, canSendSubAgreements, AppDealEntry, AppData, 
 import { useEconomicsStore, isEconomicsLocked } from '../../state/economicsStore'
 import { useCreateDeal, useDeleteDeal } from '../../api/hooks/useDeals'
 import { useDealsSync } from '../../api/hooks/useDealSync'
+import CompletionBadge from '../components/CompletionBadge'
 
 /* ─── Stage definitions (mirrors Shell.tsx) ─────────────────────────────── */
 type StageInfo = {
@@ -149,7 +150,7 @@ function DealCard({ entry, econLocked }: { entry: AppDealEntry; econLocked: bool
 
         <div className="deal-card-meta">
           <span>Created {fmtDate(entry.createdAt)}</span>
-          <span>{doneCount} / 8 stages done</span>
+          <CompletionBadge dealId={id} />
         </div>
       </div>
 

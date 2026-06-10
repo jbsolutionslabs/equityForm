@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAppStore, canGenerateOA, isSpvFormed } from '../../state/store'
 import { useEconomicsStore, isEconomicsLocked } from '../../state/economicsStore'
-import { useOperatingAgreementDraftSave } from '../../api/hooks/useDealMutations'
+import { useOaActions, useOperatingAgreementDraftSave } from '../../api/hooks/useDealMutations'
 import { generatePlaceholders, validateForGeneration } from '../../utils/placeholders'
 import { generateOperatingAgreementHtml, generateOperatingAgreementText, generateOperatingAgreementWordHtml } from '../../utils/pdfTemplate'
 import html2pdf from 'html2pdf.js'
 import { HelpCard } from '../components/HelpCard'
 import ModuleProgress from '../components/ModuleProgress'
+import PlaceholderCoverage from '../components/PlaceholderCoverage'
 
 type SubStep = 1 | 2 | 3
 
@@ -55,9 +56,7 @@ export const OperatingAgreement: React.FC = () => {
   const safeDeal          = data?.deal ?? {}
   const safeOffering      = data?.offering ?? {}
   const oa                = data?.operatingAgreement
-  const generateOA        = useAppStore((s) => s.generateOA)
-  const sendOaForDocuSign = useAppStore((s) => s.sendOaForDocuSign)
-  const simulateOaSigned  = useAppStore((s) => s.simulateOaSigned)
+  const oaActions         = useOaActions(dealId!)
   const economicsDeal   = useEconomicsStore((s) => s.deals.find((d) => d.dealId === dealId))
   const econLocked      = isEconomicsLocked(economicsDeal)
 
@@ -139,7 +138,7 @@ export const OperatingAgreement: React.FC = () => {
     ? economicsDeal.capitalStack.purchasePrice.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
     : '—'
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!canGen) {
       notify('Complete SPV Formation (Stage 3) and lock Deal Economics (Stage 2) before generating the Operating Agreement.', 'error')
       return
@@ -149,13 +148,13 @@ export const OperatingAgreement: React.FC = () => {
       notify(errs[0], 'error')
       return
     }
-    generateOA(dealId!)
+    await oaActions.generate()
     setSubStep(2)
     setAcks({ a: false, b: false, c: false })
     notify('Operating Agreement generated. Please review and acknowledge below.')
   }
 
-  const handleRegenerate = useCallback(() => {
+  const handleRegenerate = useCallback(async () => {
     if (!canGen) {
       notify('SPV Formation and locked Deal Economics are still required to regenerate.', 'error')
       return
@@ -165,19 +164,19 @@ export const OperatingAgreement: React.FC = () => {
       notify(errs[0], 'error')
       return
     }
-    generateOA(dealId!)
+    await oaActions.generate()
     setSubStep(2)
     setAcks({ a: false, b: false, c: false })
     notify('Operating Agreement regenerated with updated deal information. Please re-review and re-sign.')
-  }, [canGen, dealId, generateOA, values]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [canGen, oaActions, values]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSendDocuSign = () => {
+  const handleSendDocuSign = async () => {
     if (!acks.a || !acks.b || !acks.c) {
       notify('Please confirm all three acknowledgments before sending.', 'error')
       return
     }
     const email = gpEmail.trim() || (safeDeal.gpSignerName ? `${safeDeal.gpSignerName.toLowerCase().replace(/\s+/g, '.')}@example.com` : 'gp@example.com')
-    sendOaForDocuSign(dealId!, email)
+    await oaActions.send(email)
     setSubStep(3)
     notify('Operating Agreement sent for DocuSign signature.')
   }
@@ -195,8 +194,8 @@ export const OperatingAgreement: React.FC = () => {
     await flushOaDraft()
   }
 
-  const handleSimulateSigned = () => {
-    simulateOaSigned(dealId!)
+  const handleSimulateSigned = async () => {
+    await oaActions.markSigned()
     notify('Simulated: DocuSign envelope completed. OA is now GP-signed.')
   }
 
@@ -413,6 +412,8 @@ export const OperatingAgreement: React.FC = () => {
               <div className="review-summary-value">{gpPromotePct}</div>
             </div>
           </div>
+
+          <PlaceholderCoverage />
 
           <div className="info-box" style={{ marginBottom: 20 }}>
             <div className="info-box-title">What gets generated?</div>

@@ -186,7 +186,8 @@ export function useCapTableActions(dealId: string) {
     lock: async () => {
       await apiClient.post(`/deals/${dealId}/captable/lock`)
       lockCapTable(dealId)
-      invalidate()
+      // No invalidate — lockCapTable updates the store immediately and a refetch
+      // could overwrite capTableLockedAt before the next sync picks it up.
     },
     unlock: async () => {
       await apiClient.delete(`/deals/${dealId}/captable/lock`)
@@ -286,7 +287,7 @@ export function useSubscriptionActions(dealId: string) {
     },
     markSigned: async (investorId: string) => {
       const sub = findSubscription(investorId)
-      if (!sub?.id) return
+      if (!sub?.id) throw new Error('Subscription record not found. Please refresh and try again.')
       const signedAt = new Date().toISOString()
       await apiClient.patch(`/deals/${dealId}/subscriptions/${sub.id}`, {
         status: 'SIGNED',
@@ -298,7 +299,7 @@ export function useSubscriptionActions(dealId: string) {
     },
     recordWire: async (investorId: string, confirmation: string, amount?: number, date?: string) => {
       const sub = findSubscription(investorId)
-      if (!sub?.id) return
+      if (!sub?.id) throw new Error('Subscription record not found. Please refresh and try again.')
       const paidAt = date || new Date().toISOString()
       await apiClient.patch(`/deals/${dealId}/subscriptions/${sub.id}`, {
         status: 'PAID',

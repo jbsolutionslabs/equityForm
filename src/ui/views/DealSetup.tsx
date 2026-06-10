@@ -12,6 +12,7 @@ import { useAppStore, OaStatus } from '../../state/store'
 import { useDealSave, useOfferingSave } from '../../api/hooks/useDealMutations'
 import { useDealSync } from '../../api/hooks/useDealSync'
 import { AddressAutocompleteInput, ParsedAddress } from '../components/AddressAutocompleteInput'
+import StateSelect from '../components/StateSelect'
 
 // ── Combined schema (deal + offering) ─────────────────────────────────────
 
@@ -365,6 +366,24 @@ export const DealSetup: React.FC = () => {
                 )}
               </div>
 
+              <div className="info-box" style={{ marginTop: 12 }}>
+                <div className="info-box-title">Delaware name search</div>
+                <p>
+                  Before moving into SPV Formation, search the Delaware Division of Corporations
+                  database to confirm that your entity legal name is available. The SPV formation
+                  step will pull this exact name from here.
+                </p>
+                <a
+                  href="https://icis.corp.delaware.gov/Ecorp/EntitySearch/NameSearch.aspx"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8 }}
+                >
+                  Search Delaware Entity Names ↗
+                </a>
+              </div>
+
               <div className="field-group">
                 <div className="field-label-row">
                   <label className="field-label" htmlFor="ein">Entity EIN</label>
@@ -426,11 +445,10 @@ export const DealSetup: React.FC = () => {
               <div className="field-group">
                 <label className="field-label" htmlFor="formationState">Formation State</label>
                 <FieldHelp text="The state where your LLC is legally formed. Delaware is the most common choice for investment SPVs." />
-                <input
+                <StateSelect
                   id="formationState"
-                  className="field-input"
-                  placeholder="e.g. Delaware"
-                  {...form.register('formationState')}
+                  value={form.watch('formationState') ?? ''}
+                  onChange={(code) => form.setValue('formationState', code, { shouldDirty: true })}
                 />
               </div>
 
@@ -542,12 +560,10 @@ export const DealSetup: React.FC = () => {
                 </div>
                 <div className="field-group">
                   <label className="field-label" htmlFor="propertyState">State</label>
-                  <input
+                  <StateSelect
                     id="propertyState"
-                    className="field-input"
-                    placeholder="CA"
-                    maxLength={2}
-                    {...form.register('propertyState')}
+                    value={form.watch('propertyState') ?? ''}
+                    onChange={(code) => form.setValue('propertyState', code, { shouldDirty: true })}
                   />
                 </div>
                 <div className="field-group">
@@ -615,11 +631,10 @@ export const DealSetup: React.FC = () => {
                 </div>
                 <div className="field-group">
                   <label className="field-label" htmlFor="gpEntityState">GP Entity State</label>
-                  <input
+                  <StateSelect
                     id="gpEntityState"
-                    className="field-input"
-                    placeholder="e.g. California"
-                    {...form.register('gpEntityState')}
+                    value={form.watch('gpEntityState') ?? ''}
+                    onChange={(code) => form.setValue('gpEntityState', code, { shouldDirty: true })}
                   />
                 </div>
               </div>

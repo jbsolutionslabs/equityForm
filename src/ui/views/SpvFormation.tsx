@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAppStore, isSpvFormed } from '../../state/store'
-import { useDealSave, useSpvSave } from '../../api/hooks/useDealMutations'
+import { apiClient } from '../../api/client'
 import { HelpCard } from '../components/HelpCard'
 import ModuleProgress from '../components/ModuleProgress'
 import {
@@ -31,8 +31,6 @@ export const SpvFormation: React.FC = () => {
   const markSpvItem  = useAppStore((s) => s.markSpvItem)
   const setDeal      = useAppStore((s) => s.setDeal)
   const data         = useAppStore((s) => s.deals[dealId!]?.data)
-  const { update: updateSpv, flush: flushSpv } = useSpvSave(dealId!)
-  const { update: updateDeal, flush: flushDeal } = useDealSave(dealId!)
   const formed       = data ? isSpvFormed(data) : false
   const deal         = data?.deal ?? {}
 
@@ -54,22 +52,23 @@ export const SpvFormation: React.FC = () => {
   const s5Done = !!spvFormation.foreignQualification?.complete
   const completedCount = [s1Done, s2Done, s3Done, s4Done, s5Done].filter(Boolean).length
 
-  // ── Step 1: Entity Name ─────────────────────────────────────────────────
-  const [nameInput,     setNameInput]     = useState(spvFormation.entityName?.entityName || deal.entityName || '')
-  const [nameConfirmed, setNameConfirmed] = useState(false)
-
-  const handleNameBlur = async () => {
-    const name = nameInput.trim()
-    updateSpv('entityName', { entityName: name, complete: !!spvFormation.entityName?.complete, nameLocked: !!spvFormation.entityName?.nameLocked })
-    updateDeal({ entityName: name, formationState: 'DE' })
-    await Promise.all([flushSpv(), flushDeal()])
+  // ── Save helper: read latest spvFormation from store, PUT directly ───────
+  // Uses getState() so it always reads the post-mutation value synchronously.
+  // Does NOT call qc.invalidateQueries — avoids triggering useDealSync refetches
+  // that could race against in-flight local mutations.
+  const saveSpv = async () => {
+    const spv = useAppStore.getState().deals[dealId!]?.data?.spvFormation
+    if (!spv) return
+    try { await apiClient.put(`/deals/${dealId}/spv`, spv) } catch { /* non-blocking */ }
   }
 
-  const handleLockName = () => {
+  // ── Step 1: Entity Name ─────────────────────────────────────────────────
+  const [nameInput, setNameInput] = useState(spvFormation.entityName?.entityName || deal.entityName || '')
+
+  const handleLockName = async () => {
     const name = nameInput.trim()
     if (!name) { notify('Enter an entity name.', 'error'); return }
-    if (!nameConfirmed) { notify('Confirm you have checked availability on the Delaware website.', 'error'); return }
-    markSpvItem(dealId!,'entityName', {
+    markSpvItem(dealId!, 'entityName', {
       complete:    true,
       completedAt: new Date().toISOString(),
       entityName:  name,
@@ -77,11 +76,14 @@ export const SpvFormation: React.FC = () => {
     })
     setDeal(dealId!, { entityName: name, formationState: 'DE' })
     notify('Entity name locked.')
+    await saveSpv()
+    // Also persist the deal name in the DB
+    try { await apiClient.patch(`/deals/${dealId}`, { name }) } catch { /* non-blocking */ }
   }
 
-  const handleUnlockName = () => {
-    markSpvItem(dealId!,'entityName', { complete: false, nameLocked: false })
-    setNameConfirmed(false)
+  const handleUnlockName = async () => {
+    markSpvItem(dealId!, 'entityName', { complete: false, nameLocked: false })
+    await saveSpv()
   }
 
   // ── Step 2: Registered Agent ────────────────────────────────────────────
@@ -98,16 +100,17 @@ export const SpvFormation: React.FC = () => {
       const confirmation = await provisionRegisteredAgent(deal.entityName || '', selectedAgent)
       setAgentConfirmation(confirmation)
       const provider = REGISTERED_AGENTS.find((a) => a.id === selectedAgent)!
-      markSpvItem(dealId!,'registeredAgent', {
-        complete:              true,
-        completedAt:           new Date().toISOString(),
-        agentProvider:         selectedAgent,
-        agentName:             provider.name,
-        agentAddress:          provider.deAddress,
-        agentConfirmationId:   confirmation.confirmationId,
+      markSpvItem(dealId!, 'registeredAgent', {
+        complete:               true,
+        completedAt:            new Date().toISOString(),
+        agentProvider:          selectedAgent,
+        agentName:              provider.name,
+        agentAddress:           provider.deAddress,
+        agentConfirmationId:    confirmation.confirmationId,
         agentAnnualRenewalDate: confirmation.annualRenewalDate,
       })
       notify('Registered agent provisioned.')
+      await saveSpv()
     } catch {
       notify('Provisioning failed — please try again.', 'error')
     } finally {
@@ -115,9 +118,10 @@ export const SpvFormation: React.FC = () => {
     }
   }
 
-  const handleUnprovisionAgent = () => {
-    markSpvItem(dealId!,'registeredAgent', { complete: false, agentConfirmationId: undefined })
+  const handleUnprovisionAgent = async () => {
+    markSpvItem(dealId!, 'registeredAgent', { complete: false, agentConfirmationId: undefined })
     setAgentConfirmation(null)
+    await saveSpv()
   }
 
   // ── Step 3: Certificate of Formation ───────────────────────────────────
@@ -140,16 +144,17 @@ export const SpvFormation: React.FC = () => {
         filingType,
       })
       setCertResult(result)
-      markSpvItem(dealId!,'certOfFormation', {
-        complete:               true,
-        completedAt:            new Date().toISOString(),
-        certFilingType:         filingType,
-        certFilingFee:          result.fee,
-        certificateNumber:      result.confirmationNumber,
-        dateFiled:              result.submittedAt,
+      markSpvItem(dealId!, 'certOfFormation', {
+        complete:                true,
+        completedAt:             new Date().toISOString(),
+        certFilingType:          filingType,
+        certFilingFee:           result.fee,
+        certificateNumber:       result.confirmationNumber,
+        dateFiled:               result.submittedAt,
         certEstimatedCompletion: result.estimatedCompletionDate,
       })
       notify('Certificate of Formation submitted to Delaware.')
+      await saveSpv()
     } catch {
       notify('Filing failed — please try again.', 'error')
     } finally {
@@ -157,35 +162,31 @@ export const SpvFormation: React.FC = () => {
     }
   }
 
-  const handleUnfileCert = () => {
-    markSpvItem(dealId!,'certOfFormation', { complete: false, certificateNumber: undefined })
+  const handleUnfileCert = async () => {
+    markSpvItem(dealId!, 'certOfFormation', { complete: false, certificateNumber: undefined })
     setCertResult(null)
+    await saveSpv()
   }
 
   // ── Step 4: EIN ─────────────────────────────────────────────────────────
   const [einInput, setEinInput] = useState(spvFormation.einObtained?.ein || deal.ein || '')
 
-  const handleEinBlur = async () => {
-    const ein = einInput.trim()
-    updateSpv('einObtained', { ein, complete: !!spvFormation.einObtained?.complete })
-    updateDeal({ ein })
-    await Promise.all([flushSpv(), flushDeal()])
-  }
-
-  const handleSaveEin = () => {
+  const handleSaveEin = async () => {
     const ein = einInput.trim()
     if (!ein) { notify('Enter your EIN to continue.', 'error'); return }
     if (!/^\d{2}-\d{7}$/.test(ein)) {
       notify('EIN format should be XX-XXXXXXX (e.g. 12-3456789).', 'error')
       return
     }
-    markSpvItem(dealId!,'einObtained', { complete: true, completedAt: new Date().toISOString(), ein })
+    markSpvItem(dealId!, 'einObtained', { complete: true, completedAt: new Date().toISOString(), ein })
     setDeal(dealId!, { ein })
     notify('EIN saved.')
+    await saveSpv()
   }
 
-  const handleUnmarkEin = () => {
-    markSpvItem(dealId!,'einObtained', { complete: false })
+  const handleUnmarkEin = async () => {
+    markSpvItem(dealId!, 'einObtained', { complete: false })
+    await saveSpv()
   }
 
   // ── Step 5: Foreign Qualification ──────────────────────────────────────
@@ -203,19 +204,20 @@ export const SpvFormation: React.FC = () => {
         agentAddress: spvFormation.registeredAgent?.agentAddress || '',
       })
       setFqResult(result)
-      markSpvItem(dealId!,'foreignQualification', {
-        complete:                     true,
-        completedAt:                  new Date().toISOString(),
-        foreignQualRequired:          true,
-        foreignQualState:             stateInfo.stateCode,
-        foreignQualStateName:         stateInfo.stateName,
-        foreignQualFee:               stateInfo.filingFee,
-        foreignQualTimeline:          stateInfo.estimatedDays,
-        foreignQualConfirmationId:    result.confirmationId,
-        foreignQualFilingMethod:      result.filingMethod,
+      markSpvItem(dealId!, 'foreignQualification', {
+        complete:                       true,
+        completedAt:                    new Date().toISOString(),
+        foreignQualRequired:            true,
+        foreignQualState:               stateInfo.stateCode,
+        foreignQualStateName:           stateInfo.stateName,
+        foreignQualFee:                 stateInfo.filingFee,
+        foreignQualTimeline:            stateInfo.estimatedDays,
+        foreignQualConfirmationId:      result.confirmationId,
+        foreignQualFilingMethod:        result.filingMethod,
         foreignQualEstimatedCompletion: result.estimatedCompletionDate,
       })
       notify(`Foreign Qualification filed in ${stateInfo.stateName}.`)
+      await saveSpv()
     } catch {
       notify('Filing failed — please try again.', 'error')
     } finally {
@@ -223,20 +225,22 @@ export const SpvFormation: React.FC = () => {
     }
   }
 
-  const handleFQNotRequired = () => {
-    markSpvItem(dealId!,'foreignQualification', {
-      complete:            true,
-      completedAt:         new Date().toISOString(),
-      foreignQualRequired: false,
-      foreignQualState:    'DE',
+  const handleFQNotRequired = async () => {
+    markSpvItem(dealId!, 'foreignQualification', {
+      complete:             true,
+      completedAt:          new Date().toISOString(),
+      foreignQualRequired:  false,
+      foreignQualState:     'DE',
       foreignQualStateName: 'Delaware',
     })
     notify('Foreign qualification not required — property and entity both in Delaware.')
+    await saveSpv()
   }
 
-  const handleUnmarkFQ = () => {
-    markSpvItem(dealId!,'foreignQualification', { complete: false, foreignQualConfirmationId: undefined })
+  const handleUnmarkFQ = async () => {
+    markSpvItem(dealId!, 'foreignQualification', { complete: false, foreignQualConfirmationId: undefined })
     setFqResult(null)
+    await saveSpv()
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -300,7 +304,7 @@ export const SpvFormation: React.FC = () => {
                 <div className="spv-item-subtitle">
                   {s1Done
                     ? `${spvFormation.entityName?.entityName} · Confirmed available and locked`
-                    : 'Verify availability on the Delaware Division of Corporations website, then lock your name'}
+                    : 'Pulled from Questionnaire section 1 — review the legal name that will be used for formation'}
                 </div>
               </div>
               {s1Done && (
@@ -312,12 +316,10 @@ export const SpvFormation: React.FC = () => {
 
             {!s1Done && (
               <div className="spv-item-form">
-                {/* Source badge */}
                 <div className="spv-review-source">
-                  Pre-filled from Deal Setup — review and approve to continue
+                  Pulled from Questionnaire section 1 — review and approve to continue
                 </div>
 
-                {/* Review block: editable name */}
                 <div className="spv-review-block" style={{ marginTop: 12 }}>
                   <div className="spv-review-block-label">Entity Name</div>
                   <input
@@ -326,11 +328,10 @@ export const SpvFormation: React.FC = () => {
                     placeholder="e.g. Oakwood Capital LLC"
                     value={nameInput}
                     onChange={(e) => setNameInput(e.target.value)}
-                    onBlur={() => { void handleNameBlur() }}
                     style={{ marginTop: 4, maxWidth: 420 }}
                   />
                   <div className="field-hint" style={{ marginTop: 4 }}>
-                    All Delaware LLCs must include "LLC" or "L.L.C." in the name
+                    This name comes from the questionnaire. If you need to change it, update section 1: Entity legal name.
                   </div>
                 </div>
 
@@ -339,49 +340,11 @@ export const SpvFormation: React.FC = () => {
                   <div className="spv-review-block-value">Delaware (fixed)</div>
                 </div>
 
-                {/* DE name search instruction */}
-                <div style={{
-                  marginTop: 16,
-                  padding: '12px 14px',
-                  background: 'var(--color-slate-50)',
-                  border: '1px solid var(--color-slate-200)',
-                  borderRadius: 8,
-                }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: 'var(--color-navy-900)' }}>
-                    Confirm name availability before approving
-                  </div>
-                  <p style={{ fontSize: 13, color: 'var(--color-slate-600)', margin: '0 0 10px' }}>
-                    Delaware requires a unique entity name. Search the official state database to
-                    confirm your name is available, then check the box below.
-                  </p>
-                  <a
-                    href="https://icis.corp.delaware.gov/Ecorp/EntitySearch/NameSearch.aspx"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn btn-secondary btn-sm"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                  >
-                    Search Delaware Entity Names ↗
-                  </a>
-                </div>
-
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 14, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={nameConfirmed}
-                    onChange={(e) => setNameConfirmed(e.target.checked)}
-                    style={{ marginTop: 2, flexShrink: 0 }}
-                  />
-                  <span style={{ fontSize: 13, color: 'var(--color-slate-700)', lineHeight: 1.5 }}>
-                    I have confirmed this name is available in the Delaware Division of Corporations database
-                  </span>
-                </label>
-
                 <button
                   type="button"
                   className="btn btn-primary btn-sm"
                   style={{ marginTop: 16 }}
-                  disabled={!nameInput.trim() || !nameConfirmed}
+                  disabled={!nameInput.trim()}
                   onClick={handleLockName}
                 >
                   Approve Entity Name &amp; Continue
@@ -655,7 +618,6 @@ export const SpvFormation: React.FC = () => {
                         placeholder="e.g. 12-3456789"
                         value={einInput}
                         onChange={(e) => setEinInput(formatEin(e.target.value))}
-                        onBlur={() => { void handleEinBlur() }}
                         style={{ marginTop: 4, maxWidth: 280 }}
                         maxLength={10}
                       />
@@ -713,7 +675,6 @@ export const SpvFormation: React.FC = () => {
                         placeholder="e.g. 12-3456789"
                         value={einInput}
                         onChange={(e) => setEinInput(formatEin(e.target.value))}
-                        onBlur={() => { void handleEinBlur() }}
                         maxLength={10}
                       />
                       <div className="field-hint">Format: XX-XXXXXXX</div>
@@ -923,11 +884,11 @@ export const SpvFormation: React.FC = () => {
             <h3 style={{ marginTop: 0, marginBottom: 12, fontSize: 16 }}>Formation Timeline</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {[
-                { n: '1', title: 'Entity Name',             time: 'Instant — live DE database check' },
-                { n: '2', title: 'Registered Agent',        time: 'Instant — provisioned via partner API' },
-                { n: '3', title: 'Cert. of Formation',      time: '1 day (same-day) or 3–5 days (standard)' },
-                { n: '4', title: 'EIN',                     time: 'Instant — online at IRS.gov' },
-                { n: '5', title: 'Foreign Qualification',   time: 'Varies by state — auto-detected' },
+                { n: '1', title: 'Entity Name',           time: 'Instant — live DE database check' },
+                { n: '2', title: 'Registered Agent',      time: 'Instant — provisioned via partner API' },
+                { n: '3', title: 'Cert. of Formation',    time: '1 day (same-day) or 3–5 days (standard)' },
+                { n: '4', title: 'EIN',                   time: 'Instant — online at IRS.gov' },
+                { n: '5', title: 'Foreign Qualification', time: 'Varies by state — auto-detected' },
               ].map(({ n, title, time }) => (
                 <div key={n} className="info-tile">
                   <div className="info-tile-icon">{n}</div>

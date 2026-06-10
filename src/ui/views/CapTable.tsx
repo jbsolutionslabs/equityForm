@@ -7,6 +7,8 @@ import { generatePlaceholders } from '../../utils/placeholders'
 import { generateOperatingAgreementHtml, generateOperatingAgreementWordHtml } from '../../utils/pdfTemplate'
 import html2pdf from 'html2pdf.js'
 import ModuleProgress from '../components/ModuleProgress'
+import { useEconomicsStore } from '../../state/economicsStore'
+import { computeSourcesAndUses } from '../../utils/sourcesAndUses'
 
 export const CapTable: React.FC = () => {
   const { dealId }  = useParams<{ dealId: string }>()
@@ -14,6 +16,7 @@ export const CapTable: React.FC = () => {
   const data        = useAppStore((s) => s.deals[dealId!]?.data)
   const investors   = data?.investors ?? []
   const deal        = data?.deal ?? {}
+  const economicsDeal = useEconomicsStore((s) => s.deals.find((d) => d.dealId === dealId))
   const capTableActions = useCapTableActions(dealId!)
 
   const [showConfirm, setShowConfirm] = useState(false)
@@ -33,25 +36,31 @@ export const CapTable: React.FC = () => {
   )
   const paidInvestors = investors.filter((inv) => paidInvestorIds.has(inv.id))
 
-  const totalUnits   = paidInvestors.reduce((sum, inv) => sum + (inv.classAUnits || 0), 0)
   const totalAmount  = paidInvestors.reduce((sum, inv) => sum + (inv.subscriptionAmount || 0), 0)
-  const unitPriceCents = totalUnits > 0 ? Math.round((totalAmount * 100) / totalUnits) : 0
+  const economicsStack = economicsDeal?.capitalStack
+  const totalEquity = economicsStack ? Math.max(0, computeSourcesAndUses(economicsStack).sources.equity) : 0
+  const lpEquityPct = Math.min(1, Math.max(0, economicsStack?.lpEquityPct ?? 1))
+  const gpEquityPct = Math.max(0, 1 - lpEquityPct)
+  const lpEquityTarget = totalEquity * lpEquityPct
+  const gpEquityTarget = totalEquity * gpEquityPct
+
+  // Cap table convention: 1 Class A Unit = $1 of subscribed capital.
   const normalizedLpUnits = (amount: number, fallbackUnits: number) => {
-    if (unitPriceCents <= 0) return fallbackUnits
-    return Math.round((Math.max(0, amount) * 100) / unitPriceCents)
+    const normalizedAmount = Math.max(0, amount)
+    if (normalizedAmount > 0) return normalizedAmount
+    return Math.max(0, fallbackUnits)
   }
   const totalNormalizedLpUnits = paidInvestors.reduce(
     (sum, inv) => sum + normalizedLpUnits(inv.subscriptionAmount || 0, inv.classAUnits || 0),
     0,
   )
-  const gpCapitalContribution = Math.max(0, data?.offering?.gpCapitalContribution ?? 0)
-  const inferredUnitPrice = unitPriceCents > 0
-    ? unitPriceCents / 100
-    : Math.max(1, data?.offering?.minimumInvestment ?? 1)
+  const gpCapitalContribution = gpEquityTarget > 0
+    ? gpEquityTarget
+    : Math.max(0, data?.offering?.gpCapitalContribution ?? 0)
   const hasGpCoinvest = gpCapitalContribution > 0
-  const gpUnits = hasGpCoinvest ? Math.round((gpCapitalContribution * 100) / Math.max(unitPriceCents || 100, 1)) : 0
+  const gpUnits = hasGpCoinvest ? gpCapitalContribution : 0
   const grandTotalUnits = totalNormalizedLpUnits + gpUnits
-  const grandTotalAmount = totalAmount + gpCapitalContribution
+  const grandTotalAmount = totalEquity > 0 ? totalEquity : totalAmount + gpCapitalContribution
   const ownershipPctFromAmount = (amount: number) =>
     grandTotalAmount > 0 ? ((amount / grandTotalAmount) * 100).toFixed(2) : '0.00'
 

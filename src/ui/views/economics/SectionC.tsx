@@ -3,6 +3,7 @@ import { useEconomicsStore } from '../../../state/economicsStore'
 import { validateSectionC } from '../../../utils/economicsValidation'
 import type { FeeEntry, FeeToggle, FeeBasisType } from '../../../state/economicsTypes'
 import { CurrencyInput } from '../../components/CurrencyInput'
+import { Tooltip } from '../../components/HelpCard'
 
 // ─── Display helpers ──────────────────────────────────────────────────────────
 
@@ -104,7 +105,10 @@ const FeeRow: React.FC<FeeRowProps> = ({ fee, locked, onToggle, onChange, onRemo
         <div className="fee-row-details">
           <div className="instrument-form-grid">
             <div className="field-group">
-              <label className="field-label">Basis</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <label className="field-label" style={{ marginBottom: 0 }}>Basis</label>
+                <Tooltip title="Fee Basis" content="Determines how the fee is calculated. % of Purchase Price and % of Equity Raise are standard for acquisition and financing fees. % of Revenue is typical for asset management fees. Flat Dollar is a fixed amount regardless of deal size. % of Total Cost includes purchase price plus capital expenditures." />
+              </div>
               <select
                 className="field-input"
                 value={fee.basisType ?? ''}
