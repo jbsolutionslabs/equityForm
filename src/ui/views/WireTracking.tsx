@@ -4,7 +4,6 @@ import { useAppStore } from '../../state/store'
 import { useSubscriptionActions } from '../../api/hooks/useDealMutations'
 import { useEconomicsStore } from '../../state/economicsStore'
 import { computeSourcesAndUses } from '../../utils/sourcesAndUses'
-import { formatWireConfirmation } from '../../utils/taxIdFormatting'
 import { Tooltip, HelpCard } from '../components/HelpCard'
 import { CurrencyInput } from '../components/CurrencyInput'
 import ModuleProgress from '../components/ModuleProgress'
@@ -79,13 +78,13 @@ export const WireTracking: React.FC = () => {
   }
 
   const confirmWire = async () => {
-    const cleanConf = wireConf.replace(/-/g, '')
+    const cleanConf = wireConf.trim()
     if (!cleanConf) {
       notify('Please enter a wire confirmation number.', 'error')
       return
     }
-    if (cleanConf.length < 8) {
-      notify('Wire confirmation number must be at least 8 characters.', 'error')
+    if (cleanConf.length > 25) {
+      notify('Wire confirmation number must be 25 characters or fewer.', 'error')
       return
     }
     if (wireModal) {
@@ -346,10 +345,10 @@ export const WireTracking: React.FC = () => {
                 <input
                   id="wire-conf-num"
                   className="field-input"
-                  placeholder="e.g. 20260601-MMQFMP2U-000123"
+                  placeholder="Enter bank wire reference"
                   value={wireConf}
-                  onChange={(e) => setWireConf(formatWireConfirmation(e.target.value))}
-                  maxLength={24}
+                  onChange={(e) => setWireConf(e.target.value.slice(0, 25))}
+                  maxLength={25}
                   autoFocus
                   spellCheck={false}
                   style={{ fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}

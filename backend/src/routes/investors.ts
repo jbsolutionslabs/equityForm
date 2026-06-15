@@ -30,12 +30,20 @@ export const investorsRouter: FastifyPluginAsync = async (fastify) => {
       if (!parsed.success) {
         return reply.status(400).send({ error: 'Validation failed', issues: parsed.error.issues })
       }
-      const investor = await prisma.investor.create({
-        data: {
-          ...parsed.data,
-          dealId: req.params.dealId,
-          firmId: req.firmId,
-        },
+      const investor = await prisma.$transaction(async (tx) => {
+        const created = await tx.investor.create({
+          data: {
+            ...parsed.data,
+            payload: parsed.data.payload as any,
+            dealId: req.params.dealId,
+            firmId: req.firmId,
+          },
+        })
+        await tx.deal.updateMany({
+          where: { id: req.params.dealId, firmId: req.firmId, deletedAt: null },
+          data: { capTableLockedAt: null },
+        })
+        return created
       })
       return reply.status(201).send(investor)
     }
@@ -50,9 +58,21 @@ export const investorsRouter: FastifyPluginAsync = async (fastify) => {
       if (!parsed.success) {
         return reply.status(400).send({ error: 'Validation failed', issues: parsed.error.issues })
       }
-      const result = await prisma.investor.updateMany({
-        where: { id: req.params.id, dealId: req.params.dealId, firmId: req.firmId, deletedAt: null },
-        data: parsed.data,
+      const result = await prisma.$transaction(async (tx) => {
+        const updated = await tx.investor.updateMany({
+          where: { id: req.params.id, dealId: req.params.dealId, firmId: req.firmId, deletedAt: null },
+          data: {
+            ...parsed.data,
+            ...(parsed.data.payload ? { payload: parsed.data.payload as any } : {}),
+          },
+        })
+        if (updated.count > 0) {
+          await tx.deal.updateMany({
+            where: { id: req.params.dealId, firmId: req.firmId, deletedAt: null },
+            data: { capTableLockedAt: null },
+          })
+        }
+        return updated
       })
       if (result.count === 0) return reply.status(404).send({ error: 'Investor not found' })
       return reply.send({ ok: true })
@@ -64,9 +84,21 @@ export const investorsRouter: FastifyPluginAsync = async (fastify) => {
     '/:dealId/investors/:id',
     { preHandler: requireRole('GP', 'ADMIN') },
     async (req, reply) => {
-      const result = await prisma.investor.updateMany({
-        where: { id: req.params.id, dealId: req.params.dealId, firmId: req.firmId, deletedAt: null },
-        data: { deletedAt: new Date() },
+      const result = await prisma.$transaction(async (tx) => {
+        const deleted = await tx.investor.updateMany({
+          where: { id: req.params.id, dealId: req.params.dealId, firmId: req.firmId, deletedAt: null },
+          data: { deletedAt: new Date() },
+        })
+        if (deleted.count > 0) {
+          await tx.subscription.deleteMany({
+            where: { investorId: req.params.id, dealId: req.params.dealId, firmId: req.firmId },
+          })
+          await tx.deal.updateMany({
+            where: { id: req.params.dealId, firmId: req.firmId, deletedAt: null },
+            data: { capTableLockedAt: null },
+          })
+        }
+        return deleted
       })
       if (result.count === 0) return reply.status(404).send({ error: 'Investor not found' })
       return reply.send({ ok: true })

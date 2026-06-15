@@ -90,6 +90,13 @@ function hasOaCoreChanges(vals: Partial<FormValues>, current: Partial<FormValues
   })
 }
 
+const QUESTIONNAIRE_STEP_COUNT = 6
+
+function clampQuestionnaireStep(step: number | undefined) {
+  if (typeof step !== 'number' || Number.isNaN(step)) return 0
+  return Math.min(Math.max(step, 0), QUESTIONNAIRE_STEP_COUNT - 1)
+}
+
 export const DealSetup: React.FC = () => {
   const { dealId }    = useParams<{ dealId: string }>()
   const navigate      = useNavigate()
@@ -106,7 +113,7 @@ export const DealSetup: React.FC = () => {
   // Controlled stepper step — initialised from store (may be 0 before sync)
   const [currentStep, setCurrentStep] = useState(() => {
     const d = useAppStore.getState().deals[dealId!]?.data?.deal ?? {}
-    return (d as any).questionnaireStep ?? 0
+    return clampQuestionnaireStep((d as any).questionnaireStep)
   })
   // True once we have deal data in the store — false only on a hard refresh
   const dealInStore = useAppStore((s) => !!s.deals[dealId!])
@@ -153,7 +160,7 @@ export const DealSetup: React.FC = () => {
     // this is a hydration reset, not a user-initiated change
     suppressOaChangeGuardRef.current = true
     form.reset({ ...d, ...o, assetClass: d.assetClass ?? 'multifamily' })
-    setCurrentStep((d as any).questionnaireStep ?? 0)
+    setCurrentStep(clampQuestionnaireStep((d as any).questionnaireStep))
     window.setTimeout(() => { suppressOaChangeGuardRef.current = false }, 0)
   }, [syncQuery.isSuccess]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -226,23 +233,6 @@ export const DealSetup: React.FC = () => {
     return () => subscription.unsubscribe()
   }, [watch, oaStatus, dealData, offeringData]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const saveProgress = () => {
-    const vals = form.getValues()
-    const persistedVals = {
-      ...(dealData     as Partial<FormValues>),
-      ...(offeringData as Partial<FormValues>),
-      assetClass: (dealData as Partial<FormValues>).assetClass ?? 'multifamily',
-    }
-    if (oaStatus !== 'not_generated' && hasOaCoreChanges(vals, persistedVals)) {
-      setPendingVals(vals)
-      return
-    }
-    doSave(vals)
-    flushDeal()
-    flushOffering()
-    notify('Progress saved.')
-  }
-
   const confirmChangeAndRegenerate = () => {
     if (pendingVals) {
       suppressOaChangeGuardRef.current = true
@@ -274,19 +264,23 @@ export const DealSetup: React.FC = () => {
   }
 
   const onFinish = () => {
-    form.handleSubmit((vals) => {
-      const persistedVals = {
-        ...(dealData     as Partial<FormValues>),
-        ...(offeringData as Partial<FormValues>),
-        assetClass: (dealData as Partial<FormValues>).assetClass ?? 'multifamily',
-      }
-      doSave(vals)
-      if (oaStatus !== 'not_generated' && hasOaCoreChanges(vals, persistedVals)) {
-        resetOaStatus(dealId!)
-        notify('Deal details updated. The Operating Agreement is now outdated — visit the Operating Agreement step to regenerate it.')
-      }
-      navigate(`/deals/${dealId}/economics`)
-    })()
+    const vals = form.getValues()
+    const persistedVals = {
+      ...(dealData     as Partial<FormValues>),
+      ...(offeringData as Partial<FormValues>),
+      assetClass: (dealData as Partial<FormValues>).assetClass ?? 'multifamily',
+    }
+
+    doSave(vals)
+    flushDeal()
+    flushOffering()
+
+    if (oaStatus !== 'not_generated' && hasOaCoreChanges(vals, persistedVals)) {
+      resetOaStatus(dealId!)
+      notify('Deal details updated. The Operating Agreement is now outdated — visit the Operating Agreement step to regenerate it.')
+    }
+
+    navigate(`/deals/${dealId}/economics`)
   }
 
   return (
@@ -663,35 +657,7 @@ export const DealSetup: React.FC = () => {
             </div>
           </Step>
 
-          {/* ── Step 5: Bridge to offering ── */}
-          <Step>
-            <div className="form-section">
-              <div className="form-section-title">Entity Setup Complete.</div>
-              <p className="form-section-desc">
-                Your entity and property details are ready. Now let's configure the offering
-                structure — exemption type, minimum investment, and closing timeline.
-              </p>
-
-              <div className="info-box">
-                <div className="info-box-title">What comes next</div>
-                <p>
-                  The next 2 sections configure how you're raising capital. This data flows
-                  directly into your Operating Agreement and subscription documents.
-                  Deal economics (capital stack, preferred return, GP promote, and fees)
-                  will be set up in the Deal Economics step.
-                  You can also save your progress at any time using the button below.
-                </p>
-              </div>
-
-              <div style={{ marginTop: 16 }}>
-                <button type="button" onClick={saveProgress} className="btn btn-secondary">
-                  Save progress
-                </button>
-              </div>
-            </div>
-          </Step>
-
-          {/* ── Step 6: Offering exemption & solicitation ── */}
+          {/* ── Step 5: Offering exemption & solicitation ── */}
           <Step>
             <div className="form-section">
               <div className="form-section-title">How Are You Raising Capital?</div>
@@ -779,7 +745,7 @@ export const DealSetup: React.FC = () => {
             </div>
           </Step>
 
-          {/* ── Step 7: Investment parameters ── */}
+          {/* ── Step 6: Investment parameters ── */}
           <Step>
             <div className="form-section">
               <div className="form-section-title">Set Your Investment Parameters.</div>

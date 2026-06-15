@@ -673,7 +673,11 @@ export const useAppStore = create<AppState>()(
       set((s) => pd(s, dealId, (d) => {
         const normalized = { ...inv, derivedLastName: inv.derivedLastName ?? deriveLastName(inv.fullLegalName) }
         const investors = [...d.investors, normalized]
-        return recalcOwnerships({ ...d, investors })
+        const next = recalcOwnerships({ ...d, investors })
+        return {
+          ...next,
+          deal: { ...next.deal, capTableLockedAt: undefined },
+        }
       }), false, 'addInvestor'),
 
     updateInvestor: (dealId, id, patch) =>
@@ -683,15 +687,25 @@ export const useAppStore = create<AppState>()(
             ? { ...i, ...patch, derivedLastName: patch.derivedLastName ?? deriveLastName(patch.fullLegalName ?? i.fullLegalName) }
             : i,
         )
-        return recalcOwnerships({ ...d, investors })
+        const next = recalcOwnerships({ ...d, investors })
+        return {
+          ...next,
+          deal: { ...next.deal, capTableLockedAt: undefined },
+        }
       }), false, 'updateInvestor'),
 
     removeInvestor: (dealId, id) =>
-      set((s) => pd(s, dealId, (d) => ({
-        ...d,
-        investors:     d.investors.filter((i) => i.id !== id),
-        subscriptions: d.subscriptions.filter((sub) => sub.investorId !== id),
-      })), false, 'removeInvestor'),
+      set((s) => pd(s, dealId, (d) => {
+        const next = recalcOwnerships({
+          ...d,
+          investors:     d.investors.filter((i) => i.id !== id),
+          subscriptions: d.subscriptions.filter((sub) => sub.investorId !== id),
+        })
+        return {
+          ...next,
+          deal: { ...next.deal, capTableLockedAt: undefined },
+        }
+      }), false, 'removeInvestor'),
 
     setBlueSkyFilingStep: (dealId, stateCode, step, completed) =>
       set((s) => pd(s, dealId, (d) => {

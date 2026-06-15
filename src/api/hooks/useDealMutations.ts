@@ -15,6 +15,12 @@ import { useAppStore, Deal, Offering, Banking, SpvFormationItem, SpvFormation, O
 import { apiClient } from '../client'
 import { useAutoSave } from './useAutoSave'
 
+function normalizeOptionalDateTime(date?: string) {
+  if (!date) return undefined
+  if (date.includes('T')) return date
+  return `${date}T00:00:00.000Z`
+}
+
 // ─── Per-section save functions ───────────────────────────────────────────────
 
 export function useOfferingSave(dealId: string) {
@@ -203,6 +209,7 @@ export function useInvestorActions(dealId: string) {
   const removeInvestor = useAppStore((s) => s.removeInvestor)
 
   const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['deals'] })
     qc.invalidateQueries({ queryKey: ['deals', dealId] })
     qc.invalidateQueries({ queryKey: ['deals', dealId, 'investors'] })
   }
@@ -300,21 +307,22 @@ export function useSubscriptionActions(dealId: string) {
     recordWire: async (investorId: string, confirmation: string, amount?: number, date?: string) => {
       const sub = findSubscription(investorId)
       if (!sub?.id) throw new Error('Subscription record not found. Please refresh and try again.')
-      const paidAt = date || new Date().toISOString()
+      const normalizedWireDate = normalizeOptionalDateTime(date)
+      const paidAt = normalizedWireDate || new Date().toISOString()
       await apiClient.patch(`/deals/${dealId}/subscriptions/${sub.id}`, {
         status: 'PAID',
         paidAt,
         payload: {
           wireConfirmationNumber: confirmation,
           paidAmount: amount,
-          wireDate: date,
+          wireDate: normalizedWireDate,
         },
       })
-      recordWirePayment(dealId, investorId, confirmation, amount, date)
+      recordWirePayment(dealId, investorId, confirmation, amount, normalizedWireDate)
       setSubscriptionFields(dealId, investorId, {
         wireConfirmationNumber: confirmation,
         paidAmount: amount,
-        wireDate: date,
+        wireDate: normalizedWireDate,
         paidAt,
       })
       invalidate()
