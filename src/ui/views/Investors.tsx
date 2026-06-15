@@ -10,7 +10,6 @@ import { useInvestorActions, useSubscriptionActions } from '../../api/hooks/useD
 import { v4 as uuidv4 } from 'uuid'
 import { generateSubscriptionAgreementHtml } from '../../utils/pdfTemplate'
 import { generatePlaceholders } from '../../utils/placeholders'
-import { BLUE_SKY_RULE_506_BY_STATE } from '../../utils/blueSkyRules'
 import { FieldHelp, Tooltip, HelpCard } from '../components/HelpCard'
 import { formatEin, formatSsn } from '../../utils/taxIdFormatting'
 import { CurrencyInput } from '../components/CurrencyInput'
@@ -221,30 +220,6 @@ function fmtRuleValue(value?: string): string {
   return value
 }
 
-type BlueSkyChecklistStepKey = 'requirementsReviewed' | 'stateNoticeFiled' | 'stateFeePaid' | 'evidenceSaved'
-const blueSkyChecklistSteps: { key: BlueSkyChecklistStepKey; label: string; hint: string }[] = [
-  {
-    key: 'requirementsReviewed',
-    label: 'Review state-specific blue sky requirements',
-    hint: 'Confirm notice form type, deadlines, and exemptions for this jurisdiction.',
-  },
-  {
-    key: 'stateNoticeFiled',
-    label: 'File state notice (Form D notice filing)',
-    hint: 'Submit the required state notice filing after SEC Form D filing, per state rules.',
-  },
-  {
-    key: 'stateFeePaid',
-    label: 'Pay state filing fee',
-    hint: 'Record fee payment/waiver confirmation for this state filing.',
-  },
-  {
-    key: 'evidenceSaved',
-    label: 'Save evidence of filing and acceptance',
-    hint: 'Keep copy of submission, receipt, and acceptance confirmation in your deal records.',
-  },
-]
-
 /* ─── Status helpers ─────────────────────────────────────────────────────── */
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Generated',
@@ -265,8 +240,6 @@ export const Investors: React.FC = () => {
   const { dealId }                  = useParams<{ dealId: string }>()
   const navigate                    = useNavigate()
   const data                        = useAppStore((s) => s.deals[dealId!]?.data.investors ?? [])
-  const blueSkyFilings              = useAppStore((s) => s.deals[dealId!]?.data.blueSkyFilings ?? {})
-  const setBlueSkyFilingStep        = useAppStore((s) => s.setBlueSkyFilingStep)
   const syncBlueSkyFilingsForStates = useAppStore((s) => s.syncBlueSkyFilingsForStates)
   const appData    = useAppStore((s) => s.deals[dealId!]?.data)
   const subscriptions = appData?.subscriptions ?? []
@@ -309,10 +282,11 @@ export const Investors: React.FC = () => {
   const [wireInput, setWireInput] = useState<Record<number, string>>({})
   const [showWire, setShowWire]   = useState<Record<number, boolean>>({})
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
-  const blueSkyRef = useRef<HTMLDivElement>(null)
+  const [lastAddedInvestorId, setLastAddedInvestorId] = useState<string | null>(null)
 
   const notify = (msg: string, type: 'success' | 'error' = 'success') => {
     setNotification({ msg, type })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
     window.setTimeout(() => setNotification(null), 4000)
   }
 
@@ -365,42 +339,6 @@ export const Investors: React.FC = () => {
     }, 100)
   }
 
-  const scrollToBlueSky = () => {
-    if (!blueSkyRef.current) return
-    blueSkyRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    blueSkyRef.current.classList.remove('card--highlight')
-    blueSkyRef.current.classList.add('card--highlight')
-    window.setTimeout(() => blueSkyRef.current?.classList.remove('card--highlight'), 2500)
-  }
-
-  const findFirstIncompleteBlueSkyState = (investors: FormInvestor[]): string | null => {
-    const states = Array.from(
-      new Set(
-        investors
-          .map((inv) => normalizeStateCode(inv.state))
-          .filter((stateCode): stateCode is string => Boolean(stateCode)),
-      ),
-    ).sort((a, b) => a.localeCompare(b))
-
-    for (const code of states) {
-      const rule = BLUE_SKY_RULE_506_BY_STATE[code]
-      const requiresNotice = rule?.requiresFormDNoticeFiling !== false
-      if (!requiresNotice) continue
-
-      const filing = blueSkyFilings[code] || {
-        requirementsReviewed: false,
-        stateNoticeFiled: false,
-        stateFeePaid: false,
-        evidenceSaved: false,
-      }
-
-      const isComplete = blueSkyChecklistSteps.every((step) => Boolean(filing[step.key]))
-      if (!isComplete) return code
-    }
-
-    return null
-  }
-
   const toggleExpand = (idx: number) =>
     setExpanded((prev) => ({ ...prev, [idx]: !prev[idx] }))
 
@@ -422,6 +360,7 @@ export const Investors: React.FC = () => {
     append(blankForm)
     const newIdx = fields.length
     setExpanded((prev) => ({ ...prev, [newIdx]: true }))
+    setLastAddedInvestorId(id)
   }
 
   const onRemove = async (idx: number, id: string) => {
@@ -429,6 +368,7 @@ export const Investors: React.FC = () => {
     if (data.some((inv) => inv.id === id)) {
       try {
         await investorActions.remove(id)
+        notify('Investor deleted successfully.')
       } catch {
         notify('Failed to remove investor. Please try again.', 'error')
       }
@@ -442,6 +382,7 @@ export const Investors: React.FC = () => {
 
   const onSave: SubmitHandler<FormValues> = async (vals) => {
     const nonAccredited = vals.investors.filter((inv) => inv.accreditedInvestor !== true)
+    const investorIndexById = new Map(vals.investors.map((inv, index) => [inv.id, index]))
 
     if (offering.offeringExemption === '506(c)') {
       const bad = vals.investors.filter(
@@ -474,16 +415,6 @@ export const Investors: React.FC = () => {
       }
     }
 
-    const firstIncompleteBlueSkyState = findFirstIncompleteBlueSkyState(vals.investors)
-    if (firstIncompleteBlueSkyState) {
-      notify(
-        `Complete the blue sky filing checklist for ${stateDisplayLabel(firstIncompleteBlueSkyState)} before saving investors.`,
-        'error',
-      )
-      scrollToBlueSky()
-      return
-    }
-
     try {
       for (const inv of vals.investors) {
         const payload: Partial<Investor> = {
@@ -504,8 +435,6 @@ export const Investors: React.FC = () => {
       return
     }
 
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-
     if (nonAccredited.length > 0) {
       notify(
         `Investors saved with warning: ${nonAccredited.length} investor${nonAccredited.length === 1 ? '' : 's'} marked as not accredited. Confirm your exemption permits non-accredited investors.`,
@@ -514,7 +443,15 @@ export const Investors: React.FC = () => {
       return
     }
 
-    notify('Investors saved. Deal saved.')
+    if (lastAddedInvestorId) {
+      const addedIdx = investorIndexById.get(lastAddedInvestorId)
+      if (addedIdx !== undefined) {
+        setExpanded((prev) => ({ ...prev, [addedIdx]: false }))
+      }
+      setLastAddedInvestorId(null)
+    }
+
+    notify('Investors saved successfully.')
   }
 
   const onInvalid = (errors: FieldErrors<FormValues>) => {
@@ -557,41 +494,6 @@ export const Investors: React.FC = () => {
     syncBlueSkyFilingsForStates(dealId!, blueSkyStates.map(([code]) => code))
   }, [blueSkyStates, syncBlueSkyFilingsForStates])
 
-  const stateComplianceRows = blueSkyStates.map(([code, count]) => {
-    const rule = BLUE_SKY_RULE_506_BY_STATE[code]
-    const requiresNotice = rule?.requiresFormDNoticeFiling !== false
-    const filing =
-      blueSkyFilings[code] || {
-        requirementsReviewed: false,
-        stateNoticeFiled: false,
-        stateFeePaid: false,
-        evidenceSaved: false,
-      }
-    const completedCount = blueSkyChecklistSteps.reduce(
-      (sum, step) => sum + (filing[step.key] ? 1 : 0),
-      0,
-    )
-    const isComplete = requiresNotice
-      ? completedCount === blueSkyChecklistSteps.length
-      : true
-
-    return {
-      code,
-      count,
-      rule,
-      requiresNotice,
-      filing,
-      completedCount,
-      isComplete,
-    }
-  })
-
-  const rowsRequiringNotice = stateComplianceRows.filter((row) => row.requiresNotice)
-  const rowsNoNoticeRequired = stateComplianceRows.filter((row) => !row.requiresNotice)
-  const allBlueSkyCompliant = stateComplianceRows.length > 0 && stateComplianceRows.every((row) => row.isComplete)
-  const totalChecklistItems = rowsRequiringNotice.length * blueSkyChecklistSteps.length
-  const completedChecklistItems = rowsRequiringNotice.reduce((sum, row) => sum + row.completedCount, 0)
-
   return (
     <div className="page-enter">
       {/* Page header */}
@@ -618,7 +520,7 @@ export const Investors: React.FC = () => {
       </div>
 
       {/* Securities compliance notice */}
-      <div className="disclaimer-banner disclaimer-banner--critical">
+      <div className="disclaimer-banner disclaimer-banner--warning">
         <span className="disclaimer-banner-icon">ℹ</span>
         <div className="disclaimer-banner-body">
           <strong>Securities Compliance Notice</strong>
@@ -679,125 +581,7 @@ export const Investors: React.FC = () => {
         <div className="state-banner state-banner--warning" style={{ marginBottom: 16 }}>
           <span>⚠</span> Investor Intake is not complete yet. Add and save at least one investor to continue.
         </div>
-      ) : (
-        <div className="state-banner state-banner--success" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-          <span><span>✓</span> Investor Intake complete. Your investors have been saved successfully.</span>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={() => navigate(`/deals/${dealId}/signatures`)}
-          >
-            Continue to E-Signatures →
-          </button>
-        </div>
-      )}
-
-      {blueSkyStates.length > 0 && (
-        <>
-          <div
-            className={`state-banner ${allBlueSkyCompliant ? 'state-banner--success' : 'state-banner--warning'}`}
-            role="status"
-            aria-live="polite"
-            style={{ marginBottom: 12 }}
-          >
-            <span aria-hidden="true">{allBlueSkyCompliant ? '✓' : '⚠'}</span>
-            <div>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>
-                {allBlueSkyCompliant ? 'Blue sky compliance complete' : 'Blue sky filing checklist in progress'}
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--color-slate-700)' }}>
-                {allBlueSkyCompliant
-                  ? `All tracked state filing steps are complete (${completedChecklistItems}/${totalChecklistItems}).`
-                  : `Complete required filing tasks for investor states (${completedChecklistItems}/${totalChecklistItems} complete).`}{' '}
-                SEC Form D is generally due within 15 days after first sale.
-              </div>
-            </div>
-          </div>
-
-          <div className="card" style={{ marginBottom: 16 }} ref={blueSkyRef}>
-            <div className="card-header" style={{ fontSize: 15, marginBottom: 8 }}>
-              State blue sky filings (based on investor addresses)
-            </div>
-            <div style={{ fontSize: 12.5, color: 'var(--color-slate-600)', marginBottom: 14 }}>
-              Dataset basis: Rule 506 / Form D state notice layer (NASAA EFD schedule as of 2026-01-01).
-              Always confirm jurisdiction-specific updates with counsel.
-            </div>
-
-            <div style={{ display: 'grid', gap: 14 }}>
-              {stateComplianceRows.map((row) => (
-                <div
-                  key={row.code}
-                  style={{
-                    border: '1px solid var(--color-slate-200)',
-                    borderRadius: 10,
-                    padding: 12,
-                    background: row.isComplete ? 'rgba(24, 124, 70, 0.06)' : 'var(--color-slate-50)',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8, alignItems: 'center' }}>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>
-                      {row.rule?.stateName || STATE_CODE_TO_NAME[row.code] || row.code} ({row.code}){row.count > 1 ? ` · ${row.count} LPs` : ''}
-                    </div>
-                    <span className={`status-badge ${row.isComplete ? 'status-badge--paid' : 'status-badge--pending'}`} style={{ fontSize: 11 }}>
-                      {row.requiresNotice
-                        ? `${row.completedCount}/${blueSkyChecklistSteps.length} complete`
-                        : 'No notice filing required'}
-                    </span>
-                  </div>
-
-                  <div style={{ fontSize: 12.5, color: 'var(--color-slate-600)', marginBottom: 10, display: 'grid', gap: 4 }}>
-                    <div><strong>New notice fee:</strong> {fmtRuleValue(row.rule?.newNoticeFee)}</div>
-                    <div><strong>Fee type:</strong> {fmtRuleValue(row.rule?.feeType)}</div>
-                    {!!row.rule?.variableCalculation && (
-                      <div><strong>Variable calculation:</strong> {fmtRuleValue(row.rule?.variableCalculation)}</div>
-                    )}
-                    {!!row.rule?.lateFee && row.rule.lateFee !== 'No' && (
-                      <div><strong>Late filing fee:</strong> {row.rule.lateFee}</div>
-                    )}
-                    {row.rule?.hasRenewalOrAnnualSalesReportFee && (
-                      <div><strong>Renewal/annual fee:</strong> {fmtRuleValue(row.rule?.renewalOrAnnualSalesReportFee)}</div>
-                    )}
-                    {!!row.rule?.amendmentNoticeFee && row.rule.amendmentNoticeFee !== 'No' && (
-                      <div><strong>Amendment fee:</strong> {row.rule.amendmentNoticeFee}</div>
-                    )}
-                  </div>
-
-                  {row.requiresNotice ? (
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      {blueSkyChecklistSteps.map((step) => (
-                        <label key={step.key} className="checkbox-row" style={{ alignItems: 'flex-start', marginTop: 0 }}>
-                          <input
-                            type="checkbox"
-                            checked={Boolean(row.filing[step.key])}
-                            onChange={(e) => setBlueSkyFilingStep(dealId!, row.code, step.key, e.target.checked)}
-                          />
-                          <span className="checkbox-label" style={{ display: 'grid', gap: 2 }}>
-                            <span>{step.label}</span>
-                            <span style={{ fontSize: 12, color: 'var(--color-slate-500)', fontWeight: 400 }}>{step.hint}</span>
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="state-banner state-banner--success" style={{ marginBottom: 0 }}>
-                      <span aria-hidden="true">✓</span>
-                      <span style={{ fontSize: 12.5 }}>
-                        This state is marked as not requiring a Rule 506 Form D notice filing in the provided dataset.
-                      </span>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {rowsNoNoticeRequired.length > 0 && (
-              <div style={{ marginTop: 12, fontSize: 12, color: 'var(--color-slate-500)' }}>
-                No-notice states detected: {rowsNoNoticeRequired.map((row) => row.code).join(', ')}.
-              </div>
-            )}
-          </div>
-        </>
-      )}
+      ) : null}
 
       {/* Top actions */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -961,6 +745,8 @@ export const Investors: React.FC = () => {
                       <button
                         type="button"
                         className="link-btn"
+                        disabled={!subStatus || subStatus === 'pending'}
+                        title={!subStatus || subStatus === 'pending' ? 'Generate or send a subscription before recording a wire.' : undefined}
                         onClick={() => setShowWire((prev) => ({ ...prev, [idx]: !prev[idx] }))}
                       >
                         Record wire
@@ -974,23 +760,31 @@ export const Investors: React.FC = () => {
                           style={{ maxWidth: 280, height: 38 }}
                           placeholder="Wire confirmation #"
                           value={wireInput[idx] ?? ''}
-                          onChange={(e) => setWireInput((prev) => ({ ...prev, [idx]: e.target.value }))}
+                          onChange={(e) => setWireInput((prev) => ({ ...prev, [idx]: e.target.value.slice(0, 25) }))}
                           aria-label="Wire confirmation number"
+                          maxLength={25}
                         />
                         <button
                           type="button"
                           className="btn btn-primary btn-sm"
                           onClick={async () => {
                             const conf = wireInput[idx]?.trim()
-                            if (conf) {
-                              try {
-                                await subscriptionActions.recordWire(f.id, conf)
-                                setShowWire((prev) => ({ ...prev, [idx]: false }))
-                                setWireInput((prev) => ({ ...prev, [idx]: '' }))
-                                notify(`Wire recorded for ${name}.`)
-                              } catch {
-                                notify(`Failed to record wire for ${name}.`, 'error')
-                              }
+                            if (!conf) {
+                              notify('Please enter a wire confirmation number.', 'error')
+                              return
+                            }
+                            if (conf.length > 25) {
+                              notify('Wire confirmation number must be 25 characters or fewer.', 'error')
+                              return
+                            }
+                            try {
+                              await subscriptionActions.recordWire(f.id, conf)
+                              setShowWire((prev) => ({ ...prev, [idx]: false }))
+                              setWireInput((prev) => ({ ...prev, [idx]: '' }))
+                              notify(`Wire recorded for ${name}.`)
+                            } catch (err) {
+                              const msg = err instanceof Error ? err.message : 'Please try again.'
+                              notify(`Failed to record wire for ${name}. ${msg}`, 'error')
                             }
                           }}
                         >
@@ -1305,7 +1099,16 @@ export const Investors: React.FC = () => {
         )}
       </form>
 
-      <HelpCard text="Need help with accreditation verification, subscription agreement terms, or investor onboarding? Our legal team is happy to assist." />
+      <div className="state-banner state-banner--warning" style={{ marginTop: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+        <span><span>⚠</span> Check your investor states for blue sky filing requirements before moving forward.</span>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => navigate('/compliance')}
+        >
+          Check Blue Sky Compliance →
+        </button>
+      </div>
     </div>
   )
 }

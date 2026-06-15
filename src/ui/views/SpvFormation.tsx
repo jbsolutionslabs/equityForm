@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAppStore, isSpvFormed } from '../../state/store'
 import { apiClient } from '../../api/client'
@@ -33,6 +33,8 @@ export const SpvFormation: React.FC = () => {
   const data         = useAppStore((s) => s.deals[dealId!]?.data)
   const formed       = data ? isSpvFormed(data) : false
   const deal         = data?.deal ?? {}
+  const prevFormedRef = useRef(formed)
+  const topAnchorRef = useRef<HTMLDivElement>(null)
 
   const propertyState = (deal.propertyState || '').toUpperCase()
   const stateInfo     = propertyState ? STATE_REQUIREMENTS[propertyState] : null
@@ -43,6 +45,15 @@ export const SpvFormation: React.FC = () => {
     setNotification({ msg, type })
     window.setTimeout(() => setNotification(null), 4000)
   }
+
+  useEffect(() => {
+    if (formed && !prevFormedRef.current) {
+      window.setTimeout(() => {
+        topAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 0)
+    }
+    prevFormedRef.current = formed
+  }, [formed])
 
   // ── Step done flags ──────────────────────────────────────────────────────
   const s1Done = !!spvFormation.entityName?.complete
@@ -249,6 +260,7 @@ export const SpvFormation: React.FC = () => {
 
   return (
     <div className="page-enter">
+      <div ref={topAnchorRef} />
       <div className="page-header">
         <ModuleProgress
           moduleLabel="Legal"
