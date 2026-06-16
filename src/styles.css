@@ -5776,3 +5776,113 @@ pre {
   flex-shrink: 0;
   cursor: pointer;
 }
+
+/* ─── Rate Curve Panel ──────────────────────────────────────────────────────── */
+
+.rate-curve-panel {
+  background: var(--color-slate-50, #f8fafc);
+  border: 1px solid var(--color-slate-200, #e2e8f0);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-top: 4px;
+}
+
+.rate-curve-panel-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+/* Tenor / rate table */
+.curve-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  margin-bottom: 6px;
+}
+
+.curve-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-slate-500, #64748b);
+  padding: 4px 6px 6px;
+  border-bottom: 1px solid var(--color-slate-200, #e2e8f0);
+}
+
+.curve-table td {
+  padding: 4px 6px;
+  vertical-align: middle;
+}
+
+.curve-table-select,
+.curve-table-input {
+  padding: 4px 6px !important;
+  font-size: 12px !important;
+  height: auto !important;
+  min-height: unset !important;
+}
+
+.curve-table-input {
+  width: 90px;
+}
+
+/* Floor / cap two-column row */
+.curve-floor-cap-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+/* CSV paste area */
+.curve-paste-area {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-slate-200, #e2e8f0);
+}
+
+.curve-paste-box {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 11.5px;
+  padding: 8px;
+  border: 1px solid var(--color-slate-200, #e2e8f0);
+  border-radius: 6px;
+  background: white;
+  color: var(--color-slate-800, #1e293b);
+  resize: vertical;
+  margin-top: 4px;
+  margin-bottom: 6px;
+}
+
+.curve-paste-box:focus {
+  outline: none;
+  border-color: var(--color-accent, #2563eb);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.curve-paste-error {
+  font-size: 11.5px;
+  color: var(--color-error, #dc2626);
+  margin: 0 0 6px;
+}
+
+/* SVG preview chart */
+.curve-chart {
+  background: white;
+  border: 1px solid var(--color-slate-100, #f1f5f9);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.curve-chart--empty {
+  padding: 16px;
+  font-size: 12px;
+  color: var(--color-slate-400, #94a3b8);
+  text-align: center;
+}

@@ -7,6 +7,7 @@ import type {
   FeeEntry,
   DebtInstrument,
   AuditEntry,
+  RateCurve,
 } from './economicsTypes';
 
 const STORAGE_KEY = 'equityform:economics';
@@ -30,6 +31,7 @@ function defaultDeal(dealId: string): EconomicsDeal {
     capitalStack:    undefined,
     profitSplit:     undefined,
     fees:            defaultFees(),
+    rateCurves:      [],
     sectionAComplete: false,
     sectionBComplete: false,
     sectionCComplete: false,
@@ -87,6 +89,12 @@ interface EconomicsState {
   removeCustomFee(dealId: string, feeId: string): void;
   /** Replaces all fees from a template (re-ids every entry). */
   applyFeeTemplate(dealId: string, fees: FeeEntry[]): void;
+
+  // ── Rate curves ────────────────────────────────────────────────────────────
+  /** Creates a new deal-level rate curve. Returns the new curve id. */
+  addRateCurve(dealId: string, curve: Omit<RateCurve, 'id' | 'dealId'>): string;
+  updateRateCurve(dealId: string, curveId: string, patch: Partial<Omit<RateCurve, 'id' | 'dealId'>>): void;
+  removeRateCurve(dealId: string, curveId: string): void;
 
   // ── Completion flags ───────────────────────────────────────────────────────
   setSectionComplete(dealId: string, section: 'A' | 'B' | 'C', complete: boolean): void;
@@ -191,6 +199,42 @@ export const useEconomicsStore = create<EconomicsState>((set, get) => {
           ...deal.capitalStack,
           instruments: ids.map(id => map[id]).filter(Boolean) as DebtInstrument[],
         };
+      });
+    },
+
+    // ── Rate curves ────────────────────────────────────────────────────────
+
+    addRateCurve(dealId, curve) {
+      const id = uuidv4();
+      mutateDeal(dealId, deal => {
+        if (!deal.rateCurves) deal.rateCurves = [];
+        deal.rateCurves = [...deal.rateCurves, { ...curve, id, dealId }];
+      });
+      return id;
+    },
+
+    updateRateCurve(dealId, curveId, patch) {
+      mutateDeal(dealId, deal => {
+        if (!deal.rateCurves) return;
+        deal.rateCurves = deal.rateCurves.map(c =>
+          c.id === curveId ? { ...c, ...patch } : c
+        );
+      });
+    },
+
+    removeRateCurve(dealId, curveId) {
+      mutateDeal(dealId, deal => {
+        if (!deal.rateCurves) return;
+        deal.rateCurves = deal.rateCurves.filter(c => c.id !== curveId);
+        // Unlink any instruments pointing to this curve
+        if (deal.capitalStack) {
+          deal.capitalStack = {
+            ...deal.capitalStack,
+            instruments: deal.capitalStack.instruments.map(i =>
+              i.rateCurveId === curveId ? { ...i, rateCurveId: undefined } : i
+            ),
+          };
+        }
       });
     },
 

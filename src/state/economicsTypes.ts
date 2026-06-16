@@ -3,6 +3,16 @@
 export type LoanType = 'fixed' | 'floating' | 'io' | 'hybrid' | 'construction';
 export type LoanPosition = 'senior' | 'subordinate' | 'pref_equity';
 export type RateIndex = 'SOFR' | 'Prime' | 'Other';
+export type RateCurveIndex =
+  | 'TERM_SOFR_1M'
+  | 'TERM_SOFR_3M'
+  | 'SOFR_DAILY'
+  | 'PRIME'
+  | 'UST_1Y'
+  | 'UST_5Y'
+  | 'UST_10Y';
+export type RateCurveInterpolation = 'LINEAR' | 'FLAT_FORWARD';
+export type RateCurveSource = 'CHATHAM' | 'USER' | 'MANUAL_FLAT';
 export type PrepaymentPenaltyType =
   | 'step_down'
   | 'yield_maintenance'
@@ -32,6 +42,32 @@ export type FeeType =
   | 'financing'
   | 'custom';
 export type FeeToggle = 'yes' | 'no' | null; // null = not yet answered
+
+// ─── Rate curve ──────────────────────────────────────────────────────────────
+
+/** One user-supplied point on a forward rate curve. */
+export interface RateCurvePoint {
+  /** Months from loan start date. e.g. 1 = 1 month, 12 = 1 year, 60 = 5 years. */
+  tenorMonths: number;
+  /** Decimal index rate, e.g. 0.043 = 4.3%. Does NOT include spread. */
+  rate: number;
+}
+
+/**
+ * A deal-level forward rate curve shared by all floating instruments on the deal.
+ * floor and cap belong on the instrument (lender-specific); the curve is the index forecast.
+ */
+export interface RateCurve {
+  id: string;
+  dealId: string;
+  name: string;
+  index: RateCurveIndex;
+  /** How to fill gaps between user-supplied points. Default 'FLAT_FORWARD'. */
+  interpolation: RateCurveInterpolation;
+  /** Where the rates came from. USER = manually pasted by user. */
+  source: RateCurveSource;
+  points: RateCurvePoint[];
+}
 
 // ─── Section A: Capital Stack ────────────────────────────────────────────────
 
@@ -83,8 +119,13 @@ export interface DebtInstrument {
   otherIndexName?: string;       // when index = 'Other'
   spread?: number;               // decimal (0.02 = 200 bps over index)
   resetFrequency?: ResetFrequency;
-  manualRate?: number;           // flat fallback until Chatham integration (build step 15)
+  manualRate?: number;           // flat all-in fallback (index + spread) until curve is pasted
   chathamEnabled?: boolean;      // Chatham forward curve toggle; defaults to true for new instruments
+
+  // Rate curve linkage (floating instruments only)
+  rateCurveId?: string;          // references a RateCurve.id on EconomicsDeal.rateCurves
+  floor?: number;                // decimal; min index rate BEFORE adding spread (e.g. 0.00 = 0% floor)
+  cap?: number;                  // decimal or undefined; max all-in rate after spread (e.g. 0.12 = 12%)
 
   // Rate sub-type for IO / Hybrid / Construction (if true, use floating sub-fields)
   rateIsFloating?: boolean;
@@ -211,6 +252,7 @@ export interface EconomicsDeal {
   capitalStack?: CapitalStack;
   profitSplit?: ProfitSplitConfig;
   fees: FeeEntry[];            // always seeded with 5 standard entries
+  rateCurves: RateCurve[];     // deal-level forward rate curves; shared by floating instruments
 
   // Section completion
   sectionAComplete: boolean;
