@@ -254,11 +254,15 @@ function buildMFIncomeStatement(
   const gpDist   = entries.reduce((s, e) => s + e.distributions.actualGPDistribution, 0)
   const totalDist= lpDist + gpDist
   const lpPreferredReturn = entries.reduce((s, e) => s + e.distributions.calculatedLPPref, 0)
-  const lpReturnOfCapital = Math.min(lpDist, property.waterfall.lpEquity)
-  const lpPromote         = Math.max(0, lpDist - lpReturnOfCapital - lpPreferredReturn)
+  const lpPrefPaid        = Math.min(lpDist, lpPreferredReturn)
+  const lpAfterPref       = lpDist - lpPrefPaid
+  const lpReturnOfCapital = Math.min(lpAfterPref, property.waterfall.lpEquity)
+  const lpPromote         = Math.max(0, lpAfterPref - lpReturnOfCapital)
   const gpPreferredReturn = entries.length * ((property.waterfall.gpEquity * property.waterfall.lpPrefRateAnnual) / 12)
-  const gpReturnOfCapital = Math.min(gpDist, property.waterfall.gpEquity)
-  const gpPromote         = Math.max(0, gpDist - gpReturnOfCapital - gpPreferredReturn)
+  const gpPrefPaid        = Math.min(gpDist, gpPreferredReturn)
+  const gpAfterPref       = gpDist - gpPrefPaid
+  const gpReturnOfCapital = Math.min(gpAfterPref, property.waterfall.gpEquity)
+  const gpPromote         = Math.max(0, gpAfterPref - gpReturnOfCapital)
   const netIncome= noi - da - interest  // Net Income Per Books (principal is B/S, distributions are draws)
 
   const vacancyRate = gpr > 0 ? (vacancy + conc) / gpr : 0
@@ -314,11 +318,11 @@ function buildMFIncomeStatement(
     spacer('s6'),
 
     hdr('dist-hdr',    'DISTRIBUTIONS'),
+    line('lp-pref',    'LP — Preferred Return (from Economics)',  -lpPrefPaid),
     line('lp-roc',     'LP — Return of Capital',                  -lpReturnOfCapital),
-    line('lp-pref',    'LP — Preferred Return (from Economics)',  -lpPreferredReturn),
     line('lp-promote', 'LP — Promote',                            -lpPromote),
+    line('gp-pref',    'GP — Preferred Return (from Economics)',  -gpPrefPaid),
     line('gp-roc',     'GP — Return of Capital',                  -gpReturnOfCapital),
-    line('gp-pref',    'GP — Preferred Return (from Economics)',  -gpPreferredReturn),
     line('gp-promote', 'GP — Promote',                            -gpPromote),
     subtotal('total-dist', 'Total Distributions to Partners',     -totalDist),
     spacer('s7'),
@@ -389,11 +393,15 @@ function buildHotelIncomeStatement(
   const gpDist   = entries.reduce((s, e) => s + e.distributions.actualGPDistribution, 0)
   const totalDist= lpDist + gpDist
   const lpPreferredReturn = entries.reduce((s, e) => s + e.distributions.calculatedLPPref, 0)
-  const lpReturnOfCapital = Math.min(lpDist, _property.waterfall.lpEquity)
-  const lpPromote         = Math.max(0, lpDist - lpReturnOfCapital - lpPreferredReturn)
+  const lpPrefPaid        = Math.min(lpDist, lpPreferredReturn)
+  const lpAfterPref       = lpDist - lpPrefPaid
+  const lpReturnOfCapital = Math.min(lpAfterPref, _property.waterfall.lpEquity)
+  const lpPromote         = Math.max(0, lpAfterPref - lpReturnOfCapital)
   const gpPreferredReturn = entries.length * ((_property.waterfall.gpEquity * _property.waterfall.lpPrefRateAnnual) / 12)
-  const gpReturnOfCapital = Math.min(gpDist, _property.waterfall.gpEquity)
-  const gpPromote         = Math.max(0, gpDist - gpReturnOfCapital - gpPreferredReturn)
+  const gpPrefPaid        = Math.min(gpDist, gpPreferredReturn)
+  const gpAfterPref       = gpDist - gpPrefPaid
+  const gpReturnOfCapital = Math.min(gpAfterPref, _property.waterfall.gpEquity)
+  const gpPromote         = Math.max(0, gpAfterPref - gpReturnOfCapital)
   const netIncome= ebitda - da - interest
 
   return [
@@ -458,11 +466,11 @@ function buildHotelIncomeStatement(
     spacer('s9'),
 
     hdr('dist-hdr', 'DISTRIBUTIONS'),
+    line('lp-pref',     'LP — Preferred Return (from Economics)',  -lpPrefPaid),
     line('lp-roc',      'LP — Return of Capital',                  -lpReturnOfCapital),
-    line('lp-pref',     'LP — Preferred Return (from Economics)',  -lpPreferredReturn),
     line('lp-promote',  'LP — Promote',                            -lpPromote),
+    line('gp-pref',     'GP — Preferred Return (from Economics)',  -gpPrefPaid),
     line('gp-roc',      'GP — Return of Capital',                  -gpReturnOfCapital),
-    line('gp-pref',     'GP — Preferred Return (from Economics)',  -gpPreferredReturn),
     line('gp-promote',  'GP — Promote',                            -gpPromote),
     subtotal('total-dist','Total Distributions to Partners',       -totalDist),
     spacer('s10'),

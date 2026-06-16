@@ -13,13 +13,15 @@ import {
 import { SectionA } from './SectionA'
 import { SectionB } from './SectionB'
 import { SectionC } from './SectionC'
+import { SectionD } from './SectionD'
 
-type Tab = 'A' | 'B' | 'C'
+type Tab = 'A' | 'B' | 'C' | 'D'
 
 const TABS: { id: Tab; label: string; sub: string }[] = [
   { id: 'A', label: 'Capital Stack',  sub: 'Purchase, debt & leverage'  },
   { id: 'B', label: 'Profit Split',   sub: 'Pref return & waterfall'     },
   { id: 'C', label: 'Fees',           sub: 'Acquisition, AM & other'     },
+  { id: 'D', label: 'Exit & Returns', sub: 'Projections, IRR & waterfall' },
 ]
 
 export const Economics: React.FC = () => {
@@ -40,11 +42,13 @@ export const Economics: React.FC = () => {
   const doneA = deal.sectionAComplete
   const doneB = deal.sectionBComplete
   const doneC = deal.sectionCComplete
+  // Section D is supplementary — never "done", never blocks lock
 
   // Live error counts drive the "needs attention" indicator even before explicit complete
   const errCountA = validateSectionA(deal).length
   const errCountB = validateSectionB(deal).length
   const errCountC = validateSectionC(deal).length
+  const errCountD = 0 // supplementary; no gate
 
   const locked  = isEconomicsLocked(deal)
   const canLock = canLockEconomics(deal)
@@ -95,8 +99,8 @@ export const Economics: React.FC = () => {
       <div className="econ-tabs" role="tablist" aria-label="Economics sections">
         {TABS.map(t => {
           const active = tab === t.id
-          const done   = t.id === 'A' ? doneA : t.id === 'B' ? doneB : doneC
-          const errs   = t.id === 'A' ? errCountA : t.id === 'B' ? errCountB : errCountC
+          const done   = t.id === 'A' ? doneA : t.id === 'B' ? doneB : t.id === 'C' ? doneC : false
+          const errs   = t.id === 'A' ? errCountA : t.id === 'B' ? errCountB : t.id === 'C' ? errCountC : errCountD
           return (
             <button
               key={t.id}
@@ -123,6 +127,7 @@ export const Economics: React.FC = () => {
         {tab === 'A' && <SectionA dealId={dealId!} locked={locked} setTab={setTab} />}
         {tab === 'B' && <SectionB dealId={dealId!} locked={locked} setTab={setTab} />}
         {tab === 'C' && <SectionC dealId={dealId!} locked={locked} />}
+        {tab === 'D' && <SectionD dealId={dealId!} locked={locked} />}
       </div>
 
       {/* ── Lock / Unlock bar ── */}

@@ -15,6 +15,9 @@ import {
   fmtAccounting,
   fmtCurrency,
 } from '../../../utils/financialComputations'
+import { useEconomicsStore } from '../../../state/economicsStore'
+import { distribute } from '../../../utils/waterfallEngine'
+import type { WaterfallState } from '../../../state/economicsTypes'
 import ModuleProgress from '../../components/ModuleProgress'
 import type {
   AccountingProperty,
@@ -118,10 +121,14 @@ export const LineItemEntry: React.FC<Props> = ({
   const upsertEntry = useAccountingStore((s) => s.upsertEntry)
   const deleteEntry = useAccountingStore((s) => s.deleteEntry)
 
+  // Economics store — for auto-propose from waterfall
+  const economicsDeal = useEconomicsStore(s => s.deals.find(d => d.dealId === property.dealId))
+
   const [tab, setTab] = useState<Tab>('pnl')
   const [saving, setSaving] = useState(false)
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
   const [showImportModal, setShowImportModal] = useState(false)
+  const [wfProposed, setWfProposed] = useState(false) // tracks if fields were auto-filled
 
   // Build initial state from existing entry or defaults
   const buildInitial = (): Omit<MonthlyEntry, 'id' | 'createdAt' | 'updatedAt'> => {
@@ -197,6 +204,40 @@ export const LineItemEntry: React.FC<Props> = ({
 
   const patchDist = (key: keyof DistributionEntry, val: number | boolean | string) =>
     setEntry((e) => ({ ...e, distributions: { ...e.distributions, [key]: val } }))
+
+  function handleAutoPropose() {
+    const profitSplit = economicsDeal?.profitSplit
+    if (!profitSplit) return
+
+    const stack = economicsDeal?.capitalStack
+    const purchasePrice = stack?.purchasePrice ?? 0
+    const totalDebt = (stack?.instruments ?? []).reduce((s, i) => s + (i.loanAmount ?? 0), 0)
+    const totalEquity = Math.max(0, purchasePrice - totalDebt)
+    const lpEquity = totalEquity * (stack?.lpEquityPct ?? 0.9)
+    const gpEquity = totalEquity - lpEquity
+
+    const initialState: WaterfallState = {
+      unreturnedCapital: totalEquity,
+      accruedPrefUnpaid: entry.distributions.calculatedLPPref,
+      lpFlows: [{ date: period, amount: -lpEquity }],
+    }
+
+    const lpOwnership = totalEquity > 0 ? lpEquity / totalEquity : 0.9
+    const totalCash = entry.distributions.actualLPDistribution + entry.distributions.actualGPDistribution
+    const ncf = totalCash > 0 ? totalCash : Math.max(0,
+      (entry.pnl as Record<string, number>).grossPotentialRent ?? 0
+    )
+
+    if (ncf <= 0) return
+
+    const { result } = distribute(ncf, lpOwnership, profitSplit, initialState)
+
+    patchDist('actualLPDistribution', result.lpPref + result.lpRoC + result.lpPromote)
+    patchDist('actualGPDistribution', result.gpRoC + result.gpPromote)
+    patchDist('isOverridden', true)
+    patchDist('overrideNote', 'Auto-proposed from waterfall engine (unconfirmed)')
+    setWfProposed(true)
+  }
 
   const applyImportResults = (result: MultiMonthImportResult) => {
     const months = Object.keys(result.months)
@@ -974,7 +1015,27 @@ export const LineItemEntry: React.FC<Props> = ({
               </div>
             )}
 
-            <SectionHeader label="LP PREFERRED RETURN" />
+            <SectionHeader
+              label="LP PREFERRED RETURN"
+              right={
+                !readOnly && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {wfProposed && (
+                      <span className="dist-propose-badge">Proposed</span>
+                    )}
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={handleAutoPropose}
+                      disabled={!economicsDeal?.profitSplit}
+                      title={!economicsDeal?.profitSplit ? 'Link economics first — set up profit split in Economics module' : 'Pre-fill LP/GP distributions from waterfall engine (you must save to commit)'}
+                    >
+                      Auto-propose from Waterfall
+                    </button>
+                  </div>
+                )
+              }
+            />
             <NumRow
               label="Calculated LP Pref (auto)"
               value={dist.calculatedLPPref}

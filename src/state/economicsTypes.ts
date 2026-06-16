@@ -253,6 +253,7 @@ export interface EconomicsDeal {
   profitSplit?: ProfitSplitConfig;
   fees: FeeEntry[];            // always seeded with 5 standard entries
   rateCurves: RateCurve[];     // deal-level forward rate curves; shared by floating instruments
+  exitScenarios: ExitScenario[];
 
   // Section completion
   sectionAComplete: boolean;
@@ -369,4 +370,103 @@ export interface AmortizationSchedule {
   totalInterest: number;
   totalPrincipal: number;
   totalPayments: number;
+}
+
+// ─── Waterfall engine ────────────────────────────────────────────────────────
+
+/** Cumulative deal-level state passed through each distribute() call */
+export interface WaterfallState {
+  unreturnedCapital: number;       // total LP + GP unreturned equity (decrements with each RoC payout)
+  accruedPrefUnpaid: number;       // cumulative LP pref that has accrued but not been paid
+  lpFlows: { date: string; amount: number }[]; // negative = LP outflow (equity in), positive = inflow
+}
+
+/** Proposed allocation from distribute() — GP can override before committing */
+export interface DistributionResult {
+  lpPref:    number;
+  lpRoC:     number;
+  lpPromote: number;
+  gpRoC:     number;
+  gpPromote: number;
+  proposed:  true;  // always true; signals this is unconfirmed
+}
+
+// ─── Exit / Projections ──────────────────────────────────────────────────────
+
+export type ExitEventType = 'none' | 'SALE' | 'REFI';
+export type SaleValuationMethod = 'cap_rate' | 'per_unit' | 'gross_multiple' | 'direct';
+export type RefiSizingMethod = 'ltv' | 'dscr' | 'debt_yield';
+
+export interface SaleConfig {
+  valuationMethod: SaleValuationMethod;
+  capRate?: number;          // decimal (0.055 = 5.5%)
+  perUnitValue?: number;     // dollar per unit
+  grossMultiple?: number;    // e.g. 1.8
+  directValue?: number;      // override gross price
+  closingCostsPct: number;   // decimal (0.02 = 2%)
+}
+
+export interface RefiConfig {
+  sizingMethod: RefiSizingMethod;
+  target: number;            // LTV decimal, DSCR multiplier, or DY decimal
+  newRate: number;           // decimal
+  newAmortYears: number;
+  newTermYears: number;
+  isInterestOnly?: boolean;
+  cashOutDistribute: boolean; // distribute net cash-out proceeds through waterfall
+}
+
+export interface ExitScenarioAssumptions {
+  holdYears: number;          // 1–20
+  beginNoi: number;           // Year 1 NOI (dollar)
+  noiGrowthPct: number;       // decimal annual (0.03 = 3%)
+  reservesPerYear: number;    // replacement reserve deducted from NCF each year
+  eventType: ExitEventType;
+  eventYear: number;          // which year the event happens (1-based)
+  sale?: SaleConfig;
+  refi?: RefiConfig;
+  saleAfterRefi?: { saleYear: number; sale: SaleConfig };
+}
+
+export interface LoanPayoff {
+  instrumentId: string;
+  balance: number;
+  penalty: number;
+  method: PrepaymentPenaltyType;
+}
+
+export interface CapitalEvent {
+  type: ExitEventType;
+  year: number;
+  grossValue: number;
+  closingCosts: number;
+  loanPayoffs: LoanPayoff[];
+  netProceeds: number;
+  proposedDistribution?: DistributionResult;
+}
+
+export interface YearProjection {
+  year: number;
+  beginNoi: number;
+  noi: number;           // after growth
+  debtService: number;   // from amortization schedule for that year
+  cashToInvestors: number; // noi - debtService - reserves
+  loanBalance: number;   // end of year balance
+  event?: CapitalEvent;  // populated only in event year
+}
+
+export interface ProjectionResult {
+  years: YearProjection[];
+  lpIrr?: number;          // decimal; undefined if negative cashflows only
+  gpIrr?: number;
+  lpEquityMultiple?: number;
+  lpCashOnCash?: number;   // avg annual distributions / lpEquity
+}
+
+export interface ExitScenario {
+  id: string;
+  name: string;
+  assumptions: ExitScenarioAssumptions;
+  result?: ProjectionResult;
+  createdAt: string;
 }
