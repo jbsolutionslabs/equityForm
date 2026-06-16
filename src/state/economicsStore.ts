@@ -7,7 +7,11 @@ import type {
   FeeEntry,
   DebtInstrument,
   AuditEntry,
+  RateCurve,
+  ExitScenario,
+  ExitScenarioAssumptions,
 } from './economicsTypes';
+import { computeProjection } from '../utils/waterfallEngine';
 
 const STORAGE_KEY = 'equityform:economics';
 
@@ -30,6 +34,8 @@ function defaultDeal(dealId: string): EconomicsDeal {
     capitalStack:    undefined,
     profitSplit:     undefined,
     fees:            defaultFees(),
+    rateCurves:      [],
+    exitScenarios:   [],
     sectionAComplete: false,
     sectionBComplete: false,
     sectionCComplete: false,
@@ -45,7 +51,13 @@ function defaultDeal(dealId: string): EconomicsDeal {
 function load(): EconomicsDeal[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const deals: EconomicsDeal[] = JSON.parse(raw);
+    // Migrate: ensure exitScenarios exists on old deals
+    return deals.map(d => ({
+      ...d,
+      exitScenarios: d.exitScenarios ?? [],
+    }));
   } catch {
     return [];
   }
@@ -88,6 +100,12 @@ interface EconomicsState {
   /** Replaces all fees from a template (re-ids every entry). */
   applyFeeTemplate(dealId: string, fees: FeeEntry[]): void;
 
+  // ── Rate curves ────────────────────────────────────────────────────────────
+  /** Creates a new deal-level rate curve. Returns the new curve id. */
+  addRateCurve(dealId: string, curve: Omit<RateCurve, 'id' | 'dealId'>): string;
+  updateRateCurve(dealId: string, curveId: string, patch: Partial<Omit<RateCurve, 'id' | 'dealId'>>): void;
+  removeRateCurve(dealId: string, curveId: string): void;
+
   // ── Completion flags ───────────────────────────────────────────────────────
   setSectionComplete(dealId: string, section: 'A' | 'B' | 'C', complete: boolean): void;
 
@@ -97,6 +115,12 @@ interface EconomicsState {
 
   // ── Pref equity warning ────────────────────────────────────────────────────
   markPrefEquityWarningSeen(dealId: string): void;
+
+  // ── Exit scenarios ─────────────────────────────────────────────────────────
+  addExitScenario(dealId: string, assumptions: ExitScenarioAssumptions, name?: string): string;
+  updateExitScenario(dealId: string, scenarioId: string, patch: Partial<Pick<ExitScenario, 'name' | 'assumptions'>>): void;
+  removeExitScenario(dealId: string, scenarioId: string): void;
+  runProjection(dealId: string, scenarioId: string): void;
 
   // ── Audit ──────────────────────────────────────────────────────────────────
   addAuditEntry(dealId: string, action: string, note?: string, changedFields?: string[]): void;
@@ -194,6 +218,42 @@ export const useEconomicsStore = create<EconomicsState>((set, get) => {
       });
     },
 
+    // ── Rate curves ────────────────────────────────────────────────────────
+
+    addRateCurve(dealId, curve) {
+      const id = uuidv4();
+      mutateDeal(dealId, deal => {
+        if (!deal.rateCurves) deal.rateCurves = [];
+        deal.rateCurves = [...deal.rateCurves, { ...curve, id, dealId }];
+      });
+      return id;
+    },
+
+    updateRateCurve(dealId, curveId, patch) {
+      mutateDeal(dealId, deal => {
+        if (!deal.rateCurves) return;
+        deal.rateCurves = deal.rateCurves.map(c =>
+          c.id === curveId ? { ...c, ...patch } : c
+        );
+      });
+    },
+
+    removeRateCurve(dealId, curveId) {
+      mutateDeal(dealId, deal => {
+        if (!deal.rateCurves) return;
+        deal.rateCurves = deal.rateCurves.filter(c => c.id !== curveId);
+        // Unlink any instruments pointing to this curve
+        if (deal.capitalStack) {
+          deal.capitalStack = {
+            ...deal.capitalStack,
+            instruments: deal.capitalStack.instruments.map(i =>
+              i.rateCurveId === curveId ? { ...i, rateCurveId: undefined } : i
+            ),
+          };
+        }
+      });
+    },
+
     // ── Section B ──────────────────────────────────────────────────────────
 
     updateProfitSplit(dealId, config) {
@@ -280,6 +340,74 @@ export const useEconomicsStore = create<EconomicsState>((set, get) => {
     markPrefEquityWarningSeen(dealId) {
       mutateDeal(dealId, deal => {
         deal.hasSeenPrefEquityWarning = true;
+      });
+    },
+
+    // ── Exit scenarios ─────────────────────────────────────────────────────
+
+    addExitScenario(dealId, assumptions, name) {
+      const id = uuidv4();
+      mutateDeal(dealId, deal => {
+        if (!deal.exitScenarios) deal.exitScenarios = [];
+        deal.exitScenarios = [
+          ...deal.exitScenarios,
+          {
+            id,
+            name: name ?? `Scenario ${deal.exitScenarios.length + 1}`,
+            assumptions,
+            createdAt: new Date().toISOString(),
+          },
+        ];
+      });
+      return id;
+    },
+
+    updateExitScenario(dealId, scenarioId, patch) {
+      mutateDeal(dealId, deal => {
+        if (!deal.exitScenarios) return;
+        deal.exitScenarios = deal.exitScenarios.map(s =>
+          s.id === scenarioId ? { ...s, ...patch } : s
+        );
+      });
+    },
+
+    removeExitScenario(dealId, scenarioId) {
+      mutateDeal(dealId, deal => {
+        if (!deal.exitScenarios) return;
+        deal.exitScenarios = deal.exitScenarios.filter(s => s.id !== scenarioId);
+      });
+    },
+
+    runProjection(dealId, scenarioId) {
+      const deal = get().getDeal(dealId);
+      if (!deal) return;
+      const scenario = deal.exitScenarios?.find(s => s.id === scenarioId);
+      if (!scenario || !deal.profitSplit) return;
+
+      const instruments = deal.capitalStack?.instruments ?? [];
+      const purchasePrice = deal.capitalStack?.purchasePrice ?? 0;
+      const lpEquityPct = deal.capitalStack?.lpEquityPct ?? 0.9;
+      const totalDebt = instruments.reduce((s, i) => s + (i.loanAmount ?? 0), 0);
+      const totalEquityPlug = Math.max(0, purchasePrice - totalDebt);
+      const lpEquity = totalEquityPlug * lpEquityPct;
+      const gpEquity = totalEquityPlug * (1 - lpEquityPct);
+      const closingDate = deal.capitalStack?.closingDate?.slice(0, 7) ??
+        new Date().toISOString().slice(0, 7);
+
+      const result = computeProjection(
+        deal.profitSplit,
+        scenario.assumptions,
+        instruments,
+        lpEquity,
+        gpEquity,
+        closingDate,
+      );
+
+      mutateDeal(dealId, d => {
+        if (!d.exitScenarios) return;
+        d.exitScenarios = d.exitScenarios.map(s =>
+          s.id === scenarioId ? { ...s, result } : s
+        );
       });
     },
 

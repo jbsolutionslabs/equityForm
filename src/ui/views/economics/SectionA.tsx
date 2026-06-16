@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { useEconomicsStore } from '../../../state/economicsStore'
 import { validateSectionA } from '../../../utils/economicsValidation'
 import { computeSourcesAndUses, positionLabel } from '../../../utils/sourcesAndUses'
-import { buildAmortizationSchedule } from '../../../utils/amortization'
+import { buildAmortizationSchedule, interpolateCurve } from '../../../utils/amortization'
 import type {
   DebtInstrument,
   LoanType,
@@ -16,6 +16,10 @@ import type {
   PrefCompounding,
   PrepaymentPenaltyType,
   ResetFrequency,
+  RateCurve,
+  RateCurveIndex,
+  RateCurveInterpolation,
+  RateCurvePoint,
 } from '../../../state/economicsTypes'
 import { CurrencyInput } from '../../components/CurrencyInput'
 import { Tooltip } from '../../components/HelpCard'
@@ -122,9 +126,9 @@ function instrumentSummaryMeta(inst: DebtInstrument): string {
 
 // ─── Amortization preview ─────────────────────────────────────────────────────
 
-const AmortPreview: React.FC<{ instrument: DebtInstrument }> = ({ instrument }) => {
+const AmortPreview: React.FC<{ instrument: DebtInstrument; curve?: RateCurve }> = ({ instrument, curve }) => {
   const [expanded, setExpanded] = useState(false)
-  const schedule = buildAmortizationSchedule(instrument)
+  const schedule = buildAmortizationSchedule(instrument, curve)
   const rows     = expanded ? schedule.rows : schedule.rows.slice(0, 12)
 
   const fmt = (n: number) => fmtCurrency(n)
@@ -195,6 +199,308 @@ const AmortPreview: React.FC<{ instrument: DebtInstrument }> = ({ instrument }) 
   )
 }
 
+// ─── Rate Curve helpers ───────────────────────────────────────────────────────
+
+const INDEX_LABELS: Record<RateCurveIndex, string> = {
+  TERM_SOFR_1M:  'Term SOFR 1M',
+  TERM_SOFR_3M:  'Term SOFR 3M',
+  SOFR_DAILY:    'Daily SOFR',
+  PRIME:         'Prime Rate',
+  UST_1Y:        'Treasury 1Y',
+  UST_5Y:        'Treasury 5Y',
+  UST_10Y:       'Treasury 10Y',
+}
+
+const PRESET_TENORS: { label: string; months: number }[] = [
+  { label: '1M',  months: 1   },
+  { label: '3M',  months: 3   },
+  { label: '6M',  months: 6   },
+  { label: '1Y',  months: 12  },
+  { label: '2Y',  months: 24  },
+  { label: '3Y',  months: 36  },
+  { label: '5Y',  months: 60  },
+  { label: '7Y',  months: 84  },
+  { label: '10Y', months: 120 },
+]
+
+function tenorLabel(months: number): string {
+  const preset = PRESET_TENORS.find(t => t.months === months)
+  if (preset) return preset.label
+  if (months % 12 === 0) return `${months / 12}Y`
+  return `${months}M`
+}
+
+function parseTenor(s: string): number | null {
+  const cleaned = s.trim().toUpperCase()
+  const mMatch  = cleaned.match(/^(\d+(?:\.\d+)?)M$/)
+  const yMatch  = cleaned.match(/^(\d+(?:\.\d+)?)Y$/)
+  if (mMatch) return Math.round(parseFloat(mMatch[1]))
+  if (yMatch) return Math.round(parseFloat(yMatch[1]) * 12)
+  return null
+}
+
+/** SVG mini-chart showing the month-by-month interpolated index rate. */
+const CurveChart: React.FC<{ curve: RateCurve; termMonths: number }> = ({ curve, termMonths }) => {
+  if (curve.points.length === 0 || termMonths === 0) {
+    return (
+      <div className="curve-chart curve-chart--empty">
+        Add rate points above to see the preview.
+      </div>
+    )
+  }
+
+  const months = Math.min(termMonths, 360)
+  const rates  = Array.from({ length: months }, (_, i) => interpolateCurve(curve, i))
+  const minR   = Math.min(...rates)
+  const maxR   = Math.max(...rates)
+  const rangeR = maxR - minR || 0.01
+
+  const W = 400, H = 80
+  const PL = 36, PR = 8, PT = 8, PB = 20
+  const innerW = W - PL - PR
+  const innerH = H - PT - PB
+
+  const xOf = (i: number) => PL + (i / (months - 1)) * innerW
+  const yOf = (r: number) => PT + (1 - (r - minR) / rangeR) * innerH
+
+  const linePts = rates.map((r, i) => `${xOf(i).toFixed(1)},${yOf(r).toFixed(1)}`).join(' ')
+  const sortedPts = [...curve.points].sort((a, b) => a.tenorMonths - b.tenorMonths)
+
+  // Y-axis labels (min, mid, max as %)
+  const yLabels = [maxR, (maxR + minR) / 2, minR]
+
+  return (
+    <div className="curve-chart">
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H }} aria-label="Rate curve preview">
+        {/* Grid lines */}
+        {yLabels.map((r, i) => {
+          const y = yOf(r)
+          return (
+            <g key={i}>
+              <line x1={PL} y1={y} x2={W - PR} y2={y} stroke="var(--color-slate-100)" strokeWidth={0.5} />
+              <text x={PL - 3} y={y + 3.5} textAnchor="end" fontSize={8} fill="var(--color-slate-400)">
+                {(r * 100).toFixed(2)}%
+              </text>
+            </g>
+          )
+        })}
+        {/* Line */}
+        <polyline
+          points={linePts}
+          fill="none"
+          stroke="var(--color-accent)"
+          strokeWidth={1.5}
+        />
+        {/* User-input tenor dots */}
+        {sortedPts.filter(p => p.tenorMonths < months).map((p, i) => (
+          <circle
+            key={i}
+            cx={xOf(p.tenorMonths).toFixed(1)}
+            cy={yOf(p.rate).toFixed(1)}
+            r={3}
+            fill="var(--color-accent)"
+            stroke="white"
+            strokeWidth={1}
+          />
+        ))}
+        {/* X-axis label */}
+        <text x={PL} y={H - 2} fontSize={8} fill="var(--color-slate-400)">Month 0</text>
+        <text x={W - PR} y={H - 2} fontSize={8} textAnchor="end" fill="var(--color-slate-400)">
+          Month {months}
+        </text>
+      </svg>
+    </div>
+  )
+}
+
+/** Editable panel for a deal-level rate curve (shown inside floating instrument cards). */
+const RateCurvePanel: React.FC<{
+  curve:      RateCurve
+  termMonths: number
+  locked:     boolean
+  onChange:   (patch: Partial<Omit<RateCurve, 'id' | 'dealId'>>) => void
+}> = ({ curve, termMonths, locked, onChange }) => {
+  const [csvText,    setCsvText]    = useState('')
+  const [csvError,   setCsvError]   = useState<string | null>(null)
+
+  const sortedPoints = [...curve.points].sort((a, b) => a.tenorMonths - b.tenorMonths)
+
+  function patchPoint(idx: number, patch: Partial<RateCurvePoint>) {
+    const next = sortedPoints.map((p, i) => i === idx ? { ...p, ...patch } : p)
+    onChange({ points: next })
+  }
+
+  function addRow() {
+    const usedMonths = new Set(curve.points.map(p => p.tenorMonths))
+    const next = PRESET_TENORS.find(t => !usedMonths.has(t.months))
+    onChange({ points: [...curve.points, { tenorMonths: next?.months ?? 12, rate: 0 }] })
+  }
+
+  function removeRow(idx: number) {
+    onChange({ points: sortedPoints.filter((_, i) => i !== idx) })
+  }
+
+  function importCSV() {
+    setCsvError(null)
+    const lines = csvText.trim().split(/\r?\n/).filter(Boolean)
+    const parsed: RateCurvePoint[] = []
+    for (const line of lines) {
+      const [tenorStr, rateStr] = line.split(',').map(s => s.trim())
+      const tenorMonths = parseTenor(tenorStr ?? '')
+      const rate        = parseFloat(rateStr ?? '')
+      if (tenorMonths === null || isNaN(rate)) {
+        setCsvError(`Could not parse line: "${line}" — expected format: 1Y, 4.30`)
+        return
+      }
+      parsed.push({ tenorMonths, rate: rate / 100 })
+    }
+    if (parsed.length === 0) { setCsvError('No valid rows found.'); return }
+    // Merge: overwrite same tenors, add new ones
+    const existing = curve.points.filter(p => !parsed.some(q => q.tenorMonths === p.tenorMonths))
+    onChange({ points: [...existing, ...parsed].sort((a, b) => a.tenorMonths - b.tenorMonths) })
+    setCsvText('')
+  }
+
+  return (
+    <div className="rate-curve-panel">
+      <div className="rate-curve-panel-header">
+        <div className="field-group" style={{ marginBottom: 0 }}>
+          <label className="field-label">Index</label>
+          <select
+            className="field-input"
+            value={curve.index}
+            disabled={locked}
+            onChange={e => onChange({ index: e.target.value as RateCurveIndex })}
+          >
+            {(Object.keys(INDEX_LABELS) as RateCurveIndex[]).map(k => (
+              <option key={k} value={k}>{INDEX_LABELS[k]}</option>
+            ))}
+          </select>
+        </div>
+        <div className="field-group" style={{ marginBottom: 0 }}>
+          <label className="field-label">Interpolation</label>
+          <select
+            className="field-input"
+            value={curve.interpolation}
+            disabled={locked}
+            onChange={e => onChange({ interpolation: e.target.value as RateCurveInterpolation })}
+          >
+            <option value="FLAT_FORWARD">Stair-step (SOFR default)</option>
+            <option value="LINEAR">Linear</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Tenor / rate table */}
+      <table className="curve-table">
+        <thead>
+          <tr>
+            <th>Tenor</th>
+            <th>Rate (%)</th>
+            {!locked && <th />}
+          </tr>
+        </thead>
+        <tbody>
+          {sortedPoints.length === 0 ? (
+            <tr>
+              <td colSpan={locked ? 2 : 3} style={{ color: 'var(--color-slate-400)', fontSize: 12, textAlign: 'center', padding: '10px 0' }}>
+                No points — add rows or paste CSV below.
+              </td>
+            </tr>
+          ) : sortedPoints.map((pt, idx) => (
+            <tr key={idx}>
+              <td>
+                <select
+                  className="field-input curve-table-select"
+                  value={pt.tenorMonths}
+                  disabled={locked}
+                  onChange={e => patchPoint(idx, { tenorMonths: parseInt(e.target.value, 10) })}
+                >
+                  {PRESET_TENORS.map(t => (
+                    <option key={t.months} value={t.months}>{t.label}</option>
+                  ))}
+                  {!PRESET_TENORS.some(t => t.months === pt.tenorMonths) && (
+                    <option value={pt.tenorMonths}>{tenorLabel(pt.tenorMonths)}</option>
+                  )}
+                </select>
+              </td>
+              <td>
+                <input
+                  type="number"
+                  className="field-input curve-table-input"
+                  value={pt.rate === 0 ? '' : parseFloat((pt.rate * 100).toFixed(4))}
+                  min={0}
+                  max={30}
+                  step={0.01}
+                  placeholder="e.g. 4.30"
+                  disabled={locked}
+                  onChange={e => {
+                    const v = parseFloat(e.target.value)
+                    patchPoint(idx, { rate: isNaN(v) ? 0 : v / 100 })
+                  }}
+                />
+              </td>
+              {!locked && (
+                <td>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-xs"
+                    style={{ color: 'var(--color-error)' }}
+                    onClick={() => removeRow(idx)}
+                    aria-label="Remove row"
+                  >✕</button>
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {!locked && (
+        <button
+          type="button"
+          className="btn btn-ghost btn-xs"
+          style={{ marginTop: 4 }}
+          onClick={addRow}
+        >
+          + Add Row
+        </button>
+      )}
+
+      {/* CSV paste */}
+      {!locked && (
+        <div className="curve-paste-area">
+          <label className="field-label">Paste CSV (tenor, rate%)</label>
+          <textarea
+            className="curve-paste-box"
+            rows={3}
+            placeholder={'1M, 4.30\n1Y, 4.10\n5Y, 3.90'}
+            value={csvText}
+            onChange={e => { setCsvText(e.target.value); setCsvError(null) }}
+          />
+          {csvError && <p className="curve-paste-error">{csvError}</p>}
+          <button
+            type="button"
+            className="btn btn-secondary btn-xs"
+            disabled={!csvText.trim()}
+            onClick={importCSV}
+          >
+            Import
+          </button>
+        </div>
+      )}
+
+      {/* Preview chart */}
+      <div style={{ marginTop: 12 }}>
+        <div className="field-label" style={{ marginBottom: 6 }}>
+          Preview — month-by-month {INDEX_LABELS[curve.index]} (dots = your input points)
+        </div>
+        <CurveChart curve={curve} termMonths={termMonths} />
+      </div>
+    </div>
+  )
+}
+
 // ─── Instrument form ──────────────────────────────────────────────────────────
 
 interface InstrumentFormProps {
@@ -204,10 +510,16 @@ interface InstrumentFormProps {
   totalProjectCost: number
   showAmort:  boolean
   onToggleAmort: () => void
+  /** Deal-level rate curves available for floating loans to reference. */
+  rateCurves?:    RateCurve[]
+  /** Create a new deal-level curve; returns the new curve id. */
+  onAddCurve?:    (curve: Omit<RateCurve, 'id' | 'dealId'>) => string
+  onUpdateCurve?: (curveId: string, patch: Partial<Omit<RateCurve, 'id' | 'dealId'>>) => void
 }
 
 const InstrumentForm: React.FC<InstrumentFormProps> = ({
   instrument, onChange, locked, totalProjectCost, showAmort, onToggleAmort,
+  rateCurves = [], onAddCurve, onUpdateCurve,
 }) => {
   const p        = instrument
   const loanAmountMode = p.loanAmountMode ?? 'manual'
@@ -1187,6 +1499,137 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
             </div>
           )}
 
+          {/* ── Rate Forward Curve (floating only; not shown for draft '__new__') ── */}
+          {isFloating && p.id !== '__new__' && (
+            <div className="instrument-form-section">
+              <div className="instrument-form-section-title">Rate Forward Curve</div>
+              <p className="field-hint" style={{ marginBottom: 12 }}>
+                Paste your SOFR / index forecast so the schedule uses the full all-in rate (index + spread).
+                Without a curve, projections fall back to the Manual Rate field above.
+              </p>
+
+              {/* Floor / Cap (per-instrument, not per-curve) */}
+              <div className="curve-floor-cap-row">
+                {field('Index Floor (%)',
+                  <input
+                    type="number"
+                    className="field-input"
+                    value={p.floor != null ? parseFloat((p.floor * 100).toFixed(4)) : 0}
+                    min={0} max={30} step={0.01}
+                    placeholder="0.00"
+                    disabled={locked}
+                    onChange={e => onChange({ floor: parseFloat(e.target.value) / 100 || 0 })}
+                  />,
+                  'Floor on the index before adding spread. Default 0%.',
+                )}
+                {field('All-in Rate Cap (%)',
+                  <input
+                    type="number"
+                    className="field-input"
+                    value={p.cap != null ? parseFloat((p.cap * 100).toFixed(4)) : ''}
+                    min={0} max={30} step={0.01}
+                    placeholder="None"
+                    disabled={locked}
+                    onChange={e => {
+                      const v = parseFloat(e.target.value)
+                      onChange({ cap: isNaN(v) ? undefined : v / 100 })
+                    }}
+                  />,
+                  'Max all-in rate after spread. Leave blank for no cap.',
+                )}
+              </div>
+
+              {/* Curve selector / editor */}
+              {(() => {
+                const linkedCurve = rateCurves.find(c => c.id === p.rateCurveId)
+                const now = new Date()
+                const defaultName = `SOFR Forecast — ${now.toLocaleString('default', { month: 'short', year: 'numeric' })}`
+
+                if (!linkedCurve) {
+                  return (
+                    <div style={{ marginTop: 8 }}>
+                      {rateCurves.length > 0 && (
+                        <div className="field-group" style={{ marginBottom: 8 }}>
+                          <label className="field-label">Use existing curve</label>
+                          <select
+                            className="field-input"
+                            value=""
+                            disabled={locked}
+                            onChange={e => e.target.value && onChange({ rateCurveId: e.target.value })}
+                          >
+                            <option value="">— Select —</option>
+                            {rateCurves.map(c => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      {!locked && onAddCurve && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => {
+                            const id = onAddCurve({
+                              name:          defaultName,
+                              index:         'TERM_SOFR_1M',
+                              interpolation: 'FLAT_FORWARD',
+                              source:        'USER',
+                              points:        [],
+                            })
+                            onChange({ rateCurveId: id })
+                          }}
+                        >
+                          + Create Rate Curve
+                        </button>
+                      )}
+                    </div>
+                  )
+                }
+
+                return (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--color-slate-700)' }}>
+                        {linkedCurve.name}
+                      </span>
+                      {rateCurves.length > 1 && !locked && (
+                        <select
+                          className="field-input"
+                          style={{ width: 'auto', fontSize: 12 }}
+                          value={p.rateCurveId ?? ''}
+                          disabled={locked}
+                          onChange={e => onChange({ rateCurveId: e.target.value || undefined })}
+                        >
+                          {rateCurves.map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      )}
+                      {!locked && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs"
+                          style={{ color: 'var(--color-slate-400)' }}
+                          onClick={() => onChange({ rateCurveId: undefined })}
+                        >
+                          Detach
+                        </button>
+                      )}
+                    </div>
+                    {onUpdateCurve && (
+                      <RateCurvePanel
+                        curve={linkedCurve}
+                        termMonths={(p.termYears ?? 5) * 12}
+                        locked={locked}
+                        onChange={patch => onUpdateCurve(linkedCurve.id, patch)}
+                      />
+                    )}
+                  </div>
+                )
+              })()}
+            </div>
+          )}
+
           {/* ── Additional Terms ── */}
           <div className="instrument-form-section">
             <div className="instrument-form-section-title">Additional Terms</div>
@@ -1481,7 +1924,12 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
           >
             {showAmort ? '▲ Hide amortization schedule' : '▼ View amortization schedule'}
           </button>
-          {showAmort && <AmortPreview instrument={instrument} />}
+          {showAmort && (
+            <AmortPreview
+              instrument={instrument}
+              curve={rateCurves.find(c => c.id === instrument.rateCurveId)}
+            />
+          )}
         </div>
       )}
     </div>
@@ -1631,6 +2079,8 @@ export const SectionA: React.FC<Props> = ({ dealId, locked, setTab }) => {
     removeInstrument,
     setSectionComplete,
     markPrefEquityWarningSeen,
+    addRateCurve,
+    updateRateCurve,
   } = useEconomicsStore()
 
   const [expandedId,  setExpandedId]  = useState<string | null>(null)
@@ -1651,6 +2101,7 @@ export const SectionA: React.FC<Props> = ({ dealId, locked, setTab }) => {
   const lpEquityAmount = equityPlug * lpEquityPct
   const gpEquityAmount = equityPlug * gpEquityPct
   const instruments = stack.instruments
+  const rateCurves  = deal.rateCurves ?? []
   const errors      = validateSectionA(deal)
   const canComplete = errors.length === 0 && stack.purchasePrice > 0
 
@@ -2007,6 +2458,9 @@ export const SectionA: React.FC<Props> = ({ dealId, locked, setTab }) => {
                         totalProjectCost={deriveTotalProjectCost(stack)}
                         showAmort={amortId === inst.id}
                         onToggleAmort={() => setAmortId(amortId === inst.id ? null : inst.id)}
+                        rateCurves={rateCurves}
+                        onAddCurve={curve => addRateCurve(dealId, curve)}
+                        onUpdateCurve={(cid, patch) => updateRateCurve(dealId, cid, patch)}
                       />
                     )}
                   </div>
