@@ -215,6 +215,9 @@ export interface WaterfallConfig {
   catchUpTargetPct?: number;   // whole percent (e.g. 20)
   catchUpSpeedPct?: number;    // whole percent (e.g. 50)
   hasClawback?: boolean;       // flag only — full math deferred to v2
+  promoteOnRefi?: boolean;     // false = institutional lookback (default: false)
+  hurdleBasis?: HurdleBasis;   // 'IRR' | 'EQUITY_MULTIPLE' (default: 'IRR')
+  gpCatchup?: GpCatchupConfig; // optional GP catch-up config
 }
 
 export interface ProfitSplitConfig {
@@ -395,7 +398,7 @@ export interface DistributionResult {
 
 export type ExitEventType = 'none' | 'SALE' | 'REFI';
 export type SaleValuationMethod = 'cap_rate' | 'per_unit' | 'gross_multiple' | 'direct';
-export type RefiSizingMethod = 'ltv' | 'dscr' | 'debt_yield';
+export type RefiSizingMethod = 'ltv' | 'dscr' | 'debt_yield' | 'min_of';
 
 export interface SaleConfig {
   valuationMethod: SaleValuationMethod;
@@ -442,7 +445,7 @@ export interface CapitalEvent {
   closingCosts: number;
   loanPayoffs: LoanPayoff[];
   netProceeds: number;
-  proposedDistribution?: DistributionResult;
+  proposedDistribution?: WaterfallDistribution;
 }
 
 export interface YearProjection {
@@ -469,4 +472,64 @@ export interface ExitScenario {
   assumptions: ExitScenarioAssumptions;
   result?: ProjectionResult;
   createdAt: string;
+}
+
+// ─── Institutional waterfall engine ──────────────────────────────────────────
+
+export type PrefAccrualMode = 'SIMPLE' | 'COMPOUND' | 'ACCRUAL';
+export type HurdleBasis = 'IRR' | 'EQUITY_MULTIPLE';
+
+/** Optional GP catch-up tier config */
+export interface GpCatchupConfig {
+  targetPct: number; // whole number: GP's target % of total promote (e.g. 20)
+  gpShare:   number; // whole number: GP's % during catch-up period (e.g. 100)
+}
+
+/** A single waterfall promote tier used by the engine */
+export interface EngineWaterfallTier {
+  irrHurdle?: number; // decimal (0.08 = 8%); undefined = catch-all (last tier)
+  lpSplit: number;    // whole number percent (e.g. 70)
+  gpSplit: number;    // whole number percent (e.g. 30); enforced = 100 - lpSplit
+}
+
+/** Per-partner running capital account */
+export interface CapitalAccount {
+  unreturnedCapital: number;
+  accruedPrefUnpaid: number;
+  flows: { date: string; amount: number }[]; // negative = outflow (equity in), positive = inflow
+}
+
+/** Full per-partner waterfall state passed through each distribute() call */
+export interface DealWaterfallState {
+  lp: CapitalAccount;
+  gp: CapitalAccount;
+  cumulativeGpPromote: number; // running total GP promote received (for clawback)
+}
+
+/** Institutional waterfall config built from ProfitSplitConfig + ownership fractions */
+export interface DealWaterfallConfig {
+  lpOwnership: number;      // decimal (0.9 = 90%)
+  gpOwnership: number;      // decimal (0.1 = 10%)
+  prefRate: number;         // decimal annual (0.08 = 8%)
+  prefType: PrefAccrualMode;
+  tiers: EngineWaterfallTier[];
+  hurdleBasis: HurdleBasis;
+  gpCatchup?: GpCatchupConfig;
+  promoteOnRefi: boolean;   // false = institutional lookback (defer promote to terminal sale)
+  clawback: boolean;        // true = terminal true-up
+  distributeResidual: boolean; // true = distribute all remaining cash (not retained)
+}
+
+/** Proposed allocation from distribute() — GP must accept or override before committing */
+export interface WaterfallDistribution {
+  lpPref:    number;
+  gpPref:    number;  // 0 in standard deals; non-zero for GP pref equity instruments
+  lpRoC:     number;
+  gpRoC:     number;
+  lpCatchup: number;
+  gpCatchup: number;
+  lpPromote: number;
+  gpPromote: number;
+  retained:  number;  // undistributed cash (0 when distributeResidual=true)
+  proposed:  true;    // always true; signals this is unconfirmed
 }

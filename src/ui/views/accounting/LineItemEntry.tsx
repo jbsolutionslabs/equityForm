@@ -16,8 +16,8 @@ import {
   fmtCurrency,
 } from '../../../utils/financialComputations'
 import { useEconomicsStore } from '../../../state/economicsStore'
-import { distribute } from '../../../utils/waterfallEngine'
-import type { WaterfallState } from '../../../state/economicsTypes'
+import { distribute, buildDealWaterfallConfig } from '../../../utils/waterfallEngine'
+import type { DealWaterfallState } from '../../../state/economicsTypes'
 import ModuleProgress from '../../components/ModuleProgress'
 import type {
   AccountingProperty,
@@ -215,14 +215,24 @@ export const LineItemEntry: React.FC<Props> = ({
     const totalEquity = Math.max(0, purchasePrice - totalDebt)
     const lpEquity = totalEquity * (stack?.lpEquityPct ?? 0.9)
     const gpEquity = totalEquity - lpEquity
+    const lpOwnership = totalEquity > 0 ? lpEquity / totalEquity : 0.9
 
-    const initialState: WaterfallState = {
-      unreturnedCapital: totalEquity,
-      accruedPrefUnpaid: entry.distributions.calculatedLPPref,
-      lpFlows: [{ date: period, amount: -lpEquity }],
+    const config = buildDealWaterfallConfig(profitSplit, lpOwnership)
+
+    const wfState: DealWaterfallState = {
+      lp: {
+        unreturnedCapital: lpEquity,
+        accruedPrefUnpaid: entry.distributions.calculatedLPPref,
+        flows: [{ date: period, amount: -lpEquity }],
+      },
+      gp: {
+        unreturnedCapital: gpEquity,
+        accruedPrefUnpaid: 0,
+        flows: [],
+      },
+      cumulativeGpPromote: 0,
     }
 
-    const lpOwnership = totalEquity > 0 ? lpEquity / totalEquity : 0.9
     const totalCash = entry.distributions.actualLPDistribution + entry.distributions.actualGPDistribution
     const ncf = totalCash > 0 ? totalCash : Math.max(0,
       (entry.pnl as Record<string, number>).grossPotentialRent ?? 0
@@ -230,10 +240,10 @@ export const LineItemEntry: React.FC<Props> = ({
 
     if (ncf <= 0) return
 
-    const { result } = distribute(ncf, lpOwnership, profitSplit, initialState)
+    const { result } = distribute(ncf, config, wfState, { allowPromote: true, date: period })
 
-    patchDist('actualLPDistribution', result.lpPref + result.lpRoC + result.lpPromote)
-    patchDist('actualGPDistribution', result.gpRoC + result.gpPromote)
+    patchDist('actualLPDistribution', result.lpPref + result.lpRoC + result.lpCatchup + result.lpPromote)
+    patchDist('actualGPDistribution', result.gpRoC + result.gpCatchup + result.gpPromote)
     patchDist('isOverridden', true)
     patchDist('overrideNote', 'Auto-proposed from waterfall engine (unconfirmed)')
     setWfProposed(true)
