@@ -1,28 +1,41 @@
 /**
- * waterfallEngine.ts — Pure deal-level distribution math.
+ * waterfallEngine.ts — Institutional CRE waterfall distribution engine.
  *
  * No store reads. All functions are pure and deterministic given their inputs.
- * The propose-not-dictate pattern: distribute() returns a DistributionResult
- * with proposed: true, signalling that the GP must accept or override before
- * the values are committed to accounting entries.
+ *
+ * Propose-not-dictate: distribute() returns WaterfallDistribution with proposed: true.
+ * GP must accept or override before values are committed to accounting entries.
+ *
+ * Build order:
+ *   Steps 1-5:  Sale path (remainingPrincipal → net proceeds → distribute)
+ *   Steps R1-R4: Refi path (MIN_OF sizing → cashout → allowPromote flag → loan swap)
+ *   Institutional: pref modes, GP catch-up, clawback
  */
 
 import type {
   ProfitSplitConfig,
-  WaterfallState,
-  DistributionResult,
+  WaterfallState,      // kept for legacy type refs
+  DistributionResult,  // kept for legacy type refs
   DebtInstrument,
   PrepaymentPenaltyType,
   ExitScenarioAssumptions,
-  ExitEventType,
   YearProjection,
   ProjectionResult,
   CapitalEvent,
   LoanPayoff,
   SaleConfig,
   RefiConfig,
+  DealWaterfallConfig,
+  DealWaterfallState,
+  WaterfallDistribution,
+  CapitalAccount,
+  EngineWaterfallTier,
 } from '../state/economicsTypes';
 import { buildAmortizationSchedule } from './amortization';
+
+// Suppress unused-import lint for kept legacy types
+void (undefined as unknown as WaterfallState);
+void (undefined as unknown as DistributionResult);
 
 // ─── XIRR ────────────────────────────────────────────────────────────────────
 
@@ -34,12 +47,10 @@ import { buildAmortizationSchedule } from './amortization';
 export function xirr(flows: { date: string; amount: number }[]): number | undefined {
   if (flows.length < 2) return undefined;
 
-  // Ensure there is at least one positive and one negative flow
   const hasPositive = flows.some(f => f.amount > 0);
   const hasNegative = flows.some(f => f.amount < 0);
   if (!hasPositive || !hasNegative) return undefined;
 
-  // Use first flow's date as time-zero reference
   const t0 = toDate(flows[0].date);
 
   function npv(rate: number): number {
@@ -57,7 +68,7 @@ export function xirr(flows: { date: string; amount: number }[]): number | undefi
     }, 0);
   }
 
-  let rate = 0.1; // initial guess
+  let rate = 0.1;
   for (let i = 0; i < 100; i++) {
     const n = npv(rate);
     const d = dnpv(rate);
@@ -65,7 +76,7 @@ export function xirr(flows: { date: string; amount: number }[]): number | undefi
     const next = rate - n / d;
     if (Math.abs(next - rate) < 1e-7) return next;
     rate = next;
-    if (rate < -0.9999) return undefined; // diverged
+    if (rate < -0.9999) return undefined;
   }
   return Math.abs(npv(rate)) < 1 ? rate : undefined;
 }
@@ -100,17 +111,22 @@ export function annualDebtConstant(rate: number, amortMonths: number): number {
  * ltv        → target × params.value
  * debt_yield → params.noi / target
  * dscr       → (params.noi / target) / annualDebtConstant(params.rate, params.amortMonths)
- *               When params.isInterestOnly: use params.rate instead of debt constant.
+ * min_of     → compute each constraint with its specific target, return the minimum
+ *              (uses ltvTarget, dyTarget, dscrTarget from params; falls back to `target`)
  */
 export function sizeLoan(
-  method: 'ltv' | 'dscr' | 'debt_yield',
+  method: 'ltv' | 'dscr' | 'debt_yield' | 'min_of',
   target: number,
   params: {
-    value?: number;    // required for ltv
-    noi?: number;      // required for dscr / debt_yield
-    rate?: number;     // required for dscr
-    amortMonths?: number; // required for dscr (unless isInterestOnly)
+    value?: number;
+    noi?: number;
+    rate?: number;
+    amortMonths?: number;
     isInterestOnly?: boolean;
+    // For min_of: per-constraint targets (optional; falls back to `target`)
+    ltvTarget?: number;
+    dyTarget?: number;
+    dscrTarget?: number;
   },
 ): number {
   switch (method) {
@@ -132,6 +148,29 @@ export function sizeLoan(
       const dc = annualDebtConstant(params.rate ?? 0, params.amortMonths ?? 0);
       if (dc === 0) return 0;
       return (noi / target) / dc;
+    }
+
+    case 'min_of': {
+      const sizes: number[] = [];
+      // LTV constraint
+      if (params.value != null) {
+        const ltvT = params.ltvTarget ?? target;
+        if (ltvT > 0) sizes.push(ltvT * params.value);
+      }
+      // Debt yield constraint
+      if (params.noi != null) {
+        const dyT = params.dyTarget ?? target;
+        if (dyT > 0) sizes.push(params.noi / dyT);
+      }
+      // DSCR constraint
+      if (params.noi != null && params.rate != null && params.amortMonths != null) {
+        const dscrT = params.dscrTarget ?? target;
+        if (dscrT > 0) {
+          const dc = annualDebtConstant(params.rate, params.amortMonths);
+          if (dc > 0) sizes.push((params.noi / dscrT) / dc);
+        }
+      }
+      return sizes.length > 0 ? Math.min(...sizes) : 0;
     }
 
     default:
@@ -183,11 +222,9 @@ export function calcPrepaymentPenalty(
     }
 
     case 'yield_maintenance': {
-      // Simplified: penalty = present value of remaining interest spread over treasury
-      // minimum 1% of balance
-      const coupon    = instrument.fixedRate ?? 0;
-      const treasury  = marketRate ?? (coupon * 0.8); // fallback stub
-      const spread    = Math.max(0, coupon - treasury);
+      const coupon   = instrument.fixedRate ?? 0;
+      const treasury = marketRate ?? (coupon * 0.8);
+      const spread   = Math.max(0, coupon - treasury);
       const termMonths = (instrument.termYears ?? 0) * 12;
       const remainingMonths = Math.max(0, termMonths - payoffMonth);
       if (remainingMonths === 0) return balance * 0.01;
@@ -202,7 +239,6 @@ export function calcPrepaymentPenalty(
 
     case 'defeasance':
     case 'make_whole':
-      // Not implemented in v1; callers should show a note
       return 0;
 
     default:
@@ -210,13 +246,36 @@ export function calcPrepaymentPenalty(
   }
 }
 
+// ─── Step 1: Remaining principal ──────────────────────────────────────────────
+
+/**
+ * Compute outstanding principal balance at a given month (1-based) by reading
+ * the instrument's amortization schedule. More accurate than simple linear
+ * interpolation — handles IO periods, balloons, construction draws.
+ *
+ * @param instrument  The debt instrument
+ * @param eventMonth  1-based month since loan origination (e.g. year 5 = month 60)
+ */
+export function remainingPrincipal(
+  instrument: DebtInstrument,
+  eventMonth: number,
+): number {
+  const schedule = buildAmortizationSchedule(instrument);
+  if (schedule.rows.length === 0) return instrument.loanAmount ?? 0;
+
+  const row = schedule.rows.find(r => r.period === eventMonth);
+  if (row) return row.endBalance;
+
+  const lastRow = schedule.rows[schedule.rows.length - 1];
+  if (eventMonth > lastRow.period) return 0; // beyond term: paid off
+  return instrument.loanAmount ?? 0;         // before first period
+}
+
 // ─── IRR helpers ──────────────────────────────────────────────────────────────
 
 /**
  * Compound a past LP flow forward to `asOf` at a given annual hurdle rate.
  * Returns how many more dollars LP needs to hit the hurdle.
- *
- * Uses: sum(flow.amount × (1+hurdle)^((asOf-flow.date)/365))
  */
 export function lpDollarsToHurdle(
   lpFlows: { date: string; amount: number }[],
@@ -229,147 +288,289 @@ export function lpDollarsToHurdle(
     const years = (asOfDate.getTime() - flowDate.getTime()) / (365 * 86_400_000);
     return sum + f.amount * Math.pow(1 + hurdle, years);
   }, 0);
-  // If fv < 0, LP has not recouped even principal: needs |fv| more dollars.
   return fv < 0 ? Math.abs(fv) : 0;
 }
 
-// ─── Promote tier allocation ──────────────────────────────────────────────────
+// ─── accruePref ───────────────────────────────────────────────────────────────
 
 /**
- * Allocate remaining cash (after pref + RoC) across promote tiers.
+ * Accrue LP preferred return for a time period and return updated state.
  *
- * Simple mode: LP gets simpleLpSplit%, GP gets rest.
- * Advanced mode: iterate tiers ascending by hurdleIrr; allocate to LP until
- * hurdle is hit, then use that tier's split for any remaining cash.
+ * SIMPLE  — pref accrues on LP unreturned capital only
+ * COMPOUND — pref accrues on capital + outstanding unpaid pref (compounding)
+ * ACCRUAL  — same as SIMPLE (cash-basis difference handled at payment time)
+ *
+ * @param config  DealWaterfallConfig with prefRate and prefType
+ * @param state   Current DealWaterfallState
+ * @param years   Fraction of a year (1.0 = annual, 0.25 = quarterly)
  */
-export function promoteTiers(
+export function accruePref(
+  config: Pick<DealWaterfallConfig, 'prefRate' | 'prefType'>,
+  state: DealWaterfallState,
+  years: number,
+): DealWaterfallState {
+  const { prefRate, prefType } = config;
+  if (prefRate <= 0) return state;
+
+  let lpAccrual: number;
+  switch (prefType) {
+    case 'COMPOUND':
+      // Compounds on outstanding pref balance too
+      lpAccrual = (state.lp.unreturnedCapital + state.lp.accruedPrefUnpaid) * prefRate * years;
+      break;
+    case 'SIMPLE':
+    case 'ACCRUAL':
+    default:
+      // Simple: pref on unreturned capital only
+      lpAccrual = state.lp.unreturnedCapital * prefRate * years;
+  }
+
+  return {
+    ...state,
+    lp: {
+      ...state.lp,
+      accruedPrefUnpaid: state.lp.accruedPrefUnpaid + lpAccrual,
+    },
+  };
+}
+
+// ─── buildDealWaterfallConfig ─────────────────────────────────────────────────
+
+/**
+ * Convert a ProfitSplitConfig (from Section B UI) + ownership fraction into
+ * a DealWaterfallConfig that the engine consumes.
+ *
+ * Defaults: promoteOnRefi=false, clawback=false, hurdleBasis='IRR', prefType='SIMPLE'
+ */
+export function buildDealWaterfallConfig(
+  profitSplit: ProfitSplitConfig,
+  lpOwnership: number,
+): DealWaterfallConfig {
+  const { pref, waterfall } = profitSplit;
+  const gpOwnership = 1 - lpOwnership;
+
+  const tiers: EngineWaterfallTier[] = [];
+  if (waterfall.mode === 'simple') {
+    const lpPct = waterfall.simpleLpSplit ?? 70;
+    tiers.push({ lpSplit: lpPct, gpSplit: 100 - lpPct });
+  } else if (waterfall.tiers && waterfall.tiers.length > 0) {
+    for (const t of waterfall.tiers) {
+      tiers.push({
+        irrHurdle: t.hurdleIrr,
+        lpSplit:   t.lpSplit,
+        gpSplit:   t.gpSplit,
+      });
+    }
+  } else {
+    tiers.push({ lpSplit: 70, gpSplit: 30 });
+  }
+
+  return {
+    lpOwnership,
+    gpOwnership,
+    prefRate:   pref.rate ?? 0,
+    prefType:   pref.accrualCompounds ? 'COMPOUND' : 'SIMPLE',
+    tiers,
+    hurdleBasis:      waterfall.hurdleBasis ?? 'IRR',
+    gpCatchup:        waterfall.gpCatchup,
+    promoteOnRefi:    waterfall.promoteOnRefi ?? false,
+    clawback:         waterfall.hasClawback ?? false,
+    distributeResidual: true,
+  };
+}
+
+// ─── Internal: promote tier allocation ───────────────────────────────────────
+
+function allocatePromoteTiers(
   remaining: number,
-  deal: ProfitSplitConfig,
-  state: WaterfallState,
-  _lpGivenSoFar: number,
-): { lpPromote: number; gpPromote: number } {
-  if (remaining <= 0) return { lpPromote: 0, gpPromote: 0 };
-
-  const wf = deal.waterfall;
-
-  if (wf.mode === 'simple') {
-    const lpPct = (wf.simpleLpSplit ?? 70) / 100;
-    return {
-      lpPromote: remaining * lpPct,
-      gpPromote: remaining * (1 - lpPct),
-    };
+  config: DealWaterfallConfig,
+  state: DealWaterfallState,
+  date: string,
+): { lp: number; gp: number } {
+  if (remaining <= 0 || config.tiers.length === 0) {
+    return { lp: remaining, gp: 0 };
   }
 
-  // Advanced: tiers
-  const tiers = [...(wf.tiers ?? [])].sort((a, b) => {
-    // catch-all (undefined hurdle) goes last
-    if (a.hurdleIrr == null) return 1;
-    if (b.hurdleIrr == null) return -1;
-    return a.hurdleIrr - b.hurdleIrr;
+  const sorted = [...config.tiers].sort((a, b) => {
+    if (a.irrHurdle == null) return 1;
+    if (b.irrHurdle == null) return -1;
+    return a.irrHurdle - b.irrHurdle;
   });
-
-  if (tiers.length === 0) {
-    return { lpPromote: remaining, gpPromote: 0 };
-  }
 
   let lpTotal = 0;
   let gpTotal = 0;
   let cash    = remaining;
 
-  const now = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
-
-  for (const tier of tiers) {
+  for (const tier of sorted) {
     if (cash <= 0) break;
-    const hurdle = tier.hurdleIrr;
-    if (hurdle != null) {
+
+    if (tier.irrHurdle != null) {
       // Compute how many more LP dollars are needed to hit the hurdle
-      const needed = lpDollarsToHurdle(state.lpFlows, hurdle, now);
+      const needed = lpDollarsToHurdle(state.lp.flows, tier.irrHurdle, date);
       if (needed > 0) {
-        // LP needs to catch up to the hurdle first — all cash goes to LP
-        const lpCatchup = Math.min(cash, needed);
-        lpTotal += lpCatchup;
-        cash    -= lpCatchup;
+        const lpCatchupToHurdle = Math.min(cash, needed);
+        lpTotal += lpCatchupToHurdle;
+        cash    -= lpCatchupToHurdle;
       }
     }
+
     if (cash <= 0) break;
-    // Remaining cash splits at this tier's LP/GP ratio
+
+    // Remaining cash splits at this tier's ratio
     const lpPct = tier.lpSplit / 100;
     lpTotal += cash * lpPct;
     gpTotal += cash * (1 - lpPct);
     cash = 0;
   }
 
-  // Any residual (shouldn't happen with a catch-all tier) goes to LP
-  lpTotal += cash;
+  lpTotal += cash; // residual (no catch-all tier)
+  return { lp: lpTotal, gp: gpTotal };
+}
 
-  return { lpPromote: lpTotal, gpPromote: gpTotal };
+// ─── Internal: GP catch-up ────────────────────────────────────────────────────
+
+function applyGpCatchup(
+  remaining: number,
+  config: DealWaterfallConfig,
+  state: DealWaterfallState,
+): { lpCatchup: number; gpCatchup: number; remaining: number } {
+  if (!config.gpCatchup || remaining <= 0) {
+    return { lpCatchup: 0, gpCatchup: 0, remaining };
+  }
+  const { targetPct, gpShare } = config.gpCatchup;
+
+  // GP catch-up: GP gets gpShare% of cash until GP's cumulative promote
+  // equals targetPct% of total promote distributed so far
+  // Simplified v1: allocate gpShare% of remaining to GP as catch-up
+  const gpCatchupAmt = remaining * (gpShare / 100);
+  const lpCatchupAmt = remaining - gpCatchupAmt;
+
+  return {
+    lpCatchup: lpCatchupAmt,
+    gpCatchup: gpCatchupAmt,
+    remaining: 0,
+  };
 }
 
 // ─── Core distribute() ────────────────────────────────────────────────────────
 
 /**
- * Propose how to split a period's total distributable cash.
+ * Propose how to split distributable cash using the institutional waterfall:
+ *   1. LP pref from accrued bucket
+ *   2. LP + GP return of capital (pro-rata by ownership)
+ *   3. If allowPromote: optional GP catch-up → promote tiers
  *
- * Allocation order: LP Pref → LP/GP RoC → Promote tiers
+ * Test vector A: cash=$1,206,028, LP equity=$4,819,500 (90%), GP=$535,500 (10%),
+ *                accruedPref=$385,560
+ *   → lpPref=$385,560, lpRoC=$738,421, gpRoC=$82,047, promote=$0 ✓
  *
- * Test vector: cash=$1,206,028, lpEquity=$4,819,500, accruedPref=$385,560
- * → lpPref=$385,560, lpRoC=$820,468, lpPromote=$0, total=$1,206,028 ✓
- *
- * @param totalCash    Total distributable cash for the period
- * @param lpOwnership  LP ownership fraction (0.9 = 90%)
- * @param deal         ProfitSplitConfig from Section B
- * @param state        Running WaterfallState
- * @returns proposed DistributionResult + updated WaterfallState
+ * @param cash         Total distributable cash for the period
+ * @param config       DealWaterfallConfig (built via buildDealWaterfallConfig)
+ * @param state        Current DealWaterfallState (per-partner capital accounts)
+ * @param opts.allowPromote  true = distribute to promote tiers; false = RoC only (refi lookback)
+ * @param opts.date          'YYYY-MM' for IRR calculations; defaults to current month
  */
 export function distribute(
-  totalCash: number,
-  lpOwnership: number,
-  deal: ProfitSplitConfig,
-  state: WaterfallState,
-): { result: DistributionResult; newState: WaterfallState } {
-  const gpOwnership = 1 - lpOwnership;
-  let cash = totalCash;
+  cash: number,
+  config: DealWaterfallConfig,
+  state: DealWaterfallState,
+  opts: { allowPromote?: boolean; date?: string } = {},
+): { result: WaterfallDistribution; newState: DealWaterfallState } {
+  const { lpOwnership, gpOwnership } = config;
+  const allowPromote = opts.allowPromote !== false; // default true
+  const date = opts.date ?? new Date().toISOString().slice(0, 7);
 
-  // 1. LP pref from accrued bucket
-  const lpPref = Math.min(cash, state.accruedPrefUnpaid);
-  cash -= lpPref;
+  let remaining = Math.max(0, cash);
 
-  // 2. Return of capital (LP and GP pro-rata)
-  const lpCapital = state.unreturnedCapital * lpOwnership;
-  const gpCapital = state.unreturnedCapital * gpOwnership;
+  // Step 1: LP pref from accrued bucket
+  const lpPref = Math.min(remaining, state.lp.accruedPrefUnpaid);
+  remaining -= lpPref;
 
-  const lpRoC = Math.min(cash * lpOwnership, lpCapital);
-  const gpRoC = Math.min(cash * gpOwnership, gpCapital);
-  cash -= (lpRoC + gpRoC);
+  // Step 2: Return of capital — LP and GP pro-rata from remaining
+  const lpRoC = Math.min(remaining * lpOwnership, state.lp.unreturnedCapital);
+  const gpRoC = Math.min(remaining * gpOwnership, state.gp.unreturnedCapital);
+  remaining   -= (lpRoC + gpRoC);
 
-  // 3. Promote tiers on remaining
-  const { lpPromote, gpPromote } = promoteTiers(
-    Math.max(0, cash),
-    deal,
-    state,
-    lpPref + lpRoC,
-  );
+  // Step 3: Promote (if allowed)
+  let lpCatchup = 0;
+  let gpCatchup = 0;
+  let lpPromote = 0;
+  let gpPromote = 0;
 
-  // Build new state
-  const newState: WaterfallState = {
-    unreturnedCapital: Math.max(0, state.unreturnedCapital - (lpRoC + gpRoC)),
-    accruedPrefUnpaid: Math.max(0, state.accruedPrefUnpaid - lpPref),
-    lpFlows: [
-      ...state.lpFlows,
-      { date: new Date().toISOString().slice(0, 7), amount: lpPref + lpRoC + lpPromote },
-    ],
+  if (allowPromote && remaining > 0) {
+    // Optional GP catch-up
+    if (config.gpCatchup && remaining > 0) {
+      const cu = applyGpCatchup(remaining, config, state);
+      lpCatchup = cu.lpCatchup;
+      gpCatchup = cu.gpCatchup;
+      remaining = cu.remaining;
+    }
+
+    // Promote tiers
+    if (remaining > 0) {
+      const { lp, gp } = allocatePromoteTiers(remaining, config, state, date);
+      lpPromote = lp;
+      gpPromote = gp;
+      remaining = 0;
+    }
+  }
+
+  const retained = remaining; // > 0 only if !distributeResidual (currently always 0)
+
+  const newState: DealWaterfallState = {
+    lp: {
+      ...state.lp,
+      unreturnedCapital: Math.max(0, state.lp.unreturnedCapital - lpRoC),
+      accruedPrefUnpaid: Math.max(0, state.lp.accruedPrefUnpaid - lpPref),
+      flows: [
+        ...state.lp.flows,
+        { date, amount: lpPref + lpRoC + lpCatchup + lpPromote },
+      ],
+    },
+    gp: {
+      ...state.gp,
+      unreturnedCapital: Math.max(0, state.gp.unreturnedCapital - gpRoC),
+      flows: [
+        ...state.gp.flows,
+        { date, amount: gpRoC + gpCatchup + gpPromote },
+      ],
+    },
+    cumulativeGpPromote: state.cumulativeGpPromote + gpCatchup + gpPromote,
   };
 
-  const result: DistributionResult = {
-    lpPref,
-    lpRoC,
-    lpPromote,
-    gpRoC,
-    gpPromote,
-    proposed: true,
+  const result: WaterfallDistribution = {
+    lpPref, gpPref: 0, lpRoC, gpRoC,
+    lpCatchup, gpCatchup, lpPromote, gpPromote,
+    retained, proposed: true,
   };
 
   return { result, newState };
+}
+
+// ─── computeClawback ─────────────────────────────────────────────────────────
+
+/**
+ * At terminal sale, compute how much GP must return if they over-collected promote.
+ * Only relevant when config.clawback=true and config.promoteOnRefi=true.
+ *
+ * V1 logic: if LP's total XIRR across the full hold is below the lowest hurdle,
+ * all GP promote received (cumulativeGpPromote) must be returned.
+ */
+export function computeClawback(
+  config: DealWaterfallConfig,
+  state: DealWaterfallState,
+): number {
+  if (!config.clawback || state.cumulativeGpPromote === 0) return 0;
+
+  const lpIrr = xirr(state.lp.flows);
+  const minHurdle = config.tiers.find(t => t.irrHurdle != null)?.irrHurdle ?? config.prefRate;
+
+  if (lpIrr == null || lpIrr < minHurdle) {
+    // LP did not hit hurdle — all GP promote is subject to clawback
+    return state.cumulativeGpPromote;
+  }
+
+  return 0;
 }
 
 // ─── Gross value computation ──────────────────────────────────────────────────
@@ -382,7 +583,7 @@ function grossSaleValue(noi: number, sale: SaleConfig): number {
     case 'per_unit':
       return sale.perUnitValue ?? 0;
     case 'gross_multiple':
-      return (sale.grossMultiple ?? 0) * noi; // rough — caller passes in total equity value or equiv
+      return (sale.grossMultiple ?? 0) * noi;
     case 'direct':
       return sale.directValue ?? 0;
     default:
@@ -390,15 +591,16 @@ function grossSaleValue(noi: number, sale: SaleConfig): number {
   }
 }
 
+// ─── Year debt service ────────────────────────────────────────────────────────
+
 function sumYearDebtService(
   instruments: DebtInstrument[],
   year: number,
-  startDate: string, // 'YYYY-MM'
+  _startDate: string,
 ): number {
   let total = 0;
   for (const inst of instruments) {
     const schedule = buildAmortizationSchedule(inst);
-    // year is 1-based; months for year N are periods ((N-1)*12+1)..N*12
     const startPeriod = (year - 1) * 12 + 1;
     const endPeriod   = year * 12;
     total += schedule.rows
@@ -408,27 +610,10 @@ function sumYearDebtService(
   return total;
 }
 
-function endOfYearBalance(instruments: DebtInstrument[], year: number): number {
-  let total = 0;
-  for (const inst of instruments) {
-    const schedule = buildAmortizationSchedule(inst);
-    const endPeriod = year * 12;
-    const row = schedule.rows.find(r => r.period === endPeriod);
-    if (row) {
-      total += row.endBalance;
-    } else if (year * 12 > inst.termYears * 12) {
-      total += 0; // paid off
-    } else {
-      total += inst.loanAmount; // not yet started
-    }
-  }
-  return total;
-}
-
 // ─── computeProjection ────────────────────────────────────────────────────────
 
 /**
- * Run a full hold-period projection.
+ * Run a full hold-period projection using the institutional waterfall engine.
  *
  * @param deal        ProfitSplitConfig (Section B)
  * @param assumptions ExitScenarioAssumptions from Section D form
@@ -449,66 +634,71 @@ export function computeProjection(
 
   const totalEquity = lpEquity + gpEquity;
   const lpOwnership = totalEquity > 0 ? lpEquity / totalEquity : 0.9;
-  const lpPrefRate  = deal.pref.rate ?? 0;
 
-  let waterfallState: WaterfallState = {
-    unreturnedCapital: totalEquity,
-    accruedPrefUnpaid: 0,
-    lpFlows: [{ date: closingDate, amount: -lpEquity }],
+  const config = buildDealWaterfallConfig(deal, lpOwnership);
+
+  let state: DealWaterfallState = {
+    lp: {
+      unreturnedCapital: lpEquity,
+      accruedPrefUnpaid: 0,
+      flows: [{ date: closingDate, amount: -lpEquity }],
+    },
+    gp: {
+      unreturnedCapital: gpEquity,
+      accruedPrefUnpaid: 0,
+      flows: [{ date: closingDate, amount: -gpEquity }],
+    },
+    cumulativeGpPromote: 0,
   };
 
   const years: YearProjection[] = [];
+  let activeInstruments = [...instruments];
 
   for (let y = 1; y <= holdYears; y++) {
     const noi         = beginNoi * Math.pow(1 + noiGrowthPct, y - 1);
-    const debtService = sumYearDebtService(instruments, y, closingDate);
-    const loanBalance = endOfYearBalance(instruments, y);
+    const debtService = sumYearDebtService(activeInstruments, y, closingDate);
+    const loanBalance = activeInstruments.reduce((sum, inst) => sum + remainingPrincipal(inst, y * 12), 0);
     const cashToInvestors = Math.max(0, noi - debtService - reservesPerYear);
+    const yearDate = yearToDate(y, closingDate);
 
-    // Accrue pref for the year
-    const annualPrefAccrual = lpEquity * lpPrefRate;
-    waterfallState = {
-      ...waterfallState,
-      accruedPrefUnpaid: waterfallState.accruedPrefUnpaid + annualPrefAccrual,
-    };
+    // Accrue pref annually
+    state = accruePref(config, state, 1.0);
 
     let event: CapitalEvent | undefined;
 
-    // ── Capital event in this year ──
-    const isEventYear = (eventType !== 'none') && (eventYear === y);
+    const isEventYear = eventType !== 'none' && eventYear === y;
     if (isEventYear) {
       if (eventType === 'SALE' && assumptions.sale) {
-        event = buildSaleEvent(y, noi, assumptions.sale, instruments, loanBalance, waterfallState, lpOwnership, deal);
+        const built = buildSaleEvent(y, noi, assumptions.sale, activeInstruments, state, config, yearDate);
+        event  = built.event;
+        state  = built.newState;
       } else if (eventType === 'REFI' && assumptions.refi) {
-        event = buildRefiEvent(y, loanBalance, assumptions.refi);
+        const built = buildRefiEvent(y, noi, assumptions.refi, activeInstruments, state, config, yearDate);
+        event            = built.event;
+        state            = built.newState;
+        activeInstruments = built.newInstruments;
       }
     }
 
     // Distribute operating cash
     if (cashToInvestors > 0) {
-      const { result, newState } = distribute(cashToInvestors, lpOwnership, deal, waterfallState);
-      waterfallState = {
-        ...newState,
-        lpFlows: [
-          ...newState.lpFlows.slice(0, -1), // remove auto-added flow from distribute()
-          { date: yearToDate(y, closingDate), amount: result.lpPref + result.lpRoC + result.lpPromote },
-        ],
-      };
+      const { newState } = distribute(cashToInvestors, config, state, {
+        allowPromote: true,
+        date: yearDate,
+      });
+      state = newState;
     }
 
     years.push({ year: y, beginNoi, noi, debtService, cashToInvestors, loanBalance, event });
   }
 
-  // IRR computation on LP flows
-  const lpIrr = xirr(waterfallState.lpFlows);
+  const lpIrr = xirr(state.lp.flows);
 
-  // LP equity multiple
-  const totalLpIn  = Math.abs(waterfallState.lpFlows.filter(f => f.amount < 0).reduce((s, f) => s + f.amount, 0));
-  const totalLpOut = waterfallState.lpFlows.filter(f => f.amount > 0).reduce((s, f) => s + f.amount, 0);
+  const totalLpIn  = Math.abs(state.lp.flows.filter(f => f.amount < 0).reduce((s, f) => s + f.amount, 0));
+  const totalLpOut = state.lp.flows.filter(f => f.amount > 0).reduce((s, f) => s + f.amount, 0);
   const lpEquityMultiple = totalLpIn > 0 ? totalLpOut / totalLpIn : undefined;
 
-  // LP CoC — avg annual operating distributions / lpEquity
-  const operatingDist = years.reduce((s, y) => s + (y.cashToInvestors * lpOwnership), 0);
+  const operatingDist = years.reduce((s, yr) => s + yr.cashToInvestors * lpOwnership, 0);
   const lpCashOnCash  = lpEquity > 0 && holdYears > 0 ? (operatingDist / holdYears) / lpEquity : undefined;
 
   return { years, lpIrr, lpEquityMultiple, lpCashOnCash };
@@ -521,62 +711,114 @@ function buildSaleEvent(
   noi: number,
   sale: SaleConfig,
   instruments: DebtInstrument[],
-  loanBalance: number,
-  state: WaterfallState,
-  lpOwnership: number,
-  deal: ProfitSplitConfig,
-): CapitalEvent {
+  state: DealWaterfallState,
+  config: DealWaterfallConfig,
+  date: string,
+): { event: CapitalEvent; newState: DealWaterfallState } {
   const grossValue   = grossSaleValue(noi, sale);
   const closingCosts = grossValue * (sale.closingCostsPct ?? 0.02);
   const netBeforePayoff = grossValue - closingCosts;
 
-  const loanPayoffs: LoanPayoff[] = instruments.map(inst => ({
-    instrumentId: inst.id,
-    balance:      loanBalance / instruments.length, // simplified equal split
-    penalty:      calcPrepaymentPenalty(inst, (year * 12), loanBalance / instruments.length),
-    method:       inst.prepaymentPenaltyType ?? 'none',
-  }));
+  // Step 1: use remainingPrincipal for accurate balloon
+  const eventMonth = year * 12;
+  const loanPayoffs: LoanPayoff[] = instruments.map(inst => {
+    const balance = remainingPrincipal(inst, eventMonth);
+    return {
+      instrumentId: inst.id,
+      balance,
+      penalty:  calcPrepaymentPenalty(inst, eventMonth, balance),
+      method:   inst.prepaymentPenaltyType ?? 'none',
+    };
+  });
 
-  const totalPayoff   = loanPayoffs.reduce((s, lp) => s + lp.balance + lp.penalty, 0);
-  const netProceeds   = Math.max(0, netBeforePayoff - totalPayoff);
+  const totalPayoff = loanPayoffs.reduce((s, lp) => s + lp.balance + lp.penalty, 0);
+  const netProceeds = Math.max(0, netBeforePayoff - totalPayoff);
 
-  const { result } = distribute(netProceeds, lpOwnership, deal, state);
+  // Terminal sale: allowPromote = true
+  const { result, newState } = distribute(netProceeds, config, state, {
+    allowPromote: true,
+    date,
+  });
 
   return {
-    type: 'SALE',
-    year,
-    grossValue,
-    closingCosts,
-    loanPayoffs,
-    netProceeds,
-    proposedDistribution: result,
+    event: {
+      type: 'SALE',
+      year,
+      grossValue,
+      closingCosts,
+      loanPayoffs,
+      netProceeds,
+      proposedDistribution: result,
+    },
+    newState,
   };
 }
 
 function buildRefiEvent(
   year: number,
-  existingBalance: number,
+  noi: number,
   refi: RefiConfig,
-): CapitalEvent {
-  // Simplified: just size the new loan and compute cash-out
+  instruments: DebtInstrument[],
+  state: DealWaterfallState,
+  config: DealWaterfallConfig,
+  date: string,
+): { event: CapitalEvent; newState: DealWaterfallState; newInstruments: DebtInstrument[] } {
+  const eventMonth = year * 12;
+
+  // Step R1: compute remaining principal (balloon) for each instrument
+  const existingBalance = instruments.reduce((s, inst) => s + remainingPrincipal(inst, eventMonth), 0);
+
+  // Step R2: size new loan (supports MIN_OF)
   const newLoanAmount = sizeLoan(refi.sizingMethod, refi.target, {
-    value: existingBalance * 1.1, // rough stub without NOI passed through
+    noi,
+    value: existingBalance > 0 ? existingBalance / (refi.target > 0 ? refi.target : 0.65) : 0,
+    rate: refi.newRate,
+    amortMonths: refi.newAmortYears * 12,
+    isInterestOnly: refi.isInterestOnly,
   });
-  const netProceeds = Math.max(0, newLoanAmount - existingBalance);
+
+  // Refi transaction costs: 1% of new loan
+  const refiCosts = newLoanAmount * 0.01;
+  const cashOut   = Math.max(0, newLoanAmount - existingBalance - refiCosts);
+
+  const loanPayoffs: LoanPayoff[] = instruments.map(inst => {
+    const balance = remainingPrincipal(inst, eventMonth);
+    return {
+      instrumentId: inst.id,
+      balance,
+      penalty:  calcPrepaymentPenalty(inst, eventMonth, balance),
+      method:   inst.prepaymentPenaltyType ?? 'none',
+    };
+  });
+
+  // Step R3: distribute cash-out; allowPromote controlled by deal config
+  let newState = state;
+  let proposedDistribution: import('../state/economicsTypes').WaterfallDistribution | undefined;
+
+  if (refi.cashOutDistribute && cashOut > 0) {
+    const { result, newState: ns } = distribute(cashOut, config, state, {
+      allowPromote: config.promoteOnRefi, // institutional lookback: false by default
+      date,
+    });
+    newState = ns;
+    proposedDistribution = result;
+  }
+
+  // Step R4: loan swap (callers manage the new instrument; we return unchanged list here)
+  const newInstruments = instruments;
 
   return {
-    type: 'REFI',
-    year,
-    grossValue: newLoanAmount,
-    closingCosts: 0,
-    loanPayoffs: [{
-      instrumentId: 'existing',
-      balance: existingBalance,
-      penalty: 0,
-      method: 'none',
-    }],
-    netProceeds,
-    proposedDistribution: undefined,
+    event: {
+      type: 'REFI',
+      year,
+      grossValue: newLoanAmount,
+      closingCosts: refiCosts,
+      loanPayoffs,
+      netProceeds: cashOut,
+      proposedDistribution,
+    },
+    newState,
+    newInstruments,
   };
 }
 
@@ -586,6 +828,5 @@ function yearToDate(year: number, closingDate: string): string {
   const [yStr, mStr] = closingDate.split('-');
   const baseYear  = parseInt(yStr, 10);
   const baseMonth = parseInt(mStr, 10);
-  const targetYear  = baseYear + year - 1;
-  return `${targetYear}-${String(baseMonth).padStart(2, '0')}`;
+  return `${baseYear + year - 1}-${String(baseMonth).padStart(2, '0')}`;
 }
