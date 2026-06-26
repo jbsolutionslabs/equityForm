@@ -109,6 +109,9 @@ export const DealSetup: React.FC = () => {
   const syncQuery   = useDealSync(dealId) // hydrate from DB on direct URL navigation
   const hasHydratedRef = useRef(false)
   const suppressOaChangeGuardRef = useRef(false)
+  // Always-current ref for doSave — lets the watch subscription (created once at mount)
+  // always call the latest version without needing it in the dep array.
+  const doSaveRef = useRef<(vals: FormValues) => void>(() => {})
 
   // Controlled stepper step — initialised from store (may be 0 before sync)
   const [currentStep, setCurrentStep] = useState(() => {
@@ -208,19 +211,27 @@ export const DealSetup: React.FC = () => {
     })
   }
 
-  // Auto-save: sync form changes into Zustand on every field change
-  // useAutoSave inside useDealSave/useOfferingSave will debounce and write to API
+  // Keep the ref pointing at the latest doSave on every render — no deps needed.
+  doSaveRef.current = doSave
+
+  // Auto-save: sync form changes into Zustand on every field change.
+  // Reads OA status and persisted values directly from the store snapshot so there
+  // are zero stale-closure issues — the subscription is created once at mount.
   useEffect(() => {
     const subscription = watch((vals) => {
       const nextVals = vals as FormValues
+      const st = useAppStore.getState()
+      const currentOaStatus: OaStatus = st.deals[dealId!]?.data.operatingAgreement?.status ?? 'not_generated'
+      const persistedDeal     = (st.deals[dealId!]?.data.deal     ?? {}) as Partial<FormValues>
+      const persistedOffering = (st.deals[dealId!]?.data.offering ?? {}) as Partial<FormValues>
       const persistedVals = {
-        ...(dealData     as Partial<FormValues>),
-        ...(offeringData as Partial<FormValues>),
-        assetClass: (dealData as Partial<FormValues>).assetClass ?? 'multifamily',
+        ...persistedDeal,
+        ...persistedOffering,
+        assetClass: persistedDeal.assetClass ?? 'multifamily',
       }
 
       if (
-        oaStatus !== 'not_generated' &&
+        currentOaStatus !== 'not_generated' &&
         !suppressOaChangeGuardRef.current &&
         hasOaCoreChanges(nextVals, persistedVals)
       ) {
@@ -228,10 +239,10 @@ export const DealSetup: React.FC = () => {
         return
       }
 
-      doSave(nextVals)
+      doSaveRef.current(nextVals)
     })
     return () => subscription.unsubscribe()
-  }, [watch, oaStatus, dealData, offeringData]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [watch, dealId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const confirmChangeAndRegenerate = () => {
     if (pendingVals) {
@@ -800,7 +811,7 @@ export const DealSetup: React.FC = () => {
       <HelpCard text="Our team can help you verify entity details, choose an offering exemption, or review your legal formation documents. Don't hesitate to reach out." />
 
       {/* Change warning modal */}
-      {pendingVals && (
+      {(pendingVals && oaStatus !== 'not_generated') && (
         <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="change-warn-title">
           <div className="modal">
             <div className="modal-header">

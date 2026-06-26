@@ -5,6 +5,7 @@ import type {
   ExitEventType,
   SaleValuationMethod,
   RefiSizingMethod,
+  SaleConfig,
   ProjectionResult,
   DistributionResult,
   YearProjection,
@@ -30,6 +31,14 @@ function fmtMult(n: number | undefined, fallback = '—'): string {
 
 // ─── Default assumptions ──────────────────────────────────────────────────────
 
+function defaultSaleConfig(): SaleConfig {
+  return {
+    valuationMethod: 'cap_rate',
+    capRate:         0.055,
+    closingCostsPct: 0.02,
+  }
+}
+
 function defaultAssumptions(): ExitScenarioAssumptions {
   return {
     holdYears:      5,
@@ -38,18 +47,19 @@ function defaultAssumptions(): ExitScenarioAssumptions {
     reservesPerYear:0,
     eventType:      'SALE',
     eventYear:      5,
-    sale: {
-      valuationMethod: 'cap_rate',
-      capRate:         0.055,
-      closingCostsPct: 0.02,
-    },
+    sale: defaultSaleConfig(),
     refi: {
-      sizingMethod:      'ltv',
+      sizingMethod:      'min_of',   // institutional default per ticket
       target:            0.65,
       newRate:           0.065,
       newAmortYears:     30,
       newTermYears:      10,
       cashOutDistribute: true,
+      refiCostPct:       0.01,
+      // Per-constraint targets for MIN_OF (all optional; blank = skip that constraint)
+      ltvTarget:         0.65,
+      dyTarget:          0.09,
+      dscrTarget:        1.25,
     },
   }
 }
@@ -362,12 +372,14 @@ export const SectionD: React.FC<Props> = ({ dealId, locked }) => {
               <div className="section-d-event-config">
                 <h4>Refi Assumptions</h4>
 
+                {/* Sizing method — MIN_OF is institutional default */}
                 <div className="field-group">
-                  <label className="field-label">Sizing Method</label>
-                  <div className="btn-group">
+                  <label className="field-label">Loan Sizing Method</label>
+                  <div className="btn-group btn-group--wrap">
                     {([
-                      ['ltv', 'LTV'],
-                      ['dscr', 'DSCR'],
+                      ['min_of',     'MIN_OF (default)'],
+                      ['ltv',        'LTV'],
+                      ['dscr',       'DSCR'],
                       ['debt_yield', 'Debt Yield'],
                     ] as [RefiSizingMethod, string][]).map(([val, label]) => (
                       <button
@@ -381,37 +393,105 @@ export const SectionD: React.FC<Props> = ({ dealId, locked }) => {
                       </button>
                     ))}
                   </div>
+                  {draft.refi.sizingMethod === 'min_of' && (
+                    <p className="field-hint">MIN_OF: lender takes the smallest of each constraint you specify below.</p>
+                  )}
                 </div>
 
-                <div className="field-group">
-                  <label className="field-label">
-                    {draft.refi.sizingMethod === 'ltv' ? 'Target LTV' :
-                     draft.refi.sizingMethod === 'dscr' ? 'Min DSCR' : 'Target Debt Yield'}
-                  </label>
-                  <div className="field-adornment-wrap">
-                    <input
-                      type="number"
-                      className="field-input"
-                      step={0.01} min={0.01}
-                      value={draft.refi.sizingMethod === 'dscr'
-                        ? draft.refi.target.toFixed(2)
-                        : ((draft.refi.target ?? 0.65) * 100).toFixed(1)
-                      }
-                      onChange={e => patchRefi({
-                        target: draft.refi?.sizingMethod === 'dscr'
-                          ? parseFloat(e.target.value) || 1.25
-                          : parseFloat(e.target.value) / 100 || 0.65
-                      })}
-                      disabled={locked}
-                    />
-                    {draft.refi.sizingMethod !== 'dscr' && (
-                      <span className="field-adornment field-adornment--right">%</span>
-                    )}
+                {/* Single-target for non-min_of */}
+                {draft.refi.sizingMethod !== 'min_of' && (
+                  <div className="field-group">
+                    <label className="field-label">
+                      {draft.refi.sizingMethod === 'ltv' ? 'Target LTV' :
+                       draft.refi.sizingMethod === 'dscr' ? 'Min DSCR' : 'Target Debt Yield'}
+                    </label>
+                    <div className="field-adornment-wrap">
+                      <input
+                        type="number"
+                        className="field-input"
+                        step={0.01} min={0.01}
+                        value={draft.refi.sizingMethod === 'dscr'
+                          ? (draft.refi.target ?? 1.25).toFixed(2)
+                          : ((draft.refi.target ?? 0.65) * 100).toFixed(1)
+                        }
+                        onChange={e => patchRefi({
+                          target: draft.refi?.sizingMethod === 'dscr'
+                            ? parseFloat(e.target.value) || 1.25
+                            : parseFloat(e.target.value) / 100 || 0.65
+                        })}
+                        disabled={locked}
+                      />
+                      {draft.refi.sizingMethod !== 'dscr' && (
+                        <span className="field-adornment field-adornment--right">%</span>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {/* MIN_OF per-constraint targets */}
+                {draft.refi.sizingMethod === 'min_of' && (
+                  <div className="section-d-minof-grid">
+                    <div className="field-group">
+                      <label className="field-label">LTV Target (optional)</label>
+                      <div className="field-adornment-wrap">
+                        <input
+                          type="number" className="field-input" step={0.5} min={0} max={100}
+                          placeholder="e.g. 65"
+                          value={draft.refi.ltvTarget != null ? (draft.refi.ltvTarget * 100).toFixed(1) : ''}
+                          onChange={e => patchRefi({ ltvTarget: e.target.value ? parseFloat(e.target.value) / 100 : undefined })}
+                          disabled={locked}
+                        />
+                        <span className="field-adornment field-adornment--right">%</span>
+                      </div>
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">Debt Yield Target (optional)</label>
+                      <div className="field-adornment-wrap">
+                        <input
+                          type="number" className="field-input" step={0.5} min={0}
+                          placeholder="e.g. 9"
+                          value={draft.refi.dyTarget != null ? (draft.refi.dyTarget * 100).toFixed(1) : ''}
+                          onChange={e => patchRefi({ dyTarget: e.target.value ? parseFloat(e.target.value) / 100 : undefined })}
+                          disabled={locked}
+                        />
+                        <span className="field-adornment field-adornment--right">%</span>
+                      </div>
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">DSCR Target (optional)</label>
+                      <input
+                        type="number" className="field-input" step={0.05} min={0}
+                        placeholder="e.g. 1.25"
+                        value={draft.refi.dscrTarget != null ? draft.refi.dscrTarget.toFixed(2) : ''}
+                        onChange={e => patchRefi({ dscrTarget: e.target.value ? parseFloat(e.target.value) : undefined })}
+                        disabled={locked}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Property value (required for LTV constraint) */}
+                {(draft.refi.sizingMethod === 'ltv' || draft.refi.sizingMethod === 'min_of') && (
+                  <div className="field-group">
+                    <label className="field-label">
+                      Appraised Property Value at Refi
+                      {draft.refi.sizingMethod === 'ltv' && <span className="field-required"> *</span>}
+                    </label>
+                    <div className="field-adornment-wrap">
+                      <span className="field-adornment">$</span>
+                      <CurrencyInput
+                        className="field-input"
+                        value={draft.refi.propertyValue ?? 0}
+                        onChange={v => patchRefi({ propertyValue: v || undefined })}
+                        disabled={locked}
+                      />
+                    </div>
+                    <p className="field-hint">Appraised value used for LTV constraint. Leave blank to skip LTV in MIN_OF.</p>
+                  </div>
+                )}
 
                 <div className="field-group">
-                  <label className="field-label">New Rate</label>
+                  <label className="field-label">New Loan Rate</label>
                   <div className="field-adornment-wrap">
                     <input
                       type="number"
@@ -451,6 +531,21 @@ export const SectionD: React.FC<Props> = ({ dealId, locked }) => {
                 </div>
 
                 <div className="field-group">
+                  <label className="field-label">Refi Cost</label>
+                  <div className="field-adornment-wrap">
+                    <input
+                      type="number"
+                      className="field-input"
+                      step={0.1} min={0} max={5}
+                      value={((draft.refi.refiCostPct ?? 0.01) * 100).toFixed(1)}
+                      onChange={e => patchRefi({ refiCostPct: parseFloat(e.target.value) / 100 || 0.01 })}
+                      disabled={locked}
+                    />
+                    <span className="field-adornment field-adornment--right">%</span>
+                  </div>
+                </div>
+
+                <div className="field-group">
                   <label className="field-label toggle-row">
                     <span>Distribute cash-out through waterfall</span>
                     <input
@@ -460,6 +555,139 @@ export const SectionD: React.FC<Props> = ({ dealId, locked }) => {
                       disabled={locked}
                     />
                   </label>
+                </div>
+
+                {/* Sale-after-refi */}
+                <div className="section-d-sale-after-refi">
+                  <div className="field-group">
+                    <label className="field-label toggle-row">
+                      <span>Model a terminal sale after the refi?</span>
+                      <input
+                        type="checkbox"
+                        checked={!!draft.saleAfterRefi}
+                        onChange={e => {
+                          if (e.target.checked) {
+                            patchDraft({ saleAfterRefi: { saleYear: draft.holdYears, sale: defaultSaleConfig() } })
+                          } else {
+                            patchDraft({ saleAfterRefi: undefined })
+                          }
+                        }}
+                        disabled={locked}
+                      />
+                    </label>
+                  </div>
+
+                  {draft.saleAfterRefi && (
+                    <div className="section-d-event-config section-d-event-config--nested">
+                      <h4>Terminal Sale (after refi)</h4>
+
+                      <div className="field-group">
+                        <label className="field-label">Sale Year</label>
+                        <input
+                          type="number"
+                          className="field-input"
+                          min={draft.eventYear + 1} max={draft.holdYears}
+                          value={draft.saleAfterRefi.saleYear}
+                          onChange={e => patchDraft({
+                            saleAfterRefi: {
+                              ...draft.saleAfterRefi!,
+                              saleYear: Math.min(draft.holdYears, Math.max(draft.eventYear + 1, parseInt(e.target.value) || draft.holdYears)),
+                            }
+                          })}
+                          disabled={locked}
+                        />
+                      </div>
+
+                      <div className="field-group">
+                        <label className="field-label">Valuation Method</label>
+                        <div className="btn-group btn-group--wrap">
+                          {([
+                            ['cap_rate', 'Cap Rate'],
+                            ['per_unit', 'Per Unit'],
+                            ['gross_multiple', 'Gross Multiple'],
+                            ['direct', 'Direct Value'],
+                          ] as [SaleValuationMethod, string][]).map(([val, label]) => (
+                            <button
+                              key={val}
+                              type="button"
+                              className={['btn btn-sm', draft.saleAfterRefi?.sale.valuationMethod === val ? 'btn-primary' : 'btn-secondary'].join(' ')}
+                              onClick={() => patchDraft({ saleAfterRefi: { ...draft.saleAfterRefi!, sale: { ...draft.saleAfterRefi!.sale, valuationMethod: val } } })}
+                              disabled={locked}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {draft.saleAfterRefi.sale.valuationMethod === 'cap_rate' && (
+                        <div className="field-group">
+                          <label className="field-label">Exit Cap Rate</label>
+                          <div className="field-adornment-wrap">
+                            <input
+                              type="number" className="field-input" step={0.1} min={0.1} max={20}
+                              value={((draft.saleAfterRefi.sale.capRate ?? 0.055) * 100).toFixed(2)}
+                              onChange={e => patchDraft({ saleAfterRefi: { ...draft.saleAfterRefi!, sale: { ...draft.saleAfterRefi!.sale, capRate: parseFloat(e.target.value) / 100 || 0 } } })}
+                              disabled={locked}
+                            />
+                            <span className="field-adornment field-adornment--right">%</span>
+                          </div>
+                        </div>
+                      )}
+                      {draft.saleAfterRefi.sale.valuationMethod === 'direct' && (
+                        <div className="field-group">
+                          <label className="field-label">Direct Sale Price</label>
+                          <div className="field-adornment-wrap">
+                            <span className="field-adornment">$</span>
+                            <CurrencyInput
+                              className="field-input"
+                              value={draft.saleAfterRefi.sale.directValue ?? 0}
+                              onChange={v => patchDraft({ saleAfterRefi: { ...draft.saleAfterRefi!, sale: { ...draft.saleAfterRefi!.sale, directValue: v } } })}
+                              disabled={locked}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      {draft.saleAfterRefi.sale.valuationMethod === 'per_unit' && (
+                        <div className="field-group">
+                          <label className="field-label">Value Per Unit</label>
+                          <div className="field-adornment-wrap">
+                            <span className="field-adornment">$</span>
+                            <CurrencyInput
+                              className="field-input"
+                              value={draft.saleAfterRefi.sale.perUnitValue ?? 0}
+                              onChange={v => patchDraft({ saleAfterRefi: { ...draft.saleAfterRefi!, sale: { ...draft.saleAfterRefi!.sale, perUnitValue: v } } })}
+                              disabled={locked}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      {draft.saleAfterRefi.sale.valuationMethod === 'gross_multiple' && (
+                        <div className="field-group">
+                          <label className="field-label">Gross Multiple (× NOI)</label>
+                          <input
+                            type="number" className="field-input" step={0.1} min={0.1}
+                            value={(draft.saleAfterRefi.sale.grossMultiple ?? 1.8).toFixed(1)}
+                            onChange={e => patchDraft({ saleAfterRefi: { ...draft.saleAfterRefi!, sale: { ...draft.saleAfterRefi!.sale, grossMultiple: parseFloat(e.target.value) || 1 } } })}
+                            disabled={locked}
+                          />
+                        </div>
+                      )}
+
+                      <div className="field-group">
+                        <label className="field-label">Selling Costs</label>
+                        <div className="field-adornment-wrap">
+                          <input
+                            type="number" className="field-input" step={0.1} min={0} max={10}
+                            value={((draft.saleAfterRefi.sale.closingCostsPct ?? 0.02) * 100).toFixed(1)}
+                            onChange={e => patchDraft({ saleAfterRefi: { ...draft.saleAfterRefi!, sale: { ...draft.saleAfterRefi!.sale, closingCostsPct: parseFloat(e.target.value) / 100 || 0 } } })}
+                            disabled={locked}
+                          />
+                          <span className="field-adornment field-adornment--right">%</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -528,9 +756,22 @@ export const SectionD: React.FC<Props> = ({ dealId, locked }) => {
                             <td>{fmtUSD(y.cashToInvestors)}</td>
                             <td>{fmtUSD(y.loanBalance)}</td>
                             <td>
-                              {y.event
-                                ? `${y.event.type} · ${fmtUSD(y.event.netProceeds)} net`
-                                : '—'}
+                              {y.event ? (
+                                <>
+                                  {y.event.type} · {fmtUSD(y.event.netProceeds)} net
+                                  {y.event.type === 'REFI' && (
+                                    <>
+                                      <br />
+                                      <span className="refi-new-loan-label">
+                                        New loan: {fmtUSD(y.event.grossValue)}
+                                        {y.event.refiBinding && (
+                                          <> · bound by <strong>{y.event.refiBinding.replace('_', ' ').toUpperCase()}</strong></>
+                                        )}
+                                      </span>
+                                    </>
+                                  )}
+                                </>
+                              ) : '—'}
                             </td>
                           </tr>
                           {y.event?.proposedDistribution && (
@@ -578,7 +819,9 @@ function DistributionCard({
   if (!dist) return null
 
   const fmtVal = (key: keyof DistributionResult) => {
-    const v = key in overrides ? (overrides as Record<string, number>)[key as string] : (dist as Record<string, number>)[key as string]
+    const v = key in overrides
+      ? (overrides as unknown as Record<string, number>)[key as string]
+      : (dist as unknown as Record<string, number>)[key as string]
     return typeof v === 'number' ? v : 0
   }
 

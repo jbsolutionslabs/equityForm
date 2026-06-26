@@ -190,6 +190,10 @@ export function useDealSync(dealId: string | undefined) {
         ...(localOa?.isOutdated    !== undefined && { isOutdated:   localOa.isOutdated }),
         ...(localOa?.gpEmail       !== undefined && { gpEmail:      localOa.gpEmail }),
         ...(localOa?.reviewAcks    !== undefined && { reviewAcks:   localOa.reviewAcks }),
+        // If the user explicitly reset the OA locally, keep it as not_generated so a
+        // background re-fetch from flushDeal cannot re-arm the change-guard popup.
+        // Cleared only when the user generates a new OA (generateOA sets status:'generated').
+        ...(localOa?.status === 'not_generated' && { status: 'not_generated', generated: false }),
       },
     }
 

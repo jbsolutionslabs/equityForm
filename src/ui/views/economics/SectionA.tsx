@@ -1861,6 +1861,9 @@ const InstrumentForm: React.FC<InstrumentFormProps> = ({
                         onChange={e => onChange({ openWindowBeforeMaturityMonths: parseInt(e.target.value, 10) || undefined })}
                       />,
                     )}
+                    <p className="field-hint field-hint--warn">
+                      ⚠ Defeasance cost (v1 approximation): calculated as yield-maintenance PV of remaining scheduled interest. Actual defeasance requires pricing a Treasury portfolio — engage your lender for a precise quote.
+                    </p>
                   </>
                 )}
 

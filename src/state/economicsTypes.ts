@@ -411,12 +411,20 @@ export interface SaleConfig {
 
 export interface RefiConfig {
   sizingMethod: RefiSizingMethod;
-  target: number;            // LTV decimal, DSCR multiplier, or DY decimal
+  target: number;            // LTV decimal, DSCR multiplier, or DY decimal (fallback for single-constraint)
   newRate: number;           // decimal
   newAmortYears: number;
   newTermYears: number;
   isInterestOnly?: boolean;
   cashOutDistribute: boolean; // distribute net cash-out proceeds through waterfall
+  // Refi cost
+  refiCostPct?: number;      // decimal (0.01 = 1%); default 0.01
+  // Property value for LTV constraint
+  propertyValue?: number;    // appraised/market value at time of refi (required for LTV sizing)
+  // Per-constraint targets for MIN_OF sizing (each optional; falls back to `target`)
+  ltvTarget?: number;        // decimal (0.65 = 65%)
+  dyTarget?: number;         // decimal (0.10 = 10%)
+  dscrTarget?: number;       // e.g. 1.25
 }
 
 export interface ExitScenarioAssumptions {
@@ -446,6 +454,8 @@ export interface CapitalEvent {
   loanPayoffs: LoanPayoff[];
   netProceeds: number;
   proposedDistribution?: WaterfallDistribution;
+  /** MIN_OF refi: which constraint produced the smallest (binding) loan amount */
+  refiBinding?: 'ltv' | 'dscr' | 'debt_yield';
 }
 
 export interface YearProjection {
@@ -532,4 +542,6 @@ export interface WaterfallDistribution {
   gpPromote: number;
   retained:  number;  // undistributed cash (0 when distributeResidual=true)
   proposed:  true;    // always true; signals this is unconfirmed
+  /** Terminal-sale clawback: GP must return this amount to LP (only non-zero when promoteOnRefi=true and LP missed hurdle) */
+  gpClawback?: number;
 }

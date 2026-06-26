@@ -115,7 +115,7 @@ const FeeRow: React.FC<FeeRowProps> = ({ fee, locked, onToggle, onChange, onRemo
                 disabled={locked}
                 onChange={e => onChange({ basisType: e.target.value as FeeBasisType })}
               >
-                <option value="">— Select basis —</option>
+                
                 {fee.type === 'disposition' && (
                   <option value="pct_sales_price">% of Sales Price</option>
                 )}

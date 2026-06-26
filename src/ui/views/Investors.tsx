@@ -50,7 +50,7 @@ const investorSchema = z
     zip:              requiredString('ZIP is required'),
     email: z
       .string()
-      .optional()
+      .min(1, 'Email is required')
       .refine((value) => !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value), {
         message: 'Valid email address is required',
       }),
@@ -991,7 +991,7 @@ export const Investors: React.FC = () => {
                         className="field-input"
                         {...form.register(`investors.${idx}.accreditedInvestorBasis` as const)}
                       >
-                        <option value="">Select basis</option>
+                        
                         <option value="income">Income test</option>
                         <option value="net_worth">Net worth test</option>
                       </select>

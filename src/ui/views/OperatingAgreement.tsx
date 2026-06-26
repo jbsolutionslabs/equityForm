@@ -90,11 +90,11 @@ export const OperatingAgreement: React.FC = () => {
     setGpEmail(oa?.gpEmail || '')
   }, [oa?.gpEmail])
 
-  // If OA becomes outdated while the component is mounted (e.g. user confirmed
-  // questionnaire changes in the same session), snap back to step 1.
+  // If the OA is reset (status → not_generated) or marked outdated while the
+  // component is mounted, snap back to step 1 so the user sees the Generate CTA.
   useEffect(() => {
-    if (oa?.isOutdated) setSubStep(1)
-  }, [oa?.isOutdated])
+    if (!oa?.status || oa.status === 'not_generated' || oa?.isOutdated) setSubStep(1)
+  }, [oa?.status, oa?.isOutdated])
 
   const notify = (msg: string, type: 'success' | 'error' = 'success') => {
     setNotification({ msg, type })

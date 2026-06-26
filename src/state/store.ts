@@ -553,11 +553,16 @@ export const useAppStore = create<AppState>()(
         return { ...d, operatingAgreement: oa }
       }), false, 'simulateOaSigned'),
 
-    /* ── Stage 3: Mark OA as outdated (core deal data changed post-generation) ── */
+    /* ── Stage 3: Reset OA — user chose to proceed after the change-guard popup ── */
     resetOaStatus: (dealId) =>
       set((s) => pd(s, dealId, (d) => ({
         ...d,
-        operatingAgreement: { ...d.operatingAgreement, isOutdated: true },
+        operatingAgreement: {
+          ...d.operatingAgreement,
+          status:     'not_generated',
+          generated:  false,
+          isOutdated: false,
+        },
       })), false, 'resetOaStatus'),
 
     setOperatingAgreementDraft: (dealId, patch) =>

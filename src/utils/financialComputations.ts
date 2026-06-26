@@ -21,7 +21,10 @@ import type {
   ComputedStatement,
   StatementRow,
   PeriodSelection,
+  WaterfallSettings,
 } from '../state/accountingTypes'
+import { distribute } from './waterfallEngine'
+import type { DealWaterfallConfig, DealWaterfallState } from '../state/economicsTypes'
 
 /* ─── Formatting helpers ─────────────────────────────────────────────────────── */
 
@@ -94,6 +97,49 @@ export function periodLabel(sel: PeriodSelection): string {
   }
   if (sel.type === 'ye') return `Year Ended December 31, ${sel.year}`
   return `Year Ended December 31, ${sel.year}`
+}
+
+/* ─── Waterfall distribution helper ─────────────────────────────────────────── */
+
+/**
+ * Route period distributions through the shared institutional waterfall engine.
+ * Replaces the old pref-only path that incorrectly computed a non-zero GP pref.
+ *
+ * Per spec: gpPref is always 0 — preferred return is LP-only by design.
+ * Promote fires only when totalDist > accrued LP pref + full RoC; in most
+ * operating periods totalDist is small enough that it never reaches promote.
+ */
+function buildWaterfallDistribution(
+  wf: WaterfallSettings,
+  totalDist: number,
+  accruedLpPref: number,
+): { lpPref: number; gpPref: number; lpRoC: number; gpRoC: number; lpPromote: number; gpPromote: number } {
+  const config: DealWaterfallConfig = {
+    lpOwnership:        wf.lpOwnershipPct,
+    gpOwnership:        wf.gpOwnershipPct,
+    prefRate:           wf.lpPrefRateAnnual,
+    prefType:           'SIMPLE',
+    tiers:              [{ lpSplit: (1 - wf.gpPromotePct) * 100, gpSplit: wf.gpPromotePct * 100 }],
+    hurdleBasis:        'IRR',
+    gpCatchup:          undefined,
+    promoteOnRefi:      false,
+    clawback:           false,
+    distributeResidual: true,
+  }
+  const state: DealWaterfallState = {
+    lp: { unreturnedCapital: wf.lpEquity, accruedPrefUnpaid: accruedLpPref, flows: [] },
+    gp: { unreturnedCapital: wf.gpEquity, accruedPrefUnpaid: 0,             flows: [] },
+    cumulativeGpPromote: 0,
+  }
+  const { result } = distribute(totalDist, config, state, { allowPromote: true })
+  return {
+    lpPref:    result.lpPref,
+    gpPref:    result.gpPref,    // always 0 per spec
+    lpRoC:     result.lpRoC,
+    gpRoC:     result.gpRoC,
+    lpPromote: result.lpPromote,
+    gpPromote: result.gpPromote,
+  }
 }
 
 /* ─── Amortization schedule ──────────────────────────────────────────────────── */
@@ -253,16 +299,15 @@ function buildMFIncomeStatement(
   const lpDist   = entries.reduce((s, e) => s + e.distributions.actualLPDistribution, 0)
   const gpDist   = entries.reduce((s, e) => s + e.distributions.actualGPDistribution, 0)
   const totalDist= lpDist + gpDist
+  // Route through shared waterfall engine (Step 4). gpPref is always 0 per spec.
   const lpPreferredReturn = entries.reduce((s, e) => s + e.distributions.calculatedLPPref, 0)
-  const lpPrefPaid        = Math.min(lpDist, lpPreferredReturn)
-  const lpAfterPref       = lpDist - lpPrefPaid
-  const lpReturnOfCapital = Math.min(lpAfterPref, property.waterfall.lpEquity)
-  const lpPromote         = Math.max(0, lpAfterPref - lpReturnOfCapital)
-  const gpPreferredReturn = entries.length * ((property.waterfall.gpEquity * property.waterfall.lpPrefRateAnnual) / 12)
-  const gpPrefPaid        = Math.min(gpDist, gpPreferredReturn)
-  const gpAfterPref       = gpDist - gpPrefPaid
-  const gpReturnOfCapital = Math.min(gpAfterPref, property.waterfall.gpEquity)
-  const gpPromote         = Math.max(0, gpAfterPref - gpReturnOfCapital)
+  const wfDist = buildWaterfallDistribution(property.waterfall, totalDist, lpPreferredReturn)
+  const lpPrefPaid        = wfDist.lpPref
+  const lpReturnOfCapital = wfDist.lpRoC
+  const lpPromote         = wfDist.lpPromote
+  const gpPrefPaid        = wfDist.gpPref    // always 0 per spec
+  const gpReturnOfCapital = wfDist.gpRoC
+  const gpPromote         = wfDist.gpPromote
   const netIncome= noi - da - interest  // Net Income Per Books (principal is B/S, distributions are draws)
 
   const vacancyRate = gpr > 0 ? (vacancy + conc) / gpr : 0
@@ -392,16 +437,15 @@ function buildHotelIncomeStatement(
   const lpDist   = entries.reduce((s, e) => s + e.distributions.actualLPDistribution, 0)
   const gpDist   = entries.reduce((s, e) => s + e.distributions.actualGPDistribution, 0)
   const totalDist= lpDist + gpDist
+  // Route through shared waterfall engine (Step 4). gpPref is always 0 per spec.
   const lpPreferredReturn = entries.reduce((s, e) => s + e.distributions.calculatedLPPref, 0)
-  const lpPrefPaid        = Math.min(lpDist, lpPreferredReturn)
-  const lpAfterPref       = lpDist - lpPrefPaid
-  const lpReturnOfCapital = Math.min(lpAfterPref, _property.waterfall.lpEquity)
-  const lpPromote         = Math.max(0, lpAfterPref - lpReturnOfCapital)
-  const gpPreferredReturn = entries.length * ((_property.waterfall.gpEquity * _property.waterfall.lpPrefRateAnnual) / 12)
-  const gpPrefPaid        = Math.min(gpDist, gpPreferredReturn)
-  const gpAfterPref       = gpDist - gpPrefPaid
-  const gpReturnOfCapital = Math.min(gpAfterPref, _property.waterfall.gpEquity)
-  const gpPromote         = Math.max(0, gpAfterPref - gpReturnOfCapital)
+  const wfDist = buildWaterfallDistribution(_property.waterfall, totalDist, lpPreferredReturn)
+  const lpPrefPaid        = wfDist.lpPref
+  const lpReturnOfCapital = wfDist.lpRoC
+  const lpPromote         = wfDist.lpPromote
+  const gpPrefPaid        = wfDist.gpPref    // always 0 per spec
+  const gpReturnOfCapital = wfDist.gpRoC
+  const gpPromote         = wfDist.gpPromote
   const netIncome= ebitda - da - interest
 
   return [
