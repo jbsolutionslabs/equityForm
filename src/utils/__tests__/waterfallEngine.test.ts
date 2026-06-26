@@ -14,6 +14,7 @@
  *   - annualDebtConstant formula
  *   - accruePref modes
  *   - buildDealWaterfallConfig converter
+ *   - computeProjection: Step 3 (combined distribution), saleAfterRefi
  */
 
 import { describe, it, expect } from 'vitest'
@@ -27,11 +28,13 @@ import {
   buildDealWaterfallConfig,
   computeClawback,
   remainingPrincipal,
+  computeProjection,
 } from '../waterfallEngine'
 import type {
   DealWaterfallConfig,
   DealWaterfallState,
   ProfitSplitConfig,
+  ExitScenarioAssumptions,
 } from '../../state/economicsTypes'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -281,6 +284,59 @@ describe('Vector E — sizeLoan min_of: returns the smallest constraint', () => 
 
 })
 
+// ─── hurdleBasis = EQUITY_MULTIPLE ───────────────────────────────────────────
+
+describe('distribute() — hurdleBasis EQUITY_MULTIPLE', () => {
+
+  it('promote fires only after LP hits 1.5× equity multiple', () => {
+    // LP invested $1M. They've received $1.4M so far (1.4× multiple).
+    // Cash to distribute = $200K. At 1.5× hurdle, LP needs $100K more before tier splits.
+    const config = makeConfig({
+      hurdleBasis: 'EQUITY_MULTIPLE',
+      tiers: [{ irrHurdle: 1.5, lpSplit: 70, gpSplit: 30 }],
+      lpOwnership: 1.0, // 100% LP for simplicity
+      gpOwnership: 0.0,
+    })
+    const state = makeState({
+      lpUnreturned: 0,       // capital already returned
+      gpUnreturned: 0,
+      lpAccruedPref: 0,
+    })
+    // Manually set flows: LP put in $1M, received $1.4M
+    const stateWithFlows = {
+      ...state,
+      lp: { ...state.lp, flows: [{ date: '2024-01', amount: -1_000_000 }, { date: '2025-01', amount: 1_400_000 }] },
+    }
+
+    const { result } = distribute(200_000, config, stateWithFlows, { allowPromote: true, date: '2026-01' })
+
+    // LP needs $100K more to hit 1.5×. First $100K goes to LP as hurdle catch-up.
+    // Remaining $100K splits 70/30 → LP $70K, GP $30K.
+    expect(result.lpPromote).toBeCloseTo(100_000 + 70_000, 0)
+    expect(result.gpPromote).toBeCloseTo(30_000, 0)
+  })
+
+  it('no promote when LP is below equity multiple', () => {
+    // LP invested $1M, received $0 so far. $500K to distribute. 1.5× hurdle.
+    const config = makeConfig({
+      hurdleBasis: 'EQUITY_MULTIPLE',
+      tiers: [{ irrHurdle: 1.5, lpSplit: 70, gpSplit: 30 }],
+    })
+    const state = makeState({ lpUnreturned: 1_000_000, gpUnreturned: 0 })
+    const stateWithFlows = {
+      ...state,
+      lp: { ...state.lp, flows: [{ date: '2024-01', amount: -1_000_000 }] },
+    }
+
+    const { result } = distribute(500_000, config, stateWithFlows, { allowPromote: true, date: '2025-01' })
+
+    // $500K < $1M needed to return capital, so promote never fires
+    expect(result.lpPromote).toBe(0)
+    expect(result.gpPromote).toBe(0)
+  })
+
+})
+
 // ─── calcPrepaymentPenalty ────────────────────────────────────────────────────
 
 describe('calcPrepaymentPenalty()', () => {
@@ -394,7 +450,7 @@ describe('buildDealWaterfallConfig()', () => {
     expect(cfg.tiers[0].lpSplit).toBe(80)
     expect(cfg.tiers[0].gpSplit).toBe(20)
     expect(cfg.promoteOnRefi).toBe(false)
-    expect(cfg.clawback).toBe(false)
+    expect(cfg.clawback).toBe(true) // spec default: on (dormant unless promoteOnRefi=true)
   })
 
   it('passes promoteOnRefi and hasClawback from WaterfallConfig', () => {
@@ -453,6 +509,119 @@ describe('distribute() edge cases', () => {
     // Cash goes nowhere (no pref, no RoC, no promote) → retained
     const totalOut = result.lpPref + result.lpRoC + result.lpPromote + result.gpRoC + result.gpPromote
     expect(totalOut).toBe(0)
+  })
+
+})
+
+// ─── computeProjection — Step 3 combined distribution ─────────────────────────
+
+describe('computeProjection() — Step 3: NCF + sale proceeds in one distribute call', () => {
+
+  it('sale year: total distributed equals operating NCF + net proceeds (no debt)', () => {
+    const deal: ProfitSplitConfig = {
+      pref: { type: 'simple', rate: 0.08 },
+      waterfall: { mode: 'simple', simpleLpSplit: 70 },
+    }
+    const assumptions: ExitScenarioAssumptions = {
+      holdYears:       3,
+      beginNoi:        600_000,
+      noiGrowthPct:    0,
+      reservesPerYear: 0,
+      eventType:       'SALE',
+      eventYear:       3,
+      sale: {
+        valuationMethod: 'direct',
+        directValue:     6_000_000,    // $6M sale price
+        closingCostsPct: 0,            // no closing costs for clean math
+      },
+    }
+    const lpEquity = 900_000
+    const gpEquity = 100_000
+
+    const result = computeProjection(deal, assumptions, [], lpEquity, gpEquity, '2024-01')
+
+    expect(result.years).toHaveLength(3)
+    expect(result.years[2].event?.type).toBe('SALE')
+
+    const exitYear    = result.years[2]
+    const dist        = exitYear.event?.proposedDistribution
+    expect(dist).toBeDefined()
+
+    // With no debt, sale netProceeds = $6M (directValue, no selling costs, no loan payoff)
+    // Combined = $600K NCF + $6M = $6.6M total in year 3
+    const totalDist = (dist!.lpPref + dist!.lpRoC + dist!.lpPromote +
+                       dist!.gpRoC  + dist!.gpCatchup + dist!.gpPromote + dist!.retained)
+    expect(totalDist).toBeCloseTo(6_600_000, -1)
+  })
+
+  it('sale year: retained ≈ 0 when all capital is returned (total in = total out)', () => {
+    const deal: ProfitSplitConfig = {
+      pref: { type: 'simple', rate: 0.05 },
+      waterfall: { mode: 'simple', simpleLpSplit: 80 },
+    }
+    const assumptions: ExitScenarioAssumptions = {
+      holdYears:       5,
+      beginNoi:        500_000,
+      noiGrowthPct:    0,
+      reservesPerYear: 0,
+      eventType:       'SALE',
+      eventYear:       5,
+      sale: {
+        valuationMethod: 'direct',
+        directValue:     4_000_000,
+        closingCostsPct: 0,
+      },
+    }
+
+    const result = computeProjection(deal, assumptions, [], 900_000, 100_000, '2024-01')
+
+    const exitDist = result.years[4].event?.proposedDistribution
+    expect(exitDist).toBeDefined()
+    expect(exitDist!.retained).toBeCloseTo(0, -1)
+  })
+
+  it('saleAfterRefi: sale in year 5 uses new loan balance from year-3 refi', () => {
+    const deal: ProfitSplitConfig = {
+      pref: { type: 'simple', rate: 0.08 },
+      waterfall: { mode: 'simple', simpleLpSplit: 70 },
+    }
+    const assumptions: ExitScenarioAssumptions = {
+      holdYears:       5,
+      beginNoi:        1_000_000,
+      noiGrowthPct:    0,
+      reservesPerYear: 0,
+      eventType:       'REFI',
+      eventYear:       3,
+      refi: {
+        sizingMethod:      'debt_yield',
+        target:            0.10,          // DY 10% → newLoan = 1M/0.10 = $10M
+        newRate:           0.06,
+        newAmortYears:     30,
+        newTermYears:      10,
+        cashOutDistribute: false,         // no cash-out for clean test
+        refiCostPct:       0.00,
+        noi:               1_000_000,     // unused if target method doesn't need noi
+      } as ExitScenarioAssumptions['refi'],
+      saleAfterRefi: {
+        saleYear: 5,
+        sale: {
+          valuationMethod: 'direct',
+          directValue:     12_000_000,
+          closingCostsPct: 0,
+        },
+      },
+    }
+
+    const result = computeProjection(deal, assumptions, [], 1_000_000, 111_111, '2024-01')
+
+    // Year 3 event = REFI
+    expect(result.years[2].event?.type).toBe('REFI')
+    // Year 5 event = SALE (from saleAfterRefi)
+    expect(result.years[4].event?.type).toBe('SALE')
+    // Sale balloon should come from the refi loan (< original $10M if it amortized 2 years)
+    const saleBalloon = result.years[4].event!.loanPayoffs.reduce((s, lp) => s + lp.balance, 0)
+    expect(saleBalloon).toBeGreaterThan(0)
+    expect(saleBalloon).toBeLessThan(10_000_000) // amortized down from $10M over 2 years
   })
 
 })
