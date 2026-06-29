@@ -356,7 +356,7 @@ export function accruePref(
  * Convert a ProfitSplitConfig (from Section B UI) + ownership fraction into
  * a DealWaterfallConfig that the engine consumes.
  *
- * Defaults: promoteOnRefi=false, clawback=false, hurdleBasis='IRR', prefType='SIMPLE'
+ * Defaults: promoteOnRefi=false, clawback=true, hurdleBasis='IRR', prefType='SIMPLE'
  */
 export function buildDealWaterfallConfig(
   profitSplit: ProfitSplitConfig,
@@ -397,11 +397,30 @@ export function buildDealWaterfallConfig(
 
 // ─── Internal: promote tier allocation ───────────────────────────────────────
 
+/**
+ * Allocate distributable promote cash across waterfall tiers.
+ *
+ * EQUITY_MULTIPLE basis (fixed in Jun 2026):
+ *   Each tier defines a BAND of LP return (e.g. 1.0× → 1.5×, 1.5× → 2.0×, 2.0×+).
+ *   Cash in a band splits at that band's LP/GP rate. Tier walk:
+ *     bucketSize = lpNeeded / lpPct  (total cash that takes LP to this hurdle)
+ *     If cash > bucket: allocate full bucket at tier rate, continue to next tier.
+ *     If cash ≤ bucket: allocate all remaining cash at tier rate, done.
+ *   `lpAlreadyReceivedThisCall` must include pref + RoC from this distribute() call
+ *   so the hurdle check sees LP's TRUE cumulative return.
+ *
+ * IRR basis:
+ *   Catch LP up to each hurdle (100% to LP), then split remainder at tier rate.
+ *   Single-tier (common case) is correct. Multi-tier IRR walk is a v2 refinement.
+ *
+ * @param lpAlreadyReceivedThisCall  LP pref + RoC paid in the current distribute() call
+ */
 function allocatePromoteTiers(
   remaining: number,
   config: DealWaterfallConfig,
   state: DealWaterfallState,
   date: string,
+  lpAlreadyReceivedThisCall: number = 0,
 ): { lp: number; gp: number } {
   if (remaining <= 0 || config.tiers.length === 0) {
     return { lp: remaining, gp: 0 };
@@ -417,35 +436,77 @@ function allocatePromoteTiers(
   let gpTotal = 0;
   let cash    = remaining;
 
-  for (const tier of sorted) {
-    if (cash <= 0) break;
+  if (config.hurdleBasis === 'EQUITY_MULTIPLE') {
+    // Equity multiple waterfall: each tier's lpSplit% applies to a BAND of
+    // LP return defined by consecutive hurdle multiples.  Walk tiers in order,
+    // computing exactly how much cash "fills" each band.
+    //
+    // runningLpOut tracks LP's cumulative receipts (prior periods + this call's
+    // pref & RoC) so the hurdle comparison reflects LP's TRUE total return.
+    const baseIn = state.lp.flows
+      .filter(f => f.amount < 0)
+      .reduce((s, f) => s + Math.abs(f.amount), 0);
+    let runningLpOut = state.lp.flows
+      .filter(f => f.amount > 0)
+      .reduce((s, f) => s + f.amount, 0)
+      + lpAlreadyReceivedThisCall;
 
-    if (tier.irrHurdle != null) {
-      // Compute LP dollars still needed to clear this tier's hurdle.
-      // hurdleBasis='IRR' (default): hurdle is an IRR decimal (e.g. 0.08 = 8%).
-      // hurdleBasis='EQUITY_MULTIPLE': irrHurdle field holds the multiple (e.g. 1.5 = 1.5×).
-      let needed = 0;
-      if (config.hurdleBasis === 'EQUITY_MULTIPLE') {
-        const totalIn  = state.lp.flows.filter(f => f.amount < 0).reduce((s, f) => s + Math.abs(f.amount), 0);
-        const totalOut = state.lp.flows.filter(f => f.amount > 0).reduce((s, f) => s + f.amount, 0);
-        needed = Math.max(0, totalIn * tier.irrHurdle - totalOut);
+    for (const tier of sorted) {
+      if (cash <= 0) break;
+      const lpPct = tier.lpSplit / 100;
+
+      if (tier.irrHurdle != null && baseIn > 0) {
+        const lpTarget = baseIn * tier.irrHurdle;
+        const lpNeeded = Math.max(0, lpTarget - runningLpOut);
+
+        if (lpNeeded <= 0) continue; // LP already at or above this hurdle — skip to next
+
+        // Total cash bucket that delivers exactly lpNeeded to LP at this tier's split
+        const bucketSize = lpPct > 0 ? lpNeeded / lpPct : 0;
+
+        if (bucketSize >= cash) {
+          // Tier not fully filled — consume all remaining cash at this rate
+          lpTotal      += cash * lpPct;
+          gpTotal      += cash * (1 - lpPct);
+          runningLpOut += cash * lpPct;
+          cash          = 0;
+        } else {
+          // Full bucket: LP hits exactly this tier's hurdle; continue to next tier
+          lpTotal      += lpNeeded;                 // = bucketSize * lpPct
+          gpTotal      += bucketSize * (1 - lpPct);
+          runningLpOut += lpNeeded;
+          cash         -= bucketSize;
+        }
       } else {
-        needed = lpDollarsToHurdle(state.lp.flows, tier.irrHurdle, date);
-      }
-      if (needed > 0) {
-        const lpCatchupToHurdle = Math.min(cash, needed);
-        lpTotal += lpCatchupToHurdle;
-        cash    -= lpCatchupToHurdle;
+        // No hurdle (final / catch-all tier): consume all remaining cash at this rate
+        lpTotal += cash * lpPct;
+        gpTotal += cash * (1 - lpPct);
+        cash     = 0;
       }
     }
+  } else {
+    // IRR basis: catch LP up to each hurdle (100% to LP as a pref-style catch-up),
+    // then split remaining cash at that tier's promote rate.
+    for (const tier of sorted) {
+      if (cash <= 0) break;
 
-    if (cash <= 0) break;
+      if (tier.irrHurdle != null) {
+        const needed = lpDollarsToHurdle(state.lp.flows, tier.irrHurdle, date);
+        if (needed > 0) {
+          const lpCatchupToHurdle = Math.min(cash, needed);
+          lpTotal += lpCatchupToHurdle;
+          cash    -= lpCatchupToHurdle;
+        }
+      }
 
-    // Remaining cash splits at this tier's ratio
-    const lpPct = tier.lpSplit / 100;
-    lpTotal += cash * lpPct;
-    gpTotal += cash * (1 - lpPct);
-    cash = 0;
+      if (cash <= 0) break;
+
+      // Remaining cash splits at this tier's rate
+      const lpPct = tier.lpSplit / 100;
+      lpTotal += cash * lpPct;
+      gpTotal += cash * (1 - lpPct);
+      cash = 0;
+    }
   }
 
   lpTotal += cash; // residual (no catch-all tier)
@@ -536,7 +597,10 @@ export function distribute(
 
     // Promote tiers
     if (remaining > 0) {
-      const { lp, gp } = allocatePromoteTiers(remaining, config, state, date);
+      // Per spec: pass lpPref + lpRoC + lpCatchup so EQUITY_MULTIPLE tiers see LP's
+      // true cumulative return (including any catch-up LP received this call).
+      // lpCatchup is 0 when gpCatchup is off (default), making this a no-op in the common case.
+      const { lp, gp } = allocatePromoteTiers(remaining, config, state, date, lpPref + lpRoC + lpCatchup);
       lpPromote = lp;
       gpPromote = gp;
       remaining = 0;
