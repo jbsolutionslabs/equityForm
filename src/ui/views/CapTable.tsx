@@ -349,58 +349,65 @@ export const CapTable: React.FC = () => {
       )}
 
       {/* Cap table */}
-      <div className="card" style={{ marginBottom: 24, padding: 0 }}>
-        <div style={{ padding: '20px 24px 12px', borderBottom: '1px solid var(--color-slate-200)' }}>
+      <div className="card captable-card" style={{ marginBottom: 24, padding: 0 }}>
+        <div className="captable-card-header">
           <h3 style={{ margin: 0, fontSize: 16 }}>
             {deal.entityName || 'Entity'} — Membership Interests
           </h3>
         </div>
-        {/* keep table content aligned with header padding */}
-        <div style={{ padding: '0 24px 24px' }}>
-          <table className="data-table" style={{ width: '100%' }}>
+        <div className="captable-table-wrap">
+          <table className="data-table captable-table">
             <thead>
               <tr>
                 <th>Member</th>
                 <th>Type</th>
                 <th style={{ textAlign: 'right' }}>Class A Units</th>
                 <th style={{ textAlign: 'right' }}>Ownership %</th>
-                <th style={{ textAlign: 'right' }}>Subscription Amount</th>
+                <th style={{ textAlign: 'right' }}>Subscription</th>
               </tr>
             </thead>
             <tbody>
               {/* GP row */}
               <tr style={{ background: 'var(--color-slate-50)' }}>
-                <td>
+                <td data-label="Member">
                   <div style={{ fontWeight: 500 }}>{gpName}</div>
                   <div style={{ fontSize: 12, color: 'var(--color-slate-500)' }}>Managing Member</div>
                 </td>
-                <td><span className="status-badge" style={{ background: 'var(--color-navy-900)', color: '#fff', fontSize: 11 }}>GP</span></td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>{hasGpCoinvest ? gpUnits.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '0'}</td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>{hasGpCoinvest ? `${ownershipPctFromAmount(gpCapitalContribution)}%` : 'Management'}</td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>{hasGpCoinvest ? `$${gpCapitalContribution.toLocaleString()}` : '—'}</td>
+                <td data-label="Type">
+                  <span className="status-badge" style={{ background: 'var(--color-navy-900)', color: '#fff', fontSize: 11 }}>GP</span>
+                </td>
+                <td data-label="Class A Units" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+                  {hasGpCoinvest ? gpUnits.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '0'}
+                </td>
+                <td data-label="Ownership %" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+                  {hasGpCoinvest ? `${ownershipPctFromAmount(gpCapitalContribution)}%` : 'Management'}
+                </td>
+                <td data-label="Subscription" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+                  {hasGpCoinvest ? `$${gpCapitalContribution.toLocaleString()}` : '—'}
+                </td>
               </tr>
 
-              {/* LP rows — only show investors who have paid */}
+              {/* LP rows */}
               {paidInvestors.map((inv) => {
                 const pct = ownershipPctFromAmount(inv.subscriptionAmount || 0)
                 return (
                   <tr key={inv.id}>
-                    <td>
+                    <td data-label="Member">
                       <div style={{ fontWeight: 500 }}>{inv.fullLegalName}</div>
                       <div style={{ fontSize: 12, color: 'var(--color-slate-500)' }}>{inv.email}</div>
                     </td>
-                    <td>
+                    <td data-label="Type">
                       <span className="status-badge status-badge--none" style={{ fontSize: 11 }}>
                         {inv.subscriberType === 'entity' ? 'LP (Entity)' : 'LP (Ind.)'}
                       </span>
                     </td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+                    <td data-label="Class A Units" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
                       {normalizedLpUnits(inv.subscriptionAmount || 0, inv.classAUnits || 0).toLocaleString()}
                     </td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+                    <td data-label="Ownership %" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
                       {pct}%
                     </td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+                    <td data-label="Subscription" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
                       ${(inv.subscriptionAmount || 0).toLocaleString()}
                     </td>
                   </tr>
@@ -411,13 +418,13 @@ export const CapTable: React.FC = () => {
             {paidInvestors.length > 0 && (
               <tfoot>
                 <tr style={{ fontWeight: 700, background: 'var(--color-slate-50)' }}>
-                  <td>TOTAL</td>
-                  <td></td>
-                  <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                  <td data-label="Member">TOTAL</td>
+                  <td data-label="Type"></td>
+                  <td data-label="Class A Units" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
                     {grandTotalUnits.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                   </td>
-                  <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>100%</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                  <td data-label="Ownership %" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>100%</td>
+                  <td data-label="Subscription" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
                     ${grandTotalAmount.toLocaleString()}
                   </td>
                 </tr>
@@ -428,7 +435,7 @@ export const CapTable: React.FC = () => {
       </div>
 
       {/* Actions */}
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="captable-actions">
         {!isLocked && (
           <button
             type="button"
@@ -440,27 +447,11 @@ export const CapTable: React.FC = () => {
             Lock Cap Table
           </button>
         )}
-        {!canLock && !isLocked && (
-          <span className="gate-message">
-            All signed investors must have wires confirmed before locking
-          </span>
-        )}
         <button type="button" className="btn btn-secondary" onClick={downloadCSV}>
           Download CSV
         </button>
         {isLocked && (
           <>
-            <div className="disclaimer-banner" style={{ marginBottom: 8, width: '100%' }}>
-              <span className="disclaimer-banner-icon">⚠</span>
-              <div className="disclaimer-banner-body">
-                <strong>K-1 &amp; Tax Document Disclaimer</strong>
-                <p>
-                  K-1 exhibits and tax schedules generated here are templates only and are not
-                  official IRS tax documents. Have a licensed CPA review all tax documents before
-                  use in any tax filing. EquityForm is not liable for tax treatment errors.
-                </p>
-              </div>
-            </div>
             <button type="button" className="btn btn-secondary" onClick={handleDownloadK1Pdf}>
               Download K-1 Exhibit (PDF)
             </button>
@@ -474,6 +465,24 @@ export const CapTable: React.FC = () => {
               Download Updated OA (.doc)
             </button>
           </>
+        )}
+        {!canLock && !isLocked && (
+          <p className="gate-message" style={{ width: '100%', margin: 0 }}>
+            All signed investors must have wires confirmed before locking
+          </p>
+        )}
+        {isLocked && (
+          <div className="disclaimer-banner" style={{ width: '100%', marginTop: 4 }}>
+            <span className="disclaimer-banner-icon">⚠</span>
+            <div className="disclaimer-banner-body">
+              <strong>K-1 &amp; Tax Document Disclaimer</strong>
+              <p>
+                K-1 exhibits and tax schedules generated here are templates only and are not
+                official IRS tax documents. Have a licensed CPA review all tax documents before
+                use in any tax filing. EquityForm is not liable for tax treatment errors.
+              </p>
+            </div>
+          </div>
         )}
       </div>
 

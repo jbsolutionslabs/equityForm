@@ -251,6 +251,7 @@ export const WireTracking: React.FC = () => {
         </div>
       ) : (
         <div className="card" style={{ padding: 0 }}>
+          <div className="table-scroll-wrapper table-scroll-wrapper--in-card">
           <table className="data-table" style={{ width: '100%' }}>
             <thead>
               <tr>
@@ -313,6 +314,7 @@ export const WireTracking: React.FC = () => {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
