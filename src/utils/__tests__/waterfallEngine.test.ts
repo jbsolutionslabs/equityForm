@@ -30,11 +30,13 @@ import {
   remainingPrincipal,
   computeProjection,
 } from '../waterfallEngine'
+import { computeSourcesAndUses } from '../sourcesAndUses'
 import type {
   DealWaterfallConfig,
   DealWaterfallState,
   ProfitSplitConfig,
   ExitScenarioAssumptions,
+  CapitalStack,
 } from '../../state/economicsTypes'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -288,21 +290,20 @@ describe('Vector E — sizeLoan min_of: returns the smallest constraint', () => 
 
 describe('distribute() — hurdleBasis EQUITY_MULTIPLE', () => {
 
-  it('promote fires only after LP hits 1.5× equity multiple', () => {
-    // LP invested $1M. They've received $1.4M so far (1.4× multiple).
-    // Cash to distribute = $200K. At 1.5× hurdle, LP needs $100K more before tier splits.
+  it('band model: tier 70/30 split applies when LP in 1.4–1.5× range', () => {
+    // Band model (institutional): the LP/GP split applies to the ENTIRE band of LP
+    // returns between hurdles — not just the above-hurdle residual.
+    // LP invested $1M, has $1.4M so far (1.4×). Cash = $200K. Tier: 1.5×, 70/30.
+    // Band to fill: LP needs $100K LP-dollars → bucket = $100K/0.70 = $142,857 total
+    //   → LP $100K, GP $42,857 in-band.
+    // Remaining $57,143: no catch-all tier → LP gets residual.
     const config = makeConfig({
       hurdleBasis: 'EQUITY_MULTIPLE',
       tiers: [{ irrHurdle: 1.5, lpSplit: 70, gpSplit: 30 }],
-      lpOwnership: 1.0, // 100% LP for simplicity
+      lpOwnership: 1.0,
       gpOwnership: 0.0,
     })
-    const state = makeState({
-      lpUnreturned: 0,       // capital already returned
-      gpUnreturned: 0,
-      lpAccruedPref: 0,
-    })
-    // Manually set flows: LP put in $1M, received $1.4M
+    const state = makeState({ lpUnreturned: 0, gpUnreturned: 0, lpAccruedPref: 0 })
     const stateWithFlows = {
       ...state,
       lp: { ...state.lp, flows: [{ date: '2024-01', amount: -1_000_000 }, { date: '2025-01', amount: 1_400_000 }] },
@@ -310,14 +311,15 @@ describe('distribute() — hurdleBasis EQUITY_MULTIPLE', () => {
 
     const { result } = distribute(200_000, config, stateWithFlows, { allowPromote: true, date: '2026-01' })
 
-    // LP needs $100K more to hit 1.5×. First $100K goes to LP as hurdle catch-up.
-    // Remaining $100K splits 70/30 → LP $70K, GP $30K.
-    expect(result.lpPromote).toBeCloseTo(100_000 + 70_000, 0)
-    expect(result.gpPromote).toBeCloseTo(30_000, 0)
+    // Bucket fills: LP $100K, GP $42,857. Residual $57,143 → LP.
+    // gpPromote = $42,857; lpPromote = $100K (in-band) + $57K (residual) ≈ $157,143
+    expect(result.gpPromote).toBeCloseTo(42_857, 0)
+    expect(result.lpPromote + result.gpPromote).toBeCloseTo(200_000, 0)
   })
 
-  it('no promote when LP is below equity multiple', () => {
-    // LP invested $1M, received $0 so far. $500K to distribute. 1.5× hurdle.
+  it('no promote when LP is below equity multiple (capital not fully returned)', () => {
+    // LP invested $1M, received $0. $500K to distribute. 1.5× hurdle.
+    // Capital not fully returned → promote gate blocks.
     const config = makeConfig({
       hurdleBasis: 'EQUITY_MULTIPLE',
       tiers: [{ irrHurdle: 1.5, lpSplit: 70, gpSplit: 30 }],
@@ -330,9 +332,152 @@ describe('distribute() — hurdleBasis EQUITY_MULTIPLE', () => {
 
     const { result } = distribute(500_000, config, stateWithFlows, { allowPromote: true, date: '2025-01' })
 
-    // $500K < $1M needed to return capital, so promote never fires
     expect(result.lpPromote).toBe(0)
     expect(result.gpPromote).toBe(0)
+  })
+
+})
+
+// ─── Vectors F1/F2/F3 — Multi-tier equity multiple promote walk ───────────────
+//
+// 3-tier structure:
+//   Tier 1: 1.5× hurdle, 80/20 (LP 80%, GP 20%)
+//   Tier 2: 2.0× hurdle, 70/30 (LP 70%, GP 30%)
+//   Tier 3: no hurdle (catch-all), 50/50
+//
+// LP invested $9M (90%), GP invested $1M (10%). Total equity = $10M.
+//
+// RoC is always returned first: LP $9M, GP $1M.
+// Promote fires on remaining cash only after all capital is returned.
+
+describe('Vectors F1/F2/F3 — multi-tier equity multiple promote walk', () => {
+
+  // ─── Shared setup ──────────────────────────────────────────────────────────
+
+  function makeEmTiers() {
+    return makeConfig({
+      hurdleBasis:  'EQUITY_MULTIPLE',
+      lpOwnership:  0.9,
+      gpOwnership:  0.1,
+      tiers: [
+        { irrHurdle: 1.5, lpSplit: 80, gpSplit: 20 },   // Tier 1: 1.0–1.5×
+        { irrHurdle: 2.0, lpSplit: 70, gpSplit: 30 },   // Tier 2: 1.5–2.0×
+        { irrHurdle: null, lpSplit: 50, gpSplit: 50 },  // Tier 3: 2.0×+
+      ],
+    })
+  }
+
+  function makeEmState() {
+    return makeState({
+      lpUnreturned:  9_000_000,
+      gpUnreturned:  1_000_000,
+      lpAccruedPref: 0,
+      lpFlows: [{ date: '2024-01', amount: -9_000_000 }],
+    })
+  }
+
+  // ─── Vector F1 — $13M cash: stays within Tier 1 band (1.27× LP multiple) ─
+
+  it('F1: $13M — promote stays in Tier 1 (80/20); LP total $11.4M (1.27×)', () => {
+    // After RoC ($10M): $3M remaining. Tier 1 band needs $4.5M LP → bucket $5.625M.
+    // $3M < $5.625M → tier 1 not filled; split all $3M at 80/20.
+    // LP: $9M + $2.4M = $11.4M (1.267×). GP: $1M + $0.6M = $1.6M.
+    const { result } = distribute(13_000_000, makeEmTiers(), makeEmState(), {
+      allowPromote: true,
+      date: '2029-01',
+    })
+
+    expect(result.lpRoC).toBeCloseTo(9_000_000, 0)
+    expect(result.gpRoC).toBeCloseTo(1_000_000, 0)
+    const lpTotal = result.lpRoC + result.lpPromote
+    const gpTotal = result.gpRoC + result.gpPromote
+    expect(lpTotal).toBeCloseTo(11_400_000, 0)
+    expect(gpTotal).toBeCloseTo(1_600_000, 0)
+    expect(lpTotal + gpTotal).toBeCloseTo(13_000_000, 0)
+  })
+
+  // ─── Vector F2 — $18M cash: Tier 1 full, Tier 2 partial (1.69× LP multiple) ─
+
+  it('F2: $18M — promote walks Tier 1 and into Tier 2; LP total $15,162,500 (1.69×)', () => {
+    // After RoC ($10M): $8M remaining.
+    // Tier 1 (1.5×, 80/20): LP needs $4.5M → bucket $5.625M → LP $4.5M, GP $1.125M; cash $2.375M
+    // Tier 2 (2.0×, 70/30): LP needs $4.5M → bucket $6.43M; $2.375M < bucket → split all 70/30
+    //   → LP $2.375M × 0.7 = $1,662,500; GP $712,500.
+    // LP total: $9M + $4.5M + $1,662,500 = $15,162,500. GP: $1M + $1,125K + $712.5K = $2,837,500.
+    const { result } = distribute(18_000_000, makeEmTiers(), makeEmState(), {
+      allowPromote: true,
+      date: '2029-01',
+    })
+
+    const lpTotal = result.lpRoC + result.lpPromote
+    const gpTotal = result.gpRoC + result.gpPromote
+    expect(lpTotal).toBeCloseTo(15_162_500, -1)  // within $10
+    expect(gpTotal).toBeCloseTo(2_837_500, -1)
+    expect(lpTotal + gpTotal).toBeCloseTo(18_000_000, 0)
+  })
+
+  // ─── Vector F3 — $30M cash: all 3 tiers (2.44× LP multiple) ─────────────────
+  // This was "the live bug": old engine returned flat 80/20 instead of walking tiers.
+
+  it('F3: $30M — promote walks all 3 tiers; LP total $21,973,214 (2.44×)', () => {
+    // After RoC ($10M): $20M remaining.
+    // Tier 1 (1.5×, 80/20): bucket $5.625M → LP $4.5M, GP $1.125M; cash $14.375M
+    // Tier 2 (2.0×, 70/30): bucket $6,428,571 → LP $4.5M, GP $1,928,571; cash $7,946,429
+    // Tier 3 (catch-all, 50/50): $7,946,429 × 50/50 → LP $3,973,214, GP $3,973,214
+    // LP total: $9M + $4.5M + $4.5M + $3,973,214 = $21,973,214
+    // GP total: $1M + $1,125K + $1,928,571 + $3,973,214 = $8,026,786
+    const { result } = distribute(30_000_000, makeEmTiers(), makeEmState(), {
+      allowPromote: true,
+      date: '2029-01',
+    })
+
+    const lpTotal = result.lpRoC + result.lpPromote
+    const gpTotal = result.gpRoC + result.gpPromote
+    expect(lpTotal).toBeCloseTo(21_973_214, -1)  // within $10
+    expect(gpTotal).toBeCloseTo(8_026_786, -1)
+    expect(lpTotal + gpTotal).toBeCloseTo(30_000_000, 0)
+  })
+
+})
+
+// ─── Vector H — Sources & Uses leverage metrics ────────────────────────────────
+
+describe('Vector H — Sources & Uses: LTC uses total uses as denominator', () => {
+
+  it('LTC = totalDebt / totalUses (not purchasePrice); LTV = seniorDebt / purchasePrice', () => {
+    // purchasePrice = $19M, closingCosts = $1M → totalUses = $20M
+    // seniorDebt = $13M → LTC = 13/20 = 65%; LTV = 13/19 = 68.42%
+    // equity (residual) = $20M - $13M = $7M
+    const stack: CapitalStack = {
+      purchasePrice:    19_000_000,
+      closingCosts:      1_000_000,
+      operatingReserves: 0,
+      capexReserves:     0,
+      otherUses:         0,
+      instruments: [
+        {
+          id:         'senior-1',
+          position:   'senior',
+          loanType:   'io',
+          loanAmount: 13_000_000,
+          startDate:  '2026-06',
+          termYears:  5,
+          fixedRate:  0.065,
+        },
+      ],
+    }
+
+    const { uses, sources, ltv, ltc } = computeSourcesAndUses(stack)
+
+    expect(uses.total).toBeCloseTo(20_000_000, 0)
+    expect(sources.totalDebt).toBeCloseTo(13_000_000, 0)
+    expect(sources.equity).toBeCloseTo(7_000_000, 0)
+
+    // LTC = debt / total uses (NOT purchase price)
+    expect(ltc).toBeCloseTo(0.65, 4)        // 65.0%
+
+    // LTV = senior debt / purchase price
+    expect(ltv).toBeCloseTo(13 / 19, 4)     // 68.42%
   })
 
 })

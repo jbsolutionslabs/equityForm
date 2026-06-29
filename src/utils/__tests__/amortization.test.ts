@@ -553,3 +553,60 @@ describe('Cross-convention interest comparison on fixed loan', () => {
     expect(act360.rows[0].interest).toBeGreaterThan(act365.rows[0].interest)
   })
 })
+
+// ─── Loan timing: interest accrues from origination date ─────────────────────
+//
+// Loan timing bug: origination date (not first payment date) is startDate.
+// Period 1 in the schedule corresponds to startDate — the origination month.
+// First payment is at END of period 1 (one month after origination).
+//
+// Test: $13M IO at 8% ACT/360, originated June 1 2026.
+//   June has 30 actual days → interest = $13M × 8% × 30/360 = $86,667.
+
+describe('Loan timing: interest accrues from origination date (period 1 = startDate)', () => {
+
+  it('$13M IO 8% ACT/360 originated 2026-06: period 1 = June, interest = $86,667', () => {
+    const loan: DebtInstrument = {
+      id:                 'io-timing-test',
+      position:           'senior',
+      loanType:           'io',
+      loanAmount:         13_000_000,
+      startDate:          '2026-06',     // origination month
+      termYears:          5,
+      fixedRate:          0.08,
+      dayCountConvention: 'actual_360',
+    }
+
+    const schedule = buildAmortizationSchedule(loan)
+    const period1  = schedule.rows[0]
+
+    // Period 1 date must be the origination month itself, not one month later
+    expect(period1.date).toBe('2026-06')
+    expect(period1.period).toBe(1)
+
+    // June has 30 actual days → interest = $13M × 8% × 30/360 = $86,666.67
+    const expectedInterest = 13_000_000 * 0.08 * (30 / 360)
+    expect(period1.interest).toBeCloseTo(expectedInterest, 0)   // ≈ $86,667
+    expect(period1.interest).toBeCloseTo(86_667, 0)
+
+    // Balance unchanged throughout IO period
+    expect(period1.beginBalance).toBe(13_000_000)
+    expect(period1.endBalance).toBe(13_000_000)
+    expect(period1.principal).toBe(0)
+  })
+
+  it('Period 2 = July 2026 (one month after origination)', () => {
+    const loan: DebtInstrument = {
+      id: 'io-t2', position: 'senior', loanType: 'io',
+      loanAmount: 13_000_000, startDate: '2026-06', termYears: 5,
+      fixedRate: 0.08, dayCountConvention: 'actual_360',
+    }
+    const schedule = buildAmortizationSchedule(loan)
+    // July has 31 actual days
+    const period2 = schedule.rows[1]
+    expect(period2.date).toBe('2026-07')
+    const expectedInterest = 13_000_000 * 0.08 * (31 / 360)
+    expect(period2.interest).toBeCloseTo(expectedInterest, 0)   // ≈ $89,556
+  })
+
+})
