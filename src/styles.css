@@ -1026,6 +1026,26 @@ select.field-input {
   transition: width 0.4s ease;
 }
 
+/* ─── Investor action bar ────────────────────────────────────────────────── */
+.investor-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 600px) {
+  .investor-actions-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .investor-actions-bar .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 /* ─── Investor Cards ─────────────────────────────────────────────────────── */
 .investor-card {
   background: var(--color-white);
@@ -1421,9 +1441,113 @@ pre {
   }
 }
 
+/* ─── Table scroll wrapper (base, no breakpoint) ─────────────────────────── */
+.table-scroll-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--color-slate-200);
+}
+.table-scroll-wrapper table {
+  min-width: 560px;
+}
+.table-scroll-wrapper--in-card {
+  border: none;
+  border-radius: 0;
+}
+
+/* ─── Mobile nav (hidden on desktop) ────────────────────────────────────── */
+.mobile-topbar { display: none; }
+.nav-hamburger { display: none; }
+.sidebar-close-btn { display: none; }
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+
 /* ─── Responsive ─────────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
-  .sidebar { display: none; }
+  /* Sidebar hidden by default; shown as drawer when .sidebar--mobile-open */
+  .sidebar {
+    display: none;
+    position: fixed;
+    z-index: 200;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 280px;
+    overflow-y: auto;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.25);
+    animation: none;
+  }
+  .sidebar.sidebar--mobile-open {
+    display: flex;
+    animation: slideInLeft 0.22s ease-out;
+  }
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 199;
+  }
+  .sidebar-close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 32px;
+    height: 32px;
+    background: rgba(255,255,255,0.12);
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+    z-index: 1;
+  }
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: var(--color-navy-900);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+  }
+  .nav-hamburger {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    width: 44px;
+    height: 44px;
+    padding: 11px 10px;
+    background: rgba(255,255,255,0.08);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .nav-hamburger span {
+    display: block;
+    height: 2px;
+    background: #fff;
+    border-radius: 2px;
+  }
+  .mobile-brand {
+    color: #fff;
+    font-family: var(--font-heading);
+    font-size: 18px;
+  }
+  /* Touch targets */
+  [data-tooltip] { min-height: 44px; min-width: 44px; }
+  .checkbox-label { min-height: 44px; align-items: center; }
+  .icon-btn { min-width: 44px; min-height: 44px; }
+  /* Existing layout */
   .main-content { height: auto; }
   .main-inner { padding: 24px 20px 48px; }
   .form-row { grid-template-columns: 1fr; gap: 12px; }
@@ -1432,11 +1556,39 @@ pre {
   .review-rail { width: 100%; }
 }
 
+@media (max-width: 768px) {
+  .main-inner { padding: 20px 16px 48px; }
+  .form-row { flex-direction: column; }
+  .pref-type-group { flex-wrap: wrap; }
+  .pref-type-btn {
+    flex: 0 0 calc(33.33% - 1px);
+    min-height: 44px;
+    white-space: normal;
+    text-align: center;
+  }
+  .tier-row { overflow-x: auto; overflow-y: visible; }
+  .tier-row-inner { min-width: 520px; }
+  .capital-summary { grid-template-columns: 1fr 1fr; }
+  .scenario-tab { padding: 6px 10px; font-size: 12px; }
+}
+
+@media (max-width: 480px) {
+  .main-inner { padding: 12px 12px 32px; }
+  .card { padding: 16px; }
+  .capital-summary { grid-template-columns: 1fr; }
+  .modal-box { margin: 12px; width: calc(100vw - 24px); max-width: none; }
+  .btn-group { flex-direction: column; }
+  .lp-preview-inputs { grid-template-columns: 1fr; }
+  .page-title { font-size: 22px; }
+  .section-title { font-size: 16px; }
+}
+
 @media (max-width: 600px) {
   .main-inner { padding: 16px 14px 40px; }
   .card { padding: 20px; }
   .actions-bar { flex-direction: column; }
   .stepper-footer { flex-wrap: wrap; gap: 10px; }
+  .stepper-footer .btn-primary { flex: 1 1 100%; justify-content: center; }
 }
 
 /* ─── Focus Rings ────────────────────────────────────────────────────────── */
@@ -1871,6 +2023,107 @@ pre {
 .two-panel-main { flex: 1; min-width: 0; }
 .two-panel-side { width: 300px; flex-shrink: 0; }
 
+/* ─── E-Signature investor card list ─────────────────────────────────────── */
+.esig-bulk-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 480px) {
+  .esig-bulk-actions { flex-direction: column; }
+  .esig-bulk-actions .btn { width: 100%; justify-content: center; }
+}
+
+.esig-investor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.esig-investor-card {
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-200);
+  border-radius: var(--radius-card);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.esig-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.esig-card-identity {
+  min-width: 0;
+}
+
+.esig-card-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--color-navy-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.esig-card-email {
+  font-size: 12px;
+  color: var(--color-slate-500);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.esig-card-meta {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.esig-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.esig-meta-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-slate-400);
+}
+
+.esig-meta-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-navy-900);
+}
+
+.esig-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+@media (max-width: 480px) {
+  .esig-card-actions { flex-direction: column; align-items: stretch; }
+  .esig-card-actions .btn { width: 100%; justify-content: center; }
+}
+
+.esig-signed-label {
+  font-size: 12px;
+  color: var(--color-success);
+  font-weight: 600;
+}
+
 /* E-Signature & Wire table status icons */
 .sig-status {
   display: inline-flex;
@@ -1921,6 +2174,100 @@ pre {
   font-size: 12px;
   color: var(--color-slate-600);
   margin-top: 2px;
+}
+
+/* ─── Cap Table responsive layout ───────────────────────────────────────── */
+.captable-card-header {
+  padding: 20px 24px 12px;
+  border-bottom: 1px solid var(--color-slate-200);
+}
+
+.captable-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.captable-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 600px) {
+  /* Stack action buttons full-width */
+  .captable-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .captable-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Transform table rows into labelled cards */
+  .captable-table thead { display: none; }
+
+  .captable-table tbody tr,
+  .captable-table tfoot tr {
+    display: block;
+    border: 1px solid var(--color-slate-200);
+    border-radius: 8px;
+    margin: 12px 16px;
+    overflow: hidden;
+  }
+
+  .captable-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 9px 14px;
+    text-align: left !important;
+    border-bottom: 1px solid var(--color-slate-100);
+    font-size: 13px;
+  }
+
+  .captable-table td:last-child {
+    border-bottom: none;
+  }
+
+  /* Hide empty Type cell in tfoot */
+  .captable-table tfoot td:empty {
+    display: none;
+  }
+
+  .captable-table td::before {
+    content: attr(data-label);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-slate-400);
+    flex-shrink: 0;
+    margin-right: 12px;
+  }
+
+  /* Member cell: stack name/email vertically, label above */
+  .captable-table td[data-label="Member"] {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+  .captable-table td[data-label="Member"]::before {
+    margin-right: 0;
+    margin-bottom: 4px;
+  }
+
+  /* tfoot total row: highlight */
+  .captable-table tfoot tr {
+    background: var(--color-slate-50);
+    border-color: var(--color-navy-900);
+  }
+  .captable-table tfoot td {
+    font-weight: 700;
+  }
 }
 
 /* Cap table final */
@@ -2507,12 +2854,17 @@ pre {
   gap: 2px;
   border-bottom: 2px solid var(--color-slate-200);
   margin-bottom: -1px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+.tab-bar::-webkit-scrollbar { display: none; }
 .tab-btn {
   padding: 10px 20px;
   border: none;
   border-bottom: 2px solid transparent;
   background: none;
+  flex-shrink: 0;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -2797,6 +3149,84 @@ pre {
   border-bottom: 2px solid var(--color-slate-200);
 }
 
+.stmt-controls-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.export-btn-group {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+  /* Controls: full-width column stack */
+  .stmt-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .stmt-controls .tab-bar {
+    margin-bottom: 0;
+  }
+  .stmt-controls-right {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  /* Period selector: stack groups vertically */
+  .period-selector {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .period-selector-group {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .period-selector-group .field-input {
+    flex: 1;
+  }
+
+  /* Toggle buttons: tighter on mobile */
+  .toggle-btn--sm {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  /* Export buttons: side by side, full width */
+  .export-btn-group {
+    width: 100%;
+  }
+  .export-btn-group .btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  /* Statement document: reduce padding */
+  .stmt-document {
+    padding: 20px 16px;
+    max-width: 100%;
+  }
+
+  /* Tighten entity header text */
+  .stmt-entity {
+    font-size: 14px;
+    letter-spacing: 0.02em;
+  }
+  .stmt-title { font-size: 13px; }
+
+  /* Row value: allow slightly smaller min-width */
+  .stmt-row-value {
+    min-width: 80px;
+    font-size: 12px;
+  }
+  .stmt-body { font-size: 12px; }
+}
+
 /* ── Financial Statement document ── */
 .stmt-document {
   background: white;
@@ -2968,6 +3398,72 @@ pre {
   padding-top: 4px;
 }
 
+/* ── Accounting property cards responsive ─────────────────────────────────── */
+@media (max-width: 600px) {
+  /* Deal group header: stack title + Add Property button */
+  .deal-group-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .deal-group-header > .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Property row: stack info → stats → actions vertically */
+  .property-row-main {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+  }
+
+  .property-row-info {
+    width: 100%;
+  }
+
+  /* Stats: 2-col grid instead of horizontal strip */
+  .property-row-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 16px;
+    width: 100%;
+    flex-shrink: unset;
+  }
+
+  .property-row-stat {
+    text-align: left;
+  }
+
+  /* Actions: full-width row, equal-width buttons */
+  .property-row-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .property-row-actions .btn:not(.property-row-delete-btn) {
+    flex: 1;
+    justify-content: center;
+  }
+
+  /* Delete button: always visible on mobile (no hover) */
+  .property-row-delete-btn {
+    opacity: 1;
+  }
+
+  /* Delete confirm: label wraps, buttons share row */
+  .property-row-delete-label {
+    white-space: normal;
+    width: 100%;
+  }
+
+  .property-row-delete-confirm .btn {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
 /* ── Deal group ── */
 .deal-group {
   background: white;
@@ -3105,6 +3601,66 @@ pre {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Workspace action bar */
+.workspace-action-bar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Monthly entries card header */
+.monthly-entries-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 600px) {
+  /* Picker: selects wrap to their own row, button full-width below */
+  .entry-period-picker {
+    width: 100%;
+  }
+  .entry-period-picker select {
+    flex: 1;
+    min-width: 80px;
+  }
+  .entry-period-picker .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Workspace action bar: stack vertically */
+  .workspace-action-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .workspace-action-bar > .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Monthly entries header: stack h3 above picker */
+  .monthly-entries-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .monthly-entries-header .entry-period-picker {
+    width: 100%;
+  }
+
+  /* Stat row: 2-col on mobile */
+  .stat-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .stat-value { font-size: 15px; }
 }
 
 /* ── MonthYearPicker ── */
@@ -3784,7 +4340,11 @@ pre {
   gap: 4px;
   margin-bottom: 28px;
   border-bottom: 2px solid var(--color-slate-100);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
 }
+.econ-tabs::-webkit-scrollbar { display: none; }
 
 .econ-tab {
   display: flex;
@@ -3792,6 +4352,7 @@ pre {
   gap: 10px;
   padding: 12px 18px;
   background: none;
+  flex-shrink: 0; /* prevent tabs from compressing on mobile */
   border: none;
   border-bottom: 3px solid transparent;
   cursor: pointer;
@@ -4318,11 +4879,32 @@ pre {
   color: #166534;
 }
 
+/* ── Instrument header row ── */
+.instrument-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.instrument-header-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 600px) {
+  .instrument-header-row { flex-direction: column; align-items: flex-start; }
+  .instrument-header-actions { width: 100%; flex-direction: column; }
+  .instrument-header-actions .btn { width: 100%; justify-content: center; }
+}
+
 /* ── Section actions row ── */
 .econ-section-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 10px;
   margin-top: 24px;
   padding-top: 18px;
@@ -4953,6 +5535,7 @@ pre {
   margin-top: 24px;
   background: var(--color-white);
   border: 1px solid var(--color-slate-200);
+  overflow: hidden;
   border-radius: 12px;
   padding: 20px 24px 24px;
 }
@@ -4975,6 +5558,7 @@ pre {
   display: grid;
   grid-template-columns: 1fr 120px 100px;
   gap: 12px;
+  overflow: hidden;
   margin-bottom: 20px;
   padding-bottom: 20px;
   border-bottom: 1px solid var(--color-slate-100);
@@ -4982,6 +5566,10 @@ pre {
 
 @media (max-width: 600px) {
   .lp-preview-inputs { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 400px) {
+  .lp-preview-inputs { grid-template-columns: 1fr; }
 }
 
 .lp-preview-field {
@@ -5022,7 +5610,8 @@ pre {
 .lp-stack-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: baseline;
+  gap: 8px;
   padding: 4px 0;
   font-size: 13px;
 }
@@ -5042,6 +5631,9 @@ pre {
 
 .lp-stack-label {
   color: var(--color-slate-600);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .lp-stack-label--pref  { color: #92400e; font-weight: 600; }
@@ -5049,6 +5641,7 @@ pre {
 .lp-stack-label--gp    { color: var(--color-navy-900); font-weight: 600; }
 
 .lp-stack-value {
+  flex-shrink: 0;
   font-weight: 600;
   color: var(--color-navy-900);
   font-variant-numeric: tabular-nums;
@@ -5101,6 +5694,21 @@ pre {
   color: var(--color-slate-400);
   margin-top: 3px;
   line-height: 1.3;
+}
+
+@media (max-width: 600px) {
+  .lp-preview-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+  .lp-preview-metrics .lp-metric:last-child {
+    grid-column: 1 / -1;
+  }
+  .lp-metric-value { font-size: 15px; }
+}
+
+@media (max-width: 400px) {
+  .lp-preview-metrics { grid-template-columns: 1fr; }
+  .lp-preview-metrics .lp-metric:last-child { grid-column: auto; }
 }
 
 .lp-preview-disclaimer {
@@ -5358,6 +5966,64 @@ pre {
   max-width: 400px;
   margin-left: auto;
   margin-right: auto;
+}
+
+/* ── Deal card responsive ─────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .deal-card {
+    flex-direction: column;
+    gap: 0;
+    padding: 16px;
+  }
+
+  .deal-card-main {
+    width: 100%;
+  }
+
+  /* Badge wraps below entity name on very narrow screens */
+  .deal-card-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .deal-card-name {
+    font-size: 16px;
+  }
+
+  /* Progress label wraps below dots */
+  .deal-card-progress {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Actions pinned to bottom with separator */
+  .deal-card-actions {
+    width: 100%;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--color-slate-100);
+    gap: 8px;
+  }
+
+  .deal-card-actions .btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  /* Confirm-delete: wrap the label + buttons */
+  .deal-card-confirm-delete {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .deal-card-confirm-label {
+    width: 100%;
+  }
+
+  .deal-card-confirm-delete .btn {
+    flex: 1;
+    justify-content: center;
+  }
 }
 
 /* ── Sidebar deal context ─────────────────────────────────────────────────── */
@@ -5959,6 +6625,12 @@ pre {
   align-items: start;
 }
 
+@media (max-width: 900px) {
+  .section-d-body {
+    grid-template-columns: 1fr;
+  }
+}
+
 .section-d-inputs {
   background: var(--color-slate-50, #f8fafc);
   border: 1px solid var(--color-slate-200, #e2e8f0);
@@ -5994,6 +6666,7 @@ pre {
 .section-d-output {
   display: flex;
   flex-direction: column;
+  min-width: 0; /* allow grid cell to shrink so overflow-x: auto works */
   gap: 20px;
 }
 
@@ -6011,6 +6684,16 @@ pre {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px;
+}
+
+@media (max-width: 600px) {
+  .returns-kpi-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .returns-kpi-grid .kpi-card:last-child {
+    grid-column: 1 / -1;
+  }
+  .kpi-value { font-size: 16px; }
 }
 
 .kpi-card {
@@ -6125,6 +6808,13 @@ pre {
   justify-content: space-between;
   gap: 12px;
   font-size: 13px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 480px) {
+  .dist-propose-row { flex-direction: column; align-items: flex-start; }
+  .dist-propose-input-wrap { width: 100%; }
+  .dist-propose-input-wrap .field-input { width: 100%; }
 }
 
 .dist-propose-label {

@@ -283,13 +283,25 @@ function TopLevelSidebar() {
 export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
   const dealMatch = useMatch('/deals/:dealId/*')
   const dealId    = dealMatch?.params?.dealId
+  const location  = useLocation()
   useDealSync(dealId)
+
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  useEffect(() => {
+    setSidebarOpen(false)
+  }, [location.pathname])
 
   return (
     <div className="app-root">
       <AcceptTermsModal />
       {/* ── Sidebar ── */}
-      <aside className="sidebar" aria-label="Navigation">
+      <aside className={`sidebar${sidebarOpen ? ' sidebar--mobile-open' : ''}`} aria-label="Navigation">
+        <button
+          className="sidebar-close-btn"
+          aria-label="Close navigation"
+          onClick={() => setSidebarOpen(false)}
+        >×</button>
         <div className="sidebar-brand">
           <div className="sidebar-logo">
             <div className="sidebar-logo-icon" aria-hidden="true">E</div>
@@ -305,8 +317,27 @@ export const Shell: React.FC<React.PropsWithChildren> = ({ children }) => {
         )}
       </aside>
 
+      {sidebarOpen && (
+        <div
+          className="sidebar-overlay"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* ── Main ── */}
       <main className="main-content" id="main-content">
+        {/* Mobile-only top bar */}
+        <div className="mobile-topbar">
+          <button
+            className="nav-hamburger"
+            aria-label="Open navigation"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <span /><span /><span />
+          </button>
+          <span className="mobile-brand">EquityForm</span>
+        </div>
         <BetaBanner />
         {dealId && (
           <div className="main-topbar">

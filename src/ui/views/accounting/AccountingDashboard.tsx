@@ -343,7 +343,7 @@ function PropertyWorkspace({
       )}
 
       {/* Action bar */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 24, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="workspace-action-bar">
         <div className="entry-period-picker">
           <select
             className="field-input field-input--sm"
@@ -433,7 +433,7 @@ function PropertyWorkspace({
 
       {/* Monthly entries table */}
       <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div className="monthly-entries-header">
           <h3 style={{ margin: 0 }}>Monthly Entries</h3>
           <div className="entry-period-picker">
             <select
@@ -486,6 +486,7 @@ function PropertyWorkspace({
             No entries yet. Add your first monthly entry above.
           </div>
         ) : (
+          <div className="table-scroll-wrapper table-scroll-wrapper--in-card">
           <table className="data-table">
             <thead>
               <tr>
@@ -544,6 +545,7 @@ function PropertyWorkspace({
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

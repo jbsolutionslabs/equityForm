@@ -2381,10 +2381,10 @@ export const SectionA: React.FC<Props> = ({ dealId, locked, setTab }) => {
 
           {/* ── Financing instruments ── */}
           <div className="form-section">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div className="instrument-header-row">
               <h2 className="form-section-title" style={{ margin: 0 }}>Financing Instruments</h2>
               {!locked && instruments.length < 5 && (
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div className="instrument-header-actions">
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"

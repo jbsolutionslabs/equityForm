@@ -584,7 +584,7 @@ export const Investors: React.FC = () => {
       ) : null}
 
       {/* Top actions */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div className="investor-actions-bar">
         <button type="button" onClick={onAdd} className="btn btn-primary">
           + Add investor
         </button>
@@ -1088,7 +1088,7 @@ export const Investors: React.FC = () => {
 
         {/* Bottom save */}
         {fields.length > 0 && (
-          <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+          <div className="investor-actions-bar" style={{ marginTop: 8 }}>
             <button type="submit" className="btn btn-primary">
               Save all investors
             </button>

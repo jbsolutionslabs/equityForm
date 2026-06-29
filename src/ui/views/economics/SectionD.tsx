@@ -822,7 +822,7 @@ function DistributionCard({
     const v = key in overrides
       ? (overrides as unknown as Record<string, number>)[key as string]
       : (dist as unknown as Record<string, number>)[key as string]
-    return typeof v === 'number' ? v : 0
+    return typeof v === 'number' ? Math.round(v * 100) / 100 : 0
   }
 
   const rows: { key: keyof DistributionResult; label: string }[] = [

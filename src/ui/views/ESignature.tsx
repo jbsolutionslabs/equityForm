@@ -170,7 +170,7 @@ export const ESignature: React.FC = () => {
 
       {/* Bulk actions */}
       {investors.length > 0 && (
-        <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+        <div className="esig-bulk-actions">
           <button
             type="button"
             className="btn btn-primary"
@@ -186,7 +186,7 @@ export const ESignature: React.FC = () => {
         </div>
       )}
 
-      {/* Investor table */}
+      {/* Investor list */}
       {investors.length === 0 ? (
         <div className="card">
           <div className="empty-state">
@@ -195,106 +195,87 @@ export const ESignature: React.FC = () => {
           </div>
         </div>
       ) : (
-        <div className="card" style={{ padding: 0 }}>
-          <table className="data-table" style={{ width: '100%' }}>
-            <thead>
-              <tr>
-                <th>Investor</th>
-                <th>Type</th>
-                <th>Amount</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {investors.map((inv) => {
-                const sub = getSub(inv.id)
-                return (
-                  <tr key={inv.id}>
-                    <td>
-                      <div style={{ fontWeight: 500 }}>{inv.fullLegalName}</div>
-                      <div style={{ fontSize: 12, color: 'var(--color-slate-500)' }}>{inv.email}</div>
-                    </td>
-                    <td style={{ textTransform: 'capitalize' }}>{inv.subscriberType}</td>
-                    <td>{inv.subscriptionAmount ? `$${Number(inv.subscriptionAmount).toLocaleString()}` : '—'}</td>
-                    <td>
-                      <span className={`status-badge ${statusClass(sub?.status)}`}>
-                        {statusLabel(sub?.status)}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="sig-status">
-                        {!sub && (
-                          <button
-                            type="button"
-                            className="btn btn-primary btn-sm"
-                            disabled={!canSend}
-                            title={!canSend ? 'Complete OA signing first' : undefined}
-                            onClick={async () => {
-                              try {
-                                await subscriptionActions.send(inv.id)
-                                notify(`Agreement sent to ${inv.fullLegalName}.`)
-                              } catch {
-                                notify(`Failed to send agreement to ${inv.fullLegalName}.`, 'error')
-                              }
-                            }}
-                          >
-                            Send Now
-                          </button>
-                        )}
-                        {sub?.status === 'generated' && (
-                          <button
-                            type="button"
-                            className="btn btn-primary btn-sm"
-                            onClick={async () => {
-                              try {
-                                await subscriptionActions.send(inv.id)
-                                notify(`Agreement sent to ${inv.fullLegalName}.`)
-                              } catch {
-                                notify(`Failed to send agreement to ${inv.fullLegalName}.`, 'error')
-                              }
-                            }}
-                          >
-                            Send Now
-                          </button>
-                        )}
-                        {sub?.status === 'sent' && (
-                          <>
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => notify(`Reminder sent to ${inv.fullLegalName}.`)}
-                            >
-                              Nudge
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-sm"
-                              onClick={async () => {
-                                try {
-                                  await subscriptionActions.markSigned(inv.id)
-                                  notify(`Marked as signed for ${inv.fullLegalName}.`)
-                                } catch {
-                                  notify(`Failed to mark ${inv.fullLegalName} as signed.`, 'error')
-                                }
-                              }}
-                            >
-                              Mark Signed
-                            </button>
-                          </>
-                        )}
-                        {(sub?.status === 'signed' || sub?.status === 'paid') && (
-                          <span style={{ fontSize: 12, color: 'var(--color-slate-500)' }}>
-                            Signed {sub.signedAt ? new Date(sub.signedAt).toLocaleDateString() : ''}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+        <div className="esig-investor-list">
+          {investors.map((inv) => {
+            const sub = getSub(inv.id)
+            return (
+              <div key={inv.id} className="esig-investor-card">
+                <div className="esig-card-header">
+                  <div className="esig-card-identity">
+                    <div className="esig-card-name">{inv.fullLegalName}</div>
+                    <div className="esig-card-email">{inv.email}</div>
+                  </div>
+                  <span className={`status-badge ${statusClass(sub?.status)}`}>
+                    {statusLabel(sub?.status)}
+                  </span>
+                </div>
+
+                <div className="esig-card-meta">
+                  <span className="esig-meta-item">
+                    <span className="esig-meta-label">Type</span>
+                    <span className="esig-meta-value" style={{ textTransform: 'capitalize' }}>{inv.subscriberType}</span>
+                  </span>
+                  <span className="esig-meta-item">
+                    <span className="esig-meta-label">Amount</span>
+                    <span className="esig-meta-value">
+                      {inv.subscriptionAmount ? `$${Number(inv.subscriptionAmount).toLocaleString()}` : '—'}
+                    </span>
+                  </span>
+                </div>
+
+                <div className="esig-card-actions">
+                  {(!sub || sub.status === 'generated') && (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      disabled={!canSend}
+                      title={!canSend ? 'Complete OA signing first' : undefined}
+                      onClick={async () => {
+                        try {
+                          await subscriptionActions.send(inv.id)
+                          notify(`Agreement sent to ${inv.fullLegalName}.`)
+                        } catch {
+                          notify(`Failed to send agreement to ${inv.fullLegalName}.`, 'error')
+                        }
+                      }}
+                    >
+                      Send Now
+                    </button>
+                  )}
+                  {sub?.status === 'sent' && (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => notify(`Reminder sent to ${inv.fullLegalName}.`)}
+                      >
+                        Nudge
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={async () => {
+                          try {
+                            await subscriptionActions.markSigned(inv.id)
+                            notify(`Marked as signed for ${inv.fullLegalName}.`)
+                          } catch {
+                            notify(`Failed to mark ${inv.fullLegalName} as signed.`, 'error')
+                          }
+                        }}
+                      >
+                        Mark Signed
+                      </button>
+                    </>
+                  )}
+                  {(sub?.status === 'signed' || sub?.status === 'paid') && (
+                    <span className="esig-signed-label">
+                      ✓ Signed {sub.signedAt ? new Date(sub.signedAt).toLocaleDateString() : ''}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 

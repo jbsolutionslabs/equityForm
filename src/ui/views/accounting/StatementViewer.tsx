@@ -390,7 +390,7 @@ export const StatementViewer: React.FC<Props> = ({ property, entries }) => {
           ))}
         </div>
 
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="stmt-controls-right">
           <PeriodSelector sel={sel} onChange={setSel} availableYears={availableYears} />
           <div className="export-btn-group">
             <button
