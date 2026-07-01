@@ -64,6 +64,27 @@ function defaultAssumptions(): ExitScenarioAssumptions {
   }
 }
 
+// ─── Live sale preview helper ─────────────────────────────────────────────────
+
+function computeSalePreview(draft: ExitScenarioAssumptions) {
+  let terminalNoi = draft.beginNoi
+  for (let i = 0; i < draft.holdYears - 1; i++) {
+    terminalNoi *= 1 + (draft.noiGrowthRates?.[i] ?? draft.noiGrowthPct)
+  }
+  const sale            = draft.sale ?? defaultSaleConfig()
+  const closingCostsPct = sale.closingCostsPct ?? 0.02
+  let   grossSale       = 0
+  switch (sale.valuationMethod) {
+    case 'cap_rate':       grossSale = (sale.capRate ?? 0) > 0 ? terminalNoi / (sale.capRate ?? 0.055) : 0; break
+    case 'per_unit':       grossSale = sale.perUnitValue ?? 0; break
+    case 'gross_multiple': grossSale = (sale.grossMultiple ?? 0) * terminalNoi; break
+    case 'direct':         grossSale = sale.directValue ?? 0; break
+  }
+  const closingCostsDollar = grossSale * closingCostsPct
+  const netSale            = grossSale - closingCostsDollar
+  return { terminalNoi, grossSale, closingCostsDollar, netSale }
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -83,12 +104,13 @@ export const SectionD: React.FC<Props> = ({ dealId, locked }) => {
   const scenarios = deal?.exitScenarios ?? []
 
   // Local state for the active scenario's assumptions draft
-  const [activeId, setActiveId]   = useState<string | null>(scenarios[0]?.id ?? null)
-  const [draft, setDraft]         = useState<ExitScenarioAssumptions>(
+  const [activeId, setActiveId]       = useState<string | null>(scenarios[0]?.id ?? null)
+  const [draft, setDraft]             = useState<ExitScenarioAssumptions>(
     scenarios[0]?.assumptions ?? defaultAssumptions()
   )
-  const [overrides, setOverrides] = useState<Partial<DistributionResult>>({})
-  const [running, setRunning]     = useState(false)
+  const [overrides, setOverrides]     = useState<Partial<DistributionResult>>({})
+  const [running, setRunning]         = useState(false)
+  const [leftCollapsed, setLeftCollapsed] = useState(false)
 
   const activeScenario = scenarios.find(s => s.id === activeId)
   const result: ProjectionResult | undefined = activeScenario?.result
@@ -118,6 +140,7 @@ export const SectionD: React.FC<Props> = ({ dealId, locked }) => {
     requestAnimationFrame(() => {
       runProjection(dealId, activeId)
       setRunning(false)
+      setLeftCollapsed(true)
     })
   }
 
@@ -167,11 +190,21 @@ export const SectionD: React.FC<Props> = ({ dealId, locked }) => {
       )}
 
       {activeId && (
-        <div className="section-d-body">
+        <div className={`section-d-body${leftCollapsed ? ' section-d-body--collapsed' : ''}`}>
 
           {/* ── Left: Inputs ── */}
-          <div className="section-d-inputs">
-            <h3>Projection Assumptions</h3>
+          <div className={`section-d-inputs${leftCollapsed ? ' section-d-inputs--hidden' : ''}`}>
+            <div className="section-d-inputs-header">
+              <h3>Projection Assumptions</h3>
+              <button
+                type="button"
+                className="section-d-collapse-btn"
+                onClick={() => setLeftCollapsed(true)}
+                title="Collapse inputs"
+              >
+                ‹
+              </button>
+            </div>
 
             {/* Hold period */}
             <div className="field-group">
@@ -186,34 +219,82 @@ export const SectionD: React.FC<Props> = ({ dealId, locked }) => {
               />
             </div>
 
-            {/* Year 1 NOI */}
+            {/* NOI Schedule — unified Year 0/1/N table */}
             <div className="field-group">
-              <label className="field-label">Year 1 NOI</label>
-              <div className="field-adornment-wrap">
-                <span className="field-adornment">$</span>
-                <CurrencyInput
-                  className="field-input"
-                  value={draft.beginNoi}
-                  onChange={v => patchDraft({ beginNoi: v })}
-                  disabled={locked}
-                />
-              </div>
-            </div>
-
-            {/* NOI growth */}
-            <div className="field-group">
-              <label className="field-label">NOI Growth (annual %)</label>
-              <div className="field-adornment-wrap">
-                <input
-                  type="number"
-                  className="field-input"
-                  step={0.1} min={-20} max={50}
-                  value={(draft.noiGrowthPct * 100).toFixed(1)}
-                  onChange={e => patchDraft({ noiGrowthPct: parseFloat(e.target.value) / 100 || 0 })}
-                  disabled={locked}
-                />
-                <span className="field-adornment field-adornment--right">%</span>
-              </div>
+              <label className="field-label">NOI Growth Rate Assumptions</label>
+              <table className="noi-schedule-table">
+                <thead>
+                  <tr>
+                    <th>Year</th>
+                    <th>NOI</th>
+                    <th>YoY%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Year 0 — partial year input (optional) */}
+                  <tr>
+                    <td>0</td>
+                    <td>
+                      <CurrencyInput
+                        className="noi-schedule-noi-input"
+                        value={draft.year0Noi ?? 0}
+                        onChange={v => patchDraft({ year0Noi: v || undefined })}
+                        disabled={locked}
+                      />
+                    </td>
+                    <td className="noi-schedule-hint-cell">partial yr</td>
+                  </tr>
+                  {/* Year 1 — beginNoi input */}
+                  <tr>
+                    <td>1</td>
+                    <td>
+                      <CurrencyInput
+                        className="noi-schedule-noi-input"
+                        value={draft.beginNoi}
+                        onChange={v => patchDraft({ beginNoi: v })}
+                        disabled={locked}
+                      />
+                    </td>
+                    <td>—</td>
+                  </tr>
+                  {/* Years 2 through holdYears — computed NOI, editable YoY% */}
+                  {Array.from({ length: draft.holdYears - 1 }, (_, i) => {
+                    // Compute NOI for year i+2
+                    let noi = draft.beginNoi
+                    for (let j = 0; j <= i; j++) {
+                      noi *= 1 + (draft.noiGrowthRates?.[j] ?? draft.noiGrowthPct)
+                    }
+                    const rate = draft.noiGrowthRates?.[i] ?? draft.noiGrowthPct
+                    return (
+                      <tr key={i}>
+                        <td>{i + 2}</td>
+                        <td className="noi-schedule-computed">{fmtUSD(noi)}</td>
+                        <td>
+                          <div className="noi-rate-wrap">
+                            <input
+                              type="number"
+                              className="noi-rate-input"
+                              step={0.1} min={-20} max={50}
+                              value={(rate * 100).toFixed(1)}
+                              onChange={e => {
+                                const rates = Array.from({ length: draft.holdYears - 1 }, (_, j) =>
+                                  j === i
+                                    ? parseFloat(e.target.value) / 100 || 0
+                                    : (draft.noiGrowthRates?.[j] ?? draft.noiGrowthPct)
+                                )
+                                patchDraft({ noiGrowthRates: rates })
+                              }}
+                              disabled={locked}
+                            />
+                            <span className="noi-rate-pct">%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              <div className="field-hint">Year 0 = partial year before hold start (reduces equity basis). Edit YoY% per year or leave uniform.</div>
             </div>
 
             {/* Reserves */}
@@ -263,109 +344,134 @@ export const SectionD: React.FC<Props> = ({ dealId, locked }) => {
             )}
 
             {/* Sale config */}
-            {draft.eventType === 'SALE' && draft.sale && (
-              <div className="section-d-event-config">
-                <h4>Sale Assumptions</h4>
+            {draft.eventType === 'SALE' && draft.sale && (() => {
+              const { terminalNoi, grossSale, closingCostsDollar, netSale } = computeSalePreview(draft)
+              return (
+                <div className="section-d-event-config">
+                  <h4>Sale Assumptions</h4>
 
-                <div className="field-group">
-                  <label className="field-label">Valuation Method</label>
-                  <div className="btn-group btn-group--wrap">
-                    {([
-                      ['cap_rate', 'Cap Rate'],
-                      ['per_unit', 'Per Unit'],
-                      ['gross_multiple', 'Gross Multiple'],
-                      ['direct', 'Direct Value'],
-                    ] as [SaleValuationMethod, string][]).map(([val, label]) => (
-                      <button
-                        key={val}
-                        type="button"
-                        className={['btn btn-sm', draft.sale?.valuationMethod === val ? 'btn-primary' : 'btn-secondary'].join(' ')}
-                        onClick={() => patchSale({ valuationMethod: val })}
-                        disabled={locked}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {draft.sale.valuationMethod === 'cap_rate' && (
                   <div className="field-group">
-                    <label className="field-label">Exit Cap Rate</label>
-                    <div className="field-adornment-wrap">
+                    <label className="field-label">Valuation Method</label>
+                    <div className="btn-group btn-group--wrap">
+                      {([
+                        ['cap_rate', 'Cap Rate'],
+                        ['per_unit', 'Per Unit'],
+                        ['gross_multiple', 'Gross Multiple'],
+                        ['direct', 'Direct Value'],
+                      ] as [SaleValuationMethod, string][]).map(([val, label]) => (
+                        <button
+                          key={val}
+                          type="button"
+                          className={['btn btn-sm', draft.sale?.valuationMethod === val ? 'btn-primary' : 'btn-secondary'].join(' ')}
+                          onClick={() => patchSale({ valuationMethod: val })}
+                          disabled={locked}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Terminal NOI — always computed from NOI schedule */}
+                  <div className="sale-preview-row">
+                    <span className="sale-preview-label">Terminal NOI</span>
+                    <span className="sale-preview-value">{fmtUSD(terminalNoi)}</span>
+                  </div>
+
+                  {draft.sale.valuationMethod === 'cap_rate' && (
+                    <div className="field-group">
+                      <label className="field-label">Cap Rate</label>
+                      <div className="field-adornment-wrap">
+                        <input
+                          type="number"
+                          className="field-input"
+                          step={0.1} min={0.1} max={20}
+                          value={((draft.sale.capRate ?? 0.055) * 100).toFixed(2)}
+                          onChange={e => patchSale({ capRate: parseFloat(e.target.value) / 100 || 0 })}
+                          disabled={locked}
+                        />
+                        <span className="field-adornment field-adornment--right">%</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {draft.sale.valuationMethod === 'per_unit' && (
+                    <div className="field-group">
+                      <label className="field-label">Value Per Unit ($)</label>
+                      <div className="field-adornment-wrap">
+                        <span className="field-adornment">$</span>
+                        <CurrencyInput
+                          className="field-input"
+                          value={draft.sale.perUnitValue ?? 0}
+                          onChange={v => patchSale({ perUnitValue: v })}
+                          disabled={locked}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {draft.sale.valuationMethod === 'gross_multiple' && (
+                    <div className="field-group">
+                      <label className="field-label">Gross Multiple (× NOI)</label>
                       <input
                         type="number"
                         className="field-input"
-                        step={0.1} min={0.1} max={20}
-                        value={((draft.sale.capRate ?? 0.055) * 100).toFixed(2)}
-                        onChange={e => patchSale({ capRate: parseFloat(e.target.value) / 100 || 0 })}
-                        disabled={locked}
-                      />
-                      <span className="field-adornment field-adornment--right">%</span>
-                    </div>
-                  </div>
-                )}
-
-                {draft.sale.valuationMethod === 'per_unit' && (
-                  <div className="field-group">
-                    <label className="field-label">Value Per Unit ($)</label>
-                    <div className="field-adornment-wrap">
-                      <span className="field-adornment">$</span>
-                      <CurrencyInput
-                        className="field-input"
-                        value={draft.sale.perUnitValue ?? 0}
-                        onChange={v => patchSale({ perUnitValue: v })}
+                        step={0.1} min={0.1}
+                        value={(draft.sale.grossMultiple ?? 1.8).toFixed(1)}
+                        onChange={e => patchSale({ grossMultiple: parseFloat(e.target.value) || 1 })}
                         disabled={locked}
                       />
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {draft.sale.valuationMethod === 'gross_multiple' && (
-                  <div className="field-group">
-                    <label className="field-label">Gross Multiple (× NOI)</label>
-                    <input
-                      type="number"
-                      className="field-input"
-                      step={0.1} min={0.1}
-                      value={(draft.sale.grossMultiple ?? 1.8).toFixed(1)}
-                      onChange={e => patchSale({ grossMultiple: parseFloat(e.target.value) || 1 })}
-                      disabled={locked}
-                    />
-                  </div>
-                )}
+                  {draft.sale.valuationMethod === 'direct' && (
+                    <div className="field-group">
+                      <label className="field-label">Direct Sale Price ($)</label>
+                      <div className="field-adornment-wrap">
+                        <span className="field-adornment">$</span>
+                        <CurrencyInput
+                          className="field-input"
+                          value={draft.sale.directValue ?? 0}
+                          onChange={v => patchSale({ directValue: v })}
+                          disabled={locked}
+                        />
+                      </div>
+                    </div>
+                  )}
 
-                {draft.sale.valuationMethod === 'direct' && (
+                  {/* Gross Sales Proceeds */}
+                  <div className="sale-preview-row">
+                    <span className="sale-preview-label">Gross Sales Proceeds</span>
+                    <span className="sale-preview-value">{fmtUSD(grossSale)}</span>
+                  </div>
+
+                  {/* Closing Costs — % input + live dollar amount */}
                   <div className="field-group">
-                    <label className="field-label">Direct Sale Price ($)</label>
-                    <div className="field-adornment-wrap">
-                      <span className="field-adornment">$</span>
-                      <CurrencyInput
-                        className="field-input"
-                        value={draft.sale.directValue ?? 0}
-                        onChange={v => patchSale({ directValue: v })}
-                        disabled={locked}
-                      />
+                    <label className="field-label">Closing Costs</label>
+                    <div className="sale-closing-costs-row">
+                      <div className="field-adornment-wrap" style={{ flex: '0 0 90px' }}>
+                        <input
+                          type="number"
+                          className="field-input"
+                          step={0.1} min={0} max={10}
+                          value={((draft.sale.closingCostsPct ?? 0.02) * 100).toFixed(1)}
+                          onChange={e => patchSale({ closingCostsPct: parseFloat(e.target.value) / 100 || 0 })}
+                          disabled={locked}
+                        />
+                        <span className="field-adornment field-adornment--right">%</span>
+                      </div>
+                      <span className="sale-closing-costs-dollar">{fmtUSD(closingCostsDollar)}</span>
                     </div>
                   </div>
-                )}
 
-                <div className="field-group">
-                  <label className="field-label">Closing Costs</label>
-                  <div className="field-adornment-wrap">
-                    <input
-                      type="number"
-                      className="field-input"
-                      step={0.1} min={0} max={10}
-                      value={((draft.sale.closingCostsPct ?? 0.02) * 100).toFixed(1)}
-                      onChange={e => patchSale({ closingCostsPct: parseFloat(e.target.value) / 100 || 0 })}
-                      disabled={locked}
-                    />
-                    <span className="field-adornment field-adornment--right">%</span>
+                  {/* Net Sales Proceeds */}
+                  <div className="sale-preview-row sale-preview-row--total">
+                    <span className="sale-preview-label">Net Sales Proceeds</span>
+                    <span className="sale-preview-value">{fmtUSD(netSale)}</span>
                   </div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
 
             {/* Refi config */}
             {draft.eventType === 'REFI' && draft.refi && (
@@ -707,6 +813,16 @@ export const SectionD: React.FC<Props> = ({ dealId, locked }) => {
 
           {/* ── Right: Output ── */}
           <div className="section-d-output">
+            {leftCollapsed && (
+              <button
+                type="button"
+                className="section-d-expand-btn"
+                onClick={() => setLeftCollapsed(false)}
+                title="Show inputs"
+              >
+                › Inputs
+              </button>
+            )}
 
             {!result && (
               <div className="section-d-empty-output">
@@ -718,20 +834,26 @@ export const SectionD: React.FC<Props> = ({ dealId, locked }) => {
               <>
                 {/* Returns KPI grid */}
                 <div className="returns-kpi-grid">
-                  <KPI label="LP IRR"            value={fmtPct(result.lpIrr, 1)} />
+                  <KPI label="LP IRR"            value={fmtPct(result.lpIrr, 2)} />
                   <KPI label="LP Equity Multiple" value={fmtMult(result.lpEquityMultiple)} />
                   <KPI label="LP Cash-on-Cash"   value={fmtPct(result.lpCashOnCash, 1)} />
-                  <KPI label="GP IRR"             value={fmtPct(result.gpIrr, 1)} />
-                  <KPI
-                    label="GP Promote $"
-                    value={fmtUSD(
-                      result.years.reduce((s, y) => {
-                        const ev = y.event?.proposedDistribution
-                        return s + (ev ? ev.gpPromote : 0)
-                      }, 0)
-                    )}
-                  />
+                  <KPI label="GP IRR"             value={fmtPct(result.gpIrr, 2)} />
+                  <KPI label="GP Equity Multiple" value={fmtMult(result.gpEquityMultiple)} />
+                  <KPI label="Terminal NOI" value={fmtUSD(result.years[result.years.length - 1]?.noi)} />
+                  {(() => {
+                    const saleYr = result.years.find(yr => yr.event?.type === 'SALE')
+                    if (!saleYr?.event) return null
+                    return (
+                      <>
+                        <KPI label="Gross Sale Price"  value={fmtUSD(saleYr.event.grossValue)} />
+                        <KPI label="Net Sale Proceeds" value={fmtUSD(saleYr.event.netProceeds)} />
+                      </>
+                    )
+                  })()}
                 </div>
+
+                {/* Partnership Returns Summary — year-by-year LP/GP cash flow schedule */}
+                <PartnershipReturnsTable result={result} />
 
                 {/* Year-by-year table */}
                 <div className="projection-table-wrap">
@@ -779,6 +901,8 @@ export const SectionD: React.FC<Props> = ({ dealId, locked }) => {
                               event={y.event}
                               overrides={overrides}
                               onOverride={patch => setOverrides(o => ({ ...o, ...patch }))}
+                              onClear={() => setOverrides({})}
+                              result={result}
                             />
                           )}
                         </React.Fragment>
@@ -806,74 +930,388 @@ function KPI({ label, value }: { label: string; value: string }) {
   )
 }
 
+// ─── Partnership Returns Summary — year-by-year cash flow schedule ────────────
+
+function PartnershipReturnsTable({ result }: { result: ProjectionResult }) {
+  const { years, lpIrr, gpIrr, lpEquityMultiple, gpEquityMultiple } = result
+
+  // LP/GP contributions: from flows stored in state (we don't have direct access here,
+  // so we derive from the first negative-value flow which is always at Year 0)
+  // Approximate: sum all negative distributions (should just be Year 0 equity in)
+  // We derive LP/GP equity from lpEquityMultiple and total LP distributions
+  const totalLpDist = years.reduce((s, y) => s + (y.lpDistribution ?? 0), 0)
+  const totalGpDist = years.reduce((s, y) => s + (y.gpDistribution ?? 0), 0)
+
+  // Derive invested equity from multiple (totalOut / EM = totalIn)
+  const lpEquity = lpEquityMultiple && lpEquityMultiple > 0 ? totalLpDist / lpEquityMultiple : undefined
+  const gpEquity = gpEquityMultiple && gpEquityMultiple > 0 ? totalGpDist / gpEquityMultiple : undefined
+
+  // Per-year distribution breakdowns
+  const totalLpRoC     = years.reduce((s, y) => s + (y.distribution?.lpRoC ?? 0), 0)
+  const totalLpPromote = years.reduce((s, y) => s + ((y.distribution?.lpCatchup ?? 0) + (y.distribution?.lpPromote ?? 0)), 0)
+  const totalGpRoC     = years.reduce((s, y) => s + (y.distribution?.gpRoC ?? 0), 0)
+  const totalGpPromote = years.reduce((s, y) => s + ((y.distribution?.gpCatchup ?? 0) + (y.distribution?.gpPromote ?? 0)), 0)
+
+  function distCell(v: number) {
+    return v > 0.5 ? fmtUSD(v) : '—'
+  }
+
+  return (
+    <div className="prs-wrap">
+      <div className="prs-title">Summary of Partnership-Level Returns — Annual</div>
+      <div className="prs-scroll">
+        <table className="prs-table">
+          <thead>
+            <tr>
+              <th className="prs-label-col"></th>
+              <th className="prs-yr0-col">Year 0</th>
+              {years.map(y => (
+                <th key={y.year} className={y.event ? 'prs-event-col' : ''}>Year {y.year}</th>
+              ))}
+              <th className="prs-total-col">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* ── LP section ── */}
+            <tr className="prs-section-header">
+              <td colSpan={years.length + 3}>LP Partners</td>
+            </tr>
+            <tr>
+              <td className="prs-row-label">Total Contributions</td>
+              <td className="prs-negative">{lpEquity != null ? `(${fmtUSD(lpEquity)})` : '—'}</td>
+              {years.map(y => <td key={y.year}>—</td>)}
+              <td className="prs-negative prs-total">{lpEquity != null ? `(${fmtUSD(lpEquity)})` : '—'}</td>
+            </tr>
+            <tr className="prs-breakdown-row">
+              <td className="prs-row-label prs-indent">Return of Capital</td>
+              <td>—</td>
+              {years.map(y => (
+                <td key={y.year} className={(y.distribution?.lpRoC ?? 0) > 0.5 ? 'prs-positive' : ''}>
+                  {distCell(y.distribution?.lpRoC ?? 0)}
+                </td>
+              ))}
+              <td className="prs-total">{distCell(totalLpRoC)}</td>
+            </tr>
+            <tr className="prs-breakdown-row">
+              <td className="prs-row-label prs-indent">Promote / Carry</td>
+              <td>—</td>
+              {years.map(y => {
+                const v = (y.distribution?.lpCatchup ?? 0) + (y.distribution?.lpPromote ?? 0)
+                return (
+                  <td key={y.year} className={v > 0.5 ? 'prs-positive' : ''}>{distCell(v)}</td>
+                )
+              })}
+              <td className="prs-total">{distCell(totalLpPromote)}</td>
+            </tr>
+            <tr className="prs-subtotal-row">
+              <td className="prs-row-label">Total Distributions</td>
+              <td>—</td>
+              {years.map(y => (
+                <td key={y.year} className={(y.lpDistribution ?? 0) > 0 ? 'prs-positive' : ''}>
+                  {(y.lpDistribution ?? 0) > 0.5 ? fmtUSD(y.lpDistribution) : '—'}
+                </td>
+              ))}
+              <td className="prs-positive prs-total">{totalLpDist > 0.5 ? fmtUSD(totalLpDist) : '—'}</td>
+            </tr>
+            <tr>
+              <td className="prs-row-label">Net Cash Flow</td>
+              <td className="prs-negative">{lpEquity != null ? `(${fmtUSD(lpEquity)})` : '—'}</td>
+              {years.map(y => (
+                <td key={y.year} className={(y.lpDistribution ?? 0) > 0 ? 'prs-positive' : ''}>
+                  {(y.lpDistribution ?? 0) > 0.5 ? fmtUSD(y.lpDistribution) : '—'}
+                </td>
+              ))}
+              <td className={`prs-total ${totalLpDist - (lpEquity ?? 0) >= 0 ? 'prs-positive' : 'prs-negative'}`}>
+                {lpEquity != null ? fmtUSD(totalLpDist - lpEquity) : '—'}
+              </td>
+            </tr>
+
+            {/* ── LP metrics ── */}
+            <tr className="prs-metric-row">
+              <td className="prs-row-label">IRR</td>
+              <td colSpan={years.length + 1}></td>
+              <td className="prs-total prs-metric-value">{fmtPct(lpIrr, 2)}</td>
+            </tr>
+            <tr className="prs-metric-row">
+              <td className="prs-row-label">Equity Multiple</td>
+              <td colSpan={years.length + 1}></td>
+              <td className="prs-total prs-metric-value">{fmtMult(lpEquityMultiple)}</td>
+            </tr>
+
+            {/* ── GP section ── */}
+            <tr className="prs-section-header">
+              <td colSpan={years.length + 3}>GP / Sponsor</td>
+            </tr>
+            <tr>
+              <td className="prs-row-label">Total Contributions</td>
+              <td className="prs-negative">{gpEquity != null ? `(${fmtUSD(gpEquity)})` : '—'}</td>
+              {years.map(y => <td key={y.year}>—</td>)}
+              <td className="prs-negative prs-total">{gpEquity != null ? `(${fmtUSD(gpEquity)})` : '—'}</td>
+            </tr>
+            <tr className="prs-breakdown-row">
+              <td className="prs-row-label prs-indent">Return of Capital</td>
+              <td>—</td>
+              {years.map(y => (
+                <td key={y.year} className={(y.distribution?.gpRoC ?? 0) > 0.5 ? 'prs-positive' : ''}>
+                  {distCell(y.distribution?.gpRoC ?? 0)}
+                </td>
+              ))}
+              <td className="prs-total">{distCell(totalGpRoC)}</td>
+            </tr>
+            <tr className="prs-breakdown-row">
+              <td className="prs-row-label prs-indent">Promote / Carry</td>
+              <td>—</td>
+              {years.map(y => {
+                const v = (y.distribution?.gpCatchup ?? 0) + (y.distribution?.gpPromote ?? 0)
+                return (
+                  <td key={y.year} className={v > 0.5 ? 'prs-positive' : ''}>{distCell(v)}</td>
+                )
+              })}
+              <td className="prs-total">{distCell(totalGpPromote)}</td>
+            </tr>
+            <tr className="prs-subtotal-row">
+              <td className="prs-row-label">Total Distributions</td>
+              <td>—</td>
+              {years.map(y => (
+                <td key={y.year} className={(y.gpDistribution ?? 0) > 0 ? 'prs-positive' : ''}>
+                  {(y.gpDistribution ?? 0) > 0.5 ? fmtUSD(y.gpDistribution) : '—'}
+                </td>
+              ))}
+              <td className="prs-positive prs-total">{totalGpDist > 0.5 ? fmtUSD(totalGpDist) : '—'}</td>
+            </tr>
+            <tr>
+              <td className="prs-row-label">Net Cash Flow</td>
+              <td className="prs-negative">{gpEquity != null ? `(${fmtUSD(gpEquity)})` : '—'}</td>
+              {years.map(y => (
+                <td key={y.year} className={(y.gpDistribution ?? 0) > 0 ? 'prs-positive' : ''}>
+                  {(y.gpDistribution ?? 0) > 0.5 ? fmtUSD(y.gpDistribution) : '—'}
+                </td>
+              ))}
+              <td className={`prs-total ${totalGpDist - (gpEquity ?? 0) >= 0 ? 'prs-positive' : 'prs-negative'}`}>
+                {gpEquity != null ? fmtUSD(totalGpDist - gpEquity) : '—'}
+              </td>
+            </tr>
+
+            {/* ── GP metrics ── */}
+            <tr className="prs-metric-row">
+              <td className="prs-row-label">IRR</td>
+              <td colSpan={years.length + 1}></td>
+              <td className="prs-total prs-metric-value">{fmtPct(gpIrr, 2)}</td>
+            </tr>
+            <tr className="prs-metric-row">
+              <td className="prs-row-label">Equity Multiple</td>
+              <td colSpan={years.length + 1}></td>
+              <td className="prs-total prs-metric-value">{fmtMult(gpEquityMultiple)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ─── Partnership Returns table (replaces old flat distribution list) ──────────
+
 function DistributionCard({
   event,
   overrides,
   onOverride,
+  onClear,
+  result,
 }: {
-  event: YearProjection['event'] & object
+  event: NonNullable<YearProjection['event']>
   overrides: Partial<DistributionResult>
   onOverride: (patch: Partial<DistributionResult>) => void
+  onClear?: () => void
+  result?: ProjectionResult
 }) {
-  const dist = event?.proposedDistribution
+  const dist = event.proposedDistribution
   if (!dist) return null
 
-  const fmtVal = (key: keyof DistributionResult) => {
-    const v = key in overrides
-      ? (overrides as unknown as Record<string, number>)[key as string]
-      : (dist as unknown as Record<string, number>)[key as string]
-    return typeof v === 'number' ? Math.round(v * 100) / 100 : 0
+  function getVal(key: 'lpPref' | 'lpRoC' | 'lpPromote' | 'gpRoC' | 'gpPromote'): number {
+    return key in overrides
+      ? (overrides as Record<string, number>)[key] ?? 0
+      : (dist as unknown as Record<string, number>)[key] ?? 0
   }
 
-  const rows: { key: keyof DistributionResult; label: string }[] = [
-    { key: 'lpPref',    label: 'LP Preferred Return' },
-    { key: 'lpRoC',     label: 'LP Return of Capital' },
-    { key: 'lpPromote', label: 'LP Promote' },
-    { key: 'gpRoC',     label: 'GP Return of Capital' },
-    { key: 'gpPromote', label: 'GP Promote' },
-  ]
+  const lpRoC     = getVal('lpRoC')
+  const gpRoC     = getVal('gpRoC')
+  const lpPref    = getVal('lpPref')
+  const gpPref    = dist.gpPref ?? 0
+  const lpCatchup = dist.lpCatchup ?? 0
+  const gpCatchup = dist.gpCatchup ?? 0
+  const lpPromote = getVal('lpPromote')
+  const gpPromote = getVal('gpPromote')
+
+  const lpTotal = lpRoC + lpPref + lpCatchup + lpPromote
+  const gpTotal = gpRoC + gpPref + gpCatchup + gpPromote
+
+  const showRoC      = lpRoC > 1 || gpRoC > 1
+  const showPref     = lpPref > 1 || gpPref > 1
+  const showCatchup  = lpCatchup > 0.005 || gpCatchup > 0.005
+  const showClawback = !!(dist.gpClawback && dist.gpClawback > 0.005)
+  const hasOverrides = Object.keys(overrides).length > 0
+  // When RoC is $0 it means capital was fully returned in prior operating years
+  const rocReturnedPrior = !showRoC && lpTotal > 1
 
   return (
     <tr>
       <td colSpan={6} style={{ padding: 0 }}>
-        <div className="dist-propose-card">
-          <div className="dist-propose-header">
-            Proposed Distribution — Year {event?.year}
+        <div className="partnership-returns-card">
+
+          <div className="partnership-returns-header">
+            <span>Year {event.year} Distribution Detail</span>
             <span className="dist-propose-badge">Proposed</span>
           </div>
-          {rows.map(r => {
-            const isOverridden = r.key in overrides
-            return (
-              <div key={r.key} className="dist-propose-row">
-                <span className="dist-propose-label">{r.label}</span>
-                <div className="dist-propose-input-wrap">
-                  {isOverridden && (
-                    <span className="dist-propose-badge dist-propose-badge--override">Override</span>
-                  )}
-                  <span className="field-adornment">$</span>
-                  <input
-                    type="number"
-                    className="field-input field-input--sm"
-                    value={fmtVal(r.key)}
-                    onChange={e => onOverride({ [r.key]: parseFloat(e.target.value) || 0 } as Partial<DistributionResult>)}
-                  />
-                </div>
-              </div>
-            )
-          })}
-          <div className="dist-propose-actions">
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => {
-                navigator.clipboard?.writeText(JSON.stringify({ ...dist, ...overrides }, null, 2))
-              }}
-            >
+
+          {rocReturnedPrior && (
+            <div className="prt-prior-note">
+              Return of Capital and Preferred Return were paid in prior operating years — see the Summary table above.
+            </div>
+          )}
+
+          {/* ── Distribution breakdown table ── */}
+          <table className="partnership-returns-table">
+            <thead>
+              <tr>
+                <th></th>
+                <th>LP Partners</th>
+                <th>GP / Sponsor</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {showRoC && (
+                <tr>
+                  <td>Return of Capital</td>
+                  <td>
+                    <PrtCell value={lpRoC} isOverridden={'lpRoC' in overrides}
+                      onChange={v => onOverride({ lpRoC: v } as Partial<DistributionResult>)} />
+                  </td>
+                  <td>
+                    <PrtCell value={gpRoC} isOverridden={'gpRoC' in overrides}
+                      onChange={v => onOverride({ gpRoC: v } as Partial<DistributionResult>)} />
+                  </td>
+                  <td className="prt-subtotal">{fmtUSD(lpRoC + gpRoC)}</td>
+                </tr>
+              )}
+
+              {showPref && (
+                <tr>
+                  <td>Preferred Return</td>
+                  <td>
+                    <PrtCell value={lpPref} isOverridden={'lpPref' in overrides}
+                      onChange={v => onOverride({ lpPref: v } as Partial<DistributionResult>)} />
+                  </td>
+                  <td className="prt-readonly">{fmtUSD(gpPref)}</td>
+                  <td className="prt-subtotal">{fmtUSD(lpPref + gpPref)}</td>
+                </tr>
+              )}
+
+              {showCatchup && (
+                <tr>
+                  <td>Catch-Up</td>
+                  <td className="prt-readonly">{fmtUSD(lpCatchup)}</td>
+                  <td className="prt-readonly">{fmtUSD(gpCatchup)}</td>
+                  <td className="prt-subtotal">{fmtUSD(lpCatchup + gpCatchup)}</td>
+                </tr>
+              )}
+
+              <tr>
+                <td>Promote / Carry</td>
+                <td>
+                  <PrtCell value={lpPromote} isOverridden={'lpPromote' in overrides}
+                    onChange={v => onOverride({ lpPromote: v } as Partial<DistributionResult>)} />
+                </td>
+                <td>
+                  <PrtCell value={gpPromote} isOverridden={'gpPromote' in overrides}
+                    onChange={v => onOverride({ gpPromote: v } as Partial<DistributionResult>)} />
+                </td>
+                <td className="prt-subtotal">{fmtUSD(lpPromote + gpPromote)}</td>
+              </tr>
+
+              {showClawback && (
+                <tr className="prt-clawback-row">
+                  <td>GP Clawback</td>
+                  <td className="prt-positive">+{fmtUSD(dist.gpClawback)}</td>
+                  <td className="prt-negative">−{fmtUSD(dist.gpClawback)}</td>
+                  <td>—</td>
+                </tr>
+              )}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td>Total Distributions</td>
+                <td>{fmtUSD(lpTotal)}</td>
+                <td>{fmtUSD(gpTotal)}</td>
+                <td>{fmtUSD(lpTotal + gpTotal)}</td>
+              </tr>
+            </tfoot>
+          </table>
+
+          {/* ── Return metrics (IRR / EM / CoC) — mirrors A.CRE summary rows ── */}
+          {result && (
+            <table className="partnership-returns-table partnership-returns-metrics">
+              <tbody>
+                <tr>
+                  <td>IRR</td>
+                  <td>{fmtPct(result.lpIrr, 2)}</td>
+                  <td>{fmtPct(result.gpIrr, 2)}</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td>Equity Multiple</td>
+                  <td>{fmtMult(result.lpEquityMultiple)}</td>
+                  <td>{result.gpEquityMultiple != null ? fmtMult(result.gpEquityMultiple) : '—'}</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td>Cash-on-Cash (avg annual)</td>
+                  <td>{fmtPct(result.lpCashOnCash, 1)}</td>
+                  <td>—</td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+
+          <div className="partnership-returns-actions">
+            <button type="button" className="btn btn-secondary btn-sm"
+              onClick={() => navigator.clipboard?.writeText(JSON.stringify({ ...dist, ...overrides }, null, 2))}>
               Copy to Clipboard
             </button>
+            {hasOverrides && onClear && (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={onClear}>
+                Reset to Proposed
+              </button>
+            )}
           </div>
         </div>
       </td>
     </tr>
+  )
+}
+
+/** Editable inline dollar cell — transparent by default, shows border on hover/focus */
+function PrtCell({
+  value,
+  isOverridden,
+  onChange,
+}: {
+  value: number
+  isOverridden: boolean
+  onChange: (v: number) => void
+}) {
+  return (
+    <div className={`prt-input-wrap${isOverridden ? ' prt-input-wrap--overridden' : ''}`}>
+      {isOverridden && <span className="prt-override-dot" title="Overridden" />}
+      <span className="prt-currency-symbol">$</span>
+      <input
+        type="number"
+        className="prt-input"
+        value={Math.round(value)}
+        onChange={e => onChange(parseFloat(e.target.value) || 0)}
+      />
+    </div>
   )
 }

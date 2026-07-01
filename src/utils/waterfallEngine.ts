@@ -398,29 +398,24 @@ export function buildDealWaterfallConfig(
 // ─── Internal: promote tier allocation ───────────────────────────────────────
 
 /**
- * Allocate distributable promote cash across waterfall tiers.
+ * Distribute remaining promote cash through IRR/EM waterfall tiers using the
+ * A.CRE bucket approach (TYPE A):
+ *   - For each tier with a hurdle: compute a "bucket" (total pool at the tier's
+ *     LP/GP split) that gives LP exactly `needed` LP dollars to clear the hurdle.
+ *   - If cash >= bucket: fill the bucket, continue to the next tier.
+ *   - If cash < bucket: split all remaining at the tier's ratio and stop.
+ *   - Catch-all tier (no hurdle): split all remaining and stop.
  *
- * EQUITY_MULTIPLE basis (fixed in Jun 2026):
- *   Each tier defines a BAND of LP return (e.g. 1.0× → 1.5×, 1.5× → 2.0×, 2.0×+).
- *   Cash in a band splits at that band's LP/GP rate. Tier walk:
- *     bucketSize = lpNeeded / lpPct  (total cash that takes LP to this hurdle)
- *     If cash > bucket: allocate full bucket at tier rate, continue to next tier.
- *     If cash ≤ bucket: allocate all remaining cash at tier rate, done.
- *   `lpAlreadyReceivedThisCall` must include pref + RoC from this distribute() call
- *   so the hurdle check sees LP's TRUE cumulative return.
- *
- * IRR basis:
- *   Catch LP up to each hurdle (100% to LP), then split remainder at tier rate.
- *   Single-tier (common case) is correct. Multi-tier IRR walk is a v2 refinement.
- *
- * @param lpAlreadyReceivedThisCall  LP pref + RoC paid in the current distribute() call
+ * @param lpAlreadyReceived  LP dollars already allocated in this distribute() call
+ *                           (pref + RoC + catch-up) so the hurdle calculation is
+ *                           accurate when promote tiers are reached.
  */
 function allocatePromoteTiers(
   remaining: number,
   config: DealWaterfallConfig,
   state: DealWaterfallState,
   date: string,
-  lpAlreadyReceivedThisCall: number = 0,
+  lpAlreadyReceived: number = 0,
 ): { lp: number; gp: number } {
   if (remaining <= 0 || config.tiers.length === 0) {
     return { lp: remaining, gp: 0 };
@@ -436,80 +431,69 @@ function allocatePromoteTiers(
   let gpTotal = 0;
   let cash    = remaining;
 
-  if (config.hurdleBasis === 'EQUITY_MULTIPLE') {
-    // Equity multiple waterfall: each tier's lpSplit% applies to a BAND of
-    // LP return defined by consecutive hurdle multiples.  Walk tiers in order,
-    // computing exactly how much cash "fills" each band.
-    //
-    // runningLpOut tracks LP's cumulative receipts (prior periods + this call's
-    // pref & RoC) so the hurdle comparison reflects LP's TRUE total return.
-    const baseIn = state.lp.flows
-      .filter(f => f.amount < 0)
-      .reduce((s, f) => s + Math.abs(f.amount), 0);
-    let runningLpOut = state.lp.flows
-      .filter(f => f.amount > 0)
-      .reduce((s, f) => s + f.amount, 0)
-      + lpAlreadyReceivedThisCall;
+  // Running total of LP amounts already allocated in promote tiers this call.
+  // Added to lpAlreadyReceived so each successive tier's hurdle check reflects
+  // what LP has actually received so far (pref + RoC + prior promote tiers).
+  let lpReceivedInPromote = 0;
 
-    for (const tier of sorted) {
-      if (cash <= 0) break;
-      const lpPct = tier.lpSplit / 100;
+  for (const tier of sorted) {
+    if (cash <= 0) break;
 
-      if (tier.irrHurdle != null && baseIn > 0) {
-        const lpTarget = baseIn * tier.irrHurdle;
-        const lpNeeded = Math.max(0, lpTarget - runningLpOut);
+    const lpPct = tier.lpSplit / 100;
 
-        if (lpNeeded <= 0) continue; // LP already at or above this hurdle — skip to next
+    if (tier.irrHurdle != null) {
+      // Build augmented flows: historical flows + everything LP has received
+      // in the current distribute() call so far (pref, RoC, lower promote tiers).
+      const totalLpThisCall = lpAlreadyReceived + lpReceivedInPromote;
+      const augmented: { date: string; amount: number }[] =
+        totalLpThisCall > 0
+          ? [...state.lp.flows, { date, amount: totalLpThisCall }]
+          : state.lp.flows;
 
-        // Total cash bucket that delivers exactly lpNeeded to LP at this tier's split
-        const bucketSize = lpPct > 0 ? lpNeeded / lpPct : 0;
-
-        if (bucketSize >= cash) {
-          // Tier not fully filled — consume all remaining cash at this rate
-          lpTotal      += cash * lpPct;
-          gpTotal      += cash * (1 - lpPct);
-          runningLpOut += cash * lpPct;
-          cash          = 0;
-        } else {
-          // Full bucket: LP hits exactly this tier's hurdle; continue to next tier
-          lpTotal      += lpNeeded;                 // = bucketSize * lpPct
-          gpTotal      += bucketSize * (1 - lpPct);
-          runningLpOut += lpNeeded;
-          cash         -= bucketSize;
-        }
+      let needed = 0;
+      if (config.hurdleBasis === 'EQUITY_MULTIPLE') {
+        const totalIn  = augmented.filter(f => f.amount < 0).reduce((s, f) => s + Math.abs(f.amount), 0);
+        const totalOut = augmented.filter(f => f.amount > 0).reduce((s, f) => s + f.amount, 0);
+        needed = Math.max(0, totalIn * tier.irrHurdle - totalOut);
       } else {
-        // No hurdle (final / catch-all tier): consume all remaining cash at this rate
-        lpTotal += cash * lpPct;
-        gpTotal += cash * (1 - lpPct);
-        cash     = 0;
-      }
-    }
-  } else {
-    // IRR basis: catch LP up to each hurdle (100% to LP as a pref-style catch-up),
-    // then split remaining cash at that tier's promote rate.
-    for (const tier of sorted) {
-      if (cash <= 0) break;
-
-      if (tier.irrHurdle != null) {
-        const needed = lpDollarsToHurdle(state.lp.flows, tier.irrHurdle, date);
-        if (needed > 0) {
-          const lpCatchupToHurdle = Math.min(cash, needed);
-          lpTotal += lpCatchupToHurdle;
-          cash    -= lpCatchupToHurdle;
-        }
+        needed = lpDollarsToHurdle(augmented, tier.irrHurdle, date);
       }
 
-      if (cash <= 0) break;
+      if (needed <= 0) {
+        // LP already cleared this hurdle from prior distributions — skip without consuming cash.
+        continue;
+      }
 
-      // Remaining cash splits at this tier's rate
-      const lpPct = tier.lpSplit / 100;
-      lpTotal += cash * lpPct;
-      gpTotal += cash * (1 - lpPct);
+      if (lpPct <= 0) continue; // degenerate; avoid division by zero
+
+      // Bucket approach: total pool at this tier's split that yields LP exactly `needed`.
+      const bucketSize = needed / lpPct;
+
+      if (bucketSize >= cash) {
+        // Can't fully fill this tier's bucket — split all remaining at the tier ratio.
+        lpTotal             += cash * lpPct;
+        gpTotal             += cash * (1 - lpPct);
+        lpReceivedInPromote += cash * lpPct;
+        cash = 0;
+        break;
+      } else {
+        // Fill the bucket, carry remaining cash forward to the next tier.
+        lpTotal             += needed;                    // = bucketSize * lpPct
+        gpTotal             += bucketSize * (1 - lpPct);
+        lpReceivedInPromote += needed;
+        cash                -= bucketSize;
+      }
+    } else {
+      // Catch-all tier (no hurdle): split all remaining cash and stop.
+      lpTotal             += cash * lpPct;
+      gpTotal             += cash * (1 - lpPct);
+      lpReceivedInPromote += cash * lpPct;
       cash = 0;
+      break;
     }
   }
 
-  lpTotal += cash; // residual (no catch-all tier)
+  lpTotal += cash; // residual: no catch-all tier defined → LP gets the rest
   return { lp: lpTotal, gp: gpTotal };
 }
 
@@ -595,11 +579,9 @@ export function distribute(
       remaining = cu.remaining;
     }
 
-    // Promote tiers
+    // Promote tiers — pass LP's pref + RoC + catchup from this call so hurdles are accurate.
     if (remaining > 0) {
-      // Per spec: pass lpPref + lpRoC + lpCatchup so EQUITY_MULTIPLE tiers see LP's
-      // true cumulative return (including any catch-up LP received this call).
-      // lpCatchup is 0 when gpCatchup is off (default), making this a no-op in the common case.
+      // Pass lpPref + lpRoC + lpCatchup so tiers see LP's true cumulative return for this call.
       const { lp, gp } = allocatePromoteTiers(remaining, config, state, date, lpPref + lpRoC + lpCatchup);
       lpPromote = lp;
       gpPromote = gp;
@@ -709,9 +691,11 @@ function sumYearDebtService(
   year: number,
   closingDate: string,
 ): number {
-  // Filter by calendar date so refi'd loans (startDate ≠ closingDate) work correctly.
-  const yearStart = yearToDate(year, closingDate);
-  const yearEnd   = addMonthsStr(yearStart, 11); // last month of the deal year
+  // Fiscal year window: month 1 of year y is closingDate + (y-1)*12 + 1,
+  // last month is closingDate + y*12. This gives exactly 12 months per year.
+  // e.g. year=1, closingDate='2026-06' → '2026-07' through '2027-06' (Jul–Jun)
+  const yearStart = addMonthsStr(closingDate, (year - 1) * 12 + 1);
+  const yearEnd   = addMonthsStr(closingDate, year * 12);
   let total = 0;
   for (const inst of instruments) {
     const schedule = buildAmortizationSchedule(inst);
@@ -741,8 +725,22 @@ export function computeProjection(
   lpEquity: number,
   gpEquity: number,
   closingDate: string,
+  /** Annual recurring fee deduction from NCF (e.g. asset management fee). Default 0. */
+  annualFeeDeduction: number = 0,
 ): ProjectionResult {
   const { holdYears, beginNoi, noiGrowthPct, reservesPerYear, eventType, eventYear } = assumptions;
+
+  // Per-year NOI growth helper: uses noiGrowthRates array when provided, else flat rate.
+  function noiForYear(y: number): number {
+    if (assumptions.noiGrowthRates && assumptions.noiGrowthRates.length > 0) {
+      let n = beginNoi;
+      for (let i = 0; i < y - 1; i++) {
+        n *= 1 + (assumptions.noiGrowthRates[i] ?? noiGrowthPct);
+      }
+      return n;
+    }
+    return beginNoi * Math.pow(1 + noiGrowthPct, y - 1);
+  }
 
   const totalEquity = lpEquity + gpEquity;
   const lpOwnership = totalEquity > 0 ? lpEquity / totalEquity : 0.9;
@@ -765,9 +763,13 @@ export function computeProjection(
 
   const years: YearProjection[] = [];
   let activeInstruments = [...instruments];
+  // Track LP's actual operating distributions (non-event years only) for lpCashOnCash.
+  // Using actual waterfall output is more accurate than proportional (cashToInvestors * lpPct)
+  // because LP receives pref first, not a flat ownership-weighted share.
+  let lpOperatingDistTotal = 0;
 
   for (let y = 1; y <= holdYears; y++) {
-    const noi         = beginNoi * Math.pow(1 + noiGrowthPct, y - 1);
+    const noi         = noiForYear(y);
     const yearDate    = yearToDate(y, closingDate);
     const debtService = sumYearDebtService(activeInstruments, y, closingDate);
     // Loan balance: use instrument-relative months so refi'd loans read correctly
@@ -775,14 +777,19 @@ export function computeProjection(
       const m = instrumentMonths(inst.startDate, yearDate);
       return sum + remainingPrincipal(inst, m);
     }, 0);
-    const cashToInvestors = Math.max(0, noi - debtService - reservesPerYear);
+    const cashToInvestors = Math.max(0, noi - debtService - reservesPerYear - annualFeeDeduction);
 
-    // Accrue pref quarterly per institutional spec (4 × 0.25).
-    // Equivalent to annual for SIMPLE; produces correct compounding for COMPOUND/ACCRUAL.
-    for (let q = 0; q < 4; q++) state = accruePref(config, state, 0.25);
+    // A.CRE model: pref is NOT accrued separately — it is embedded in the Tier 1 IRR hurdle.
+    // accruePref() is intentionally NOT called here.  All operating cash flows directly through
+    // the IRR-based tier walk (allowPromote=true below).  In the first years, capital is not
+    // yet fully returned so promote is 0 and the 90/10 RoC split matches A.CRE's Tier 1 flow.
+    // Once capital is returned, the IRR tiers fire and LP/GP share shifts per each hurdle.
 
     let event: CapitalEvent | undefined;
     let saleDoneThisYear = false;
+    let lpDistribution = 0;
+    let gpDistribution = 0;
+    let yearDistribution: WaterfallDistribution | undefined;
 
     const isEventYear = eventType !== 'none' && eventYear === y;
 
@@ -804,6 +811,9 @@ export function computeProjection(
           ? { ...result, gpPromote: result.gpPromote - clawbackAmt, lpRoC: result.lpRoC + clawbackAmt, gpClawback: clawbackAmt }
           : result;
         event = { ...built.event, proposedDistribution: finalResult } as CapitalEvent;
+        lpDistribution = finalResult.lpPref + finalResult.lpRoC + finalResult.lpCatchup + finalResult.lpPromote;
+        gpDistribution = finalResult.gpRoC + finalResult.gpCatchup + finalResult.gpPromote;
+        yearDistribution = finalResult;
         saleDoneThisYear = true;
 
       } else if (eventType === 'REFI' && assumptions.refi) {
@@ -812,6 +822,12 @@ export function computeProjection(
         event             = built.event;
         state             = built.newState;
         activeInstruments = built.newInstruments; // R4: old loan retired, new loan active
+        if (event.proposedDistribution) {
+          const d = event.proposedDistribution;
+          lpDistribution = d.lpPref + d.lpRoC + d.lpCatchup + d.lpPromote;
+          gpDistribution = d.gpRoC + d.gpCatchup + d.gpPromote;
+          yearDistribution = d;
+        }
       }
     }
 
@@ -832,35 +848,54 @@ export function computeProjection(
           ? { ...result, gpPromote: result.gpPromote - clawbackAmt, lpRoC: result.lpRoC + clawbackAmt, gpClawback: clawbackAmt }
           : result;
         event = { ...built.event, proposedDistribution: finalResult } as CapitalEvent;
+        lpDistribution = finalResult.lpPref + finalResult.lpRoC + finalResult.lpCatchup + finalResult.lpPromote;
+        gpDistribution = finalResult.gpRoC + finalResult.gpCatchup + finalResult.gpPromote;
+        yearDistribution = finalResult;
         saleDoneThisYear = true;
       }
     }
 
     // Distribute operating cash for non-event years.
-    // Promote is deferred to terminal sale (institutional default, promoteOnRefi=false).
-    // In most operating periods cashToInvestors < pref+RoC so promote=0 regardless,
-    // but using config.promoteOnRefi keeps the IRR ledger correct for back-loaded promotes.
+    // A.CRE fires ALL waterfall tiers every year (allowPromote: true).
+    // In early years capital is not yet returned so promote=0 and the 90/10 RoC step
+    // exactly matches A.CRE's Tier 1 distributions.  Once capital is returned (typically
+    // Year 2 in the mock deal), the IRR tiers fire on all excess cash.
     if (!saleDoneThisYear && cashToInvestors > 0) {
-      const { newState } = distribute(cashToInvestors, config, state, {
-        allowPromote: config.promoteOnRefi, // false by default = deferred to terminal sale
+      const { result: opResult, newState } = distribute(cashToInvestors, config, state, {
+        allowPromote: true, // A.CRE: all tiers fire every year
         date: yearDate,
       });
+      const lpOp = opResult.lpPref + opResult.lpRoC + opResult.lpCatchup + opResult.lpPromote;
+      const gpOp = opResult.gpRoC + opResult.gpCatchup + opResult.gpPromote;
+      // Accumulate LP's actual waterfall share (pref + RoC) for lpCashOnCash denominator
+      lpOperatingDistTotal += lpOp;
+      lpDistribution = lpOp;
+      gpDistribution = gpOp;
+      yearDistribution = opResult;
       state = newState;
     }
 
-    years.push({ year: y, beginNoi, noi, debtService, cashToInvestors, loanBalance, event });
+    years.push({ year: y, beginNoi, noi, debtService, cashToInvestors, loanBalance, event, lpDistribution, gpDistribution, distribution: yearDistribution });
   }
 
   const lpIrr = xirr(state.lp.flows);
+  const gpIrr = xirr(state.gp.flows);
 
   const totalLpIn  = Math.abs(state.lp.flows.filter(f => f.amount < 0).reduce((s, f) => s + f.amount, 0));
   const totalLpOut = state.lp.flows.filter(f => f.amount > 0).reduce((s, f) => s + f.amount, 0);
   const lpEquityMultiple = totalLpIn > 0 ? totalLpOut / totalLpIn : undefined;
 
-  const operatingDist = years.reduce((s, yr) => s + yr.cashToInvestors * lpOwnership, 0);
-  const lpCashOnCash  = lpEquity > 0 && holdYears > 0 ? (operatingDist / holdYears) / lpEquity : undefined;
+  const totalGpIn  = Math.abs(state.gp.flows.filter(f => f.amount < 0).reduce((s, f) => s + f.amount, 0));
+  const totalGpOut = state.gp.flows.filter(f => f.amount > 0).reduce((s, f) => s + f.amount, 0);
+  const gpEquityMultiple = totalGpIn > 0 ? totalGpOut / totalGpIn : undefined;
 
-  return { years, lpIrr, lpEquityMultiple, lpCashOnCash };
+  // Cash-on-cash: average annual LP operating distribution (excl. terminal event) / LP equity.
+  // Uses actual waterfall output so pref gets properly credited before proportional RoC.
+  const lpCashOnCash = lpEquity > 0 && holdYears > 0
+    ? (lpOperatingDistTotal / holdYears) / lpEquity
+    : undefined;
+
+  return { years, lpIrr, gpIrr, lpEquityMultiple, gpEquityMultiple, lpCashOnCash };
 }
 
 // ─── Event builders ───────────────────────────────────────────────────────────
@@ -1020,10 +1055,9 @@ function buildRefiEvent(
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function yearToDate(year: number, closingDate: string): string {
-  const [yStr, mStr] = closingDate.split('-');
-  const baseYear  = parseInt(yStr, 10);
-  const baseMonth = parseInt(mStr, 10);
-  return `${baseYear + year - 1}-${String(baseMonth).padStart(2, '0')}`;
+  // Returns the YEAR-END date (closing + year*12 months).
+  // e.g. yearToDate(1, '2026-06') → '2027-06', yearToDate(5, '2026-06') → '2031-06'
+  return addMonthsStr(closingDate, year * 12);
 }
 
 /** Add n months to a 'YYYY-MM' string. */
