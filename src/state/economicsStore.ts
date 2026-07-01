@@ -12,6 +12,7 @@ import type {
   ExitScenarioAssumptions,
 } from './economicsTypes';
 import { computeProjection } from '../utils/waterfallEngine';
+import { buildAmortizationSchedule } from '../utils/amortization';
 
 const STORAGE_KEY = 'equityform:economics';
 
@@ -384,15 +385,51 @@ export const useEconomicsStore = create<EconomicsState>((set, get) => {
       const scenario = deal.exitScenarios?.find(s => s.id === scenarioId);
       if (!scenario || !deal.profitSplit) return;
 
-      const instruments = deal.capitalStack?.instruments ?? [];
-      const purchasePrice = deal.capitalStack?.purchasePrice ?? 0;
-      const lpEquityPct = deal.capitalStack?.lpEquityPct ?? 0.9;
-      const totalDebt = instruments.reduce((s, i) => s + (i.loanAmount ?? 0), 0);
-      const totalEquityPlug = Math.max(0, purchasePrice - totalDebt);
-      const lpEquity = totalEquityPlug * lpEquityPct;
-      const gpEquity = totalEquityPlug * (1 - lpEquityPct);
+      const instruments    = deal.capitalStack?.instruments ?? [];
+      const purchasePrice  = deal.capitalStack?.purchasePrice ?? 0;
+      const closingCosts   = deal.capitalStack?.closingCosts ?? 0;
+      const opReserves     = deal.capitalStack?.operatingReserves ?? 0;
+      const capexReserves  = deal.capitalStack?.capexReserves ?? 0;
+      const otherUses      = deal.capitalStack?.otherUses ?? 0;
+      const lpEquityPct    = deal.capitalStack?.lpEquityPct ?? 0.9;
+      const totalDebt      = instruments.reduce((s, i) => s + (i.loanAmount ?? 0), 0);
+      // Total project cost (matches Sources & Uses: purchasePrice + closingCosts + reserves)
+      const totalCost      = purchasePrice + closingCosts + opReserves + capexReserves + otherUses;
+      const totalEquityPlug = Math.max(0, totalCost - totalDebt);
       const closingDate = deal.capitalStack?.closingDate?.slice(0, 7) ??
         new Date().toISOString().slice(0, 7);
+
+      // Year 0 equity reduction: if user supplies partial-year NOI before the hold,
+      // auto-compute Year 0 debt service (amortization rows from closingDate through
+      // Dec of the closing calendar year) and subtract Year 0 net CF from gross equity.
+      let effectiveEquity = totalEquityPlug;
+      if (scenario.assumptions.year0Noi && scenario.assumptions.year0Noi > 0) {
+        const closingYear  = parseInt(closingDate.slice(0, 4));
+        const year0EndDate = `${closingYear}-12`;
+        let year0DebtService = 0;
+        for (const inst of instruments) {
+          const sched = buildAmortizationSchedule(inst);
+          year0DebtService += sched.rows
+            .filter(r => r.date >= closingDate && r.date <= year0EndDate)
+            .reduce((s, r) => s + r.payment, 0);
+        }
+        const year0NetCf = scenario.assumptions.year0Noi - year0DebtService;
+        effectiveEquity  = Math.max(0, totalEquityPlug - year0NetCf);
+      }
+      const lpEquity = effectiveEquity * lpEquityPct;
+      const gpEquity = effectiveEquity * (1 - lpEquityPct);
+
+      // Annual asset management fee — deducted from NCF each hold year
+      const totalEquity = lpEquity + gpEquity;
+      const annualFeeDeduction = (deal.fees ?? [])
+        .filter(f => f.type === 'asset_management' && f.enabled === 'yes')
+        .reduce((sum, f) => {
+          if (f.basisType === 'flat')         return sum + (f.flatAmount ?? 0);
+          if (f.basisType === 'pct_raise')    return sum + (f.rate ?? 0) * totalEquity;
+          if (f.basisType === 'pct_purchase') return sum + (f.rate ?? 0) * purchasePrice;
+          if (f.basisType === 'pct_cost')     return sum + (f.rate ?? 0) * totalCost;
+          return sum;
+        }, 0);
 
       const result = computeProjection(
         deal.profitSplit,
@@ -401,6 +438,7 @@ export const useEconomicsStore = create<EconomicsState>((set, get) => {
         lpEquity,
         gpEquity,
         closingDate,
+        annualFeeDeduction,
       );
 
       mutateDeal(dealId, d => {

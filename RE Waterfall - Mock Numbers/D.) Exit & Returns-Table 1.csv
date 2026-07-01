@@ -1,0 +1,19 @@
+,,,,,
+,Projection Assumptions,,,,
+,Hold Period (Years),,,5,
+,Year 1 NOI,,,"$10,000,000",
+,NOI Growth Rate Assumptions,,,,We should make this so they can pick the growth rate each year (ie. 3% year 1/4% year 2 etc) example to the left
+,,Year,NOI,YoY%,
+,,0,"$4,850,000",,This should be an input - started in July so I deflated by 3.0% and multipled by 50% (half year)
+,,1,"$10,000,000",,
+,,2,"$10,300,000",3.0%,
+,,3,"$10,609,000",3.0%,
+,,4,"$10,927,270",3.0%,
+,,5,"$11,255,088",3.0%,
+,Annual Reserves / CapEx,,,$0,
+,Exit/Capital Event,,,Sale,
+,Terminal NOI,,,"$11,255,088",Add this (last years NOI) ie 5 year hold would be year 5
+,Cap Rate,,,5.50%,
+,Gross Sales Proceeds,,,"$204,637,965",Add this it is the sales price before any closing costs
+,Closing Costs,,2.0%,"$4,092,759",
+,Net Sales Proceeds,,,"$200,545,206",Add this Gross Sales Proceeds - Closing Costs

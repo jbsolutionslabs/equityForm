@@ -430,7 +430,9 @@ export interface RefiConfig {
 export interface ExitScenarioAssumptions {
   holdYears: number;          // 1–20
   beginNoi: number;           // Year 1 NOI (dollar)
-  noiGrowthPct: number;       // decimal annual (0.03 = 3%)
+  noiGrowthPct: number;       // decimal annual (0.03 = 3%); used when noiGrowthRates not provided
+  noiGrowthRates?: number[];  // per-year growth rates [yr1→2, yr2→3, ...]; length = holdYears − 1
+  year0Noi?: number;          // partial-year NOI before Year 1 (e.g. mid-year close); reduces LP/GP equity basis
   reservesPerYear: number;    // replacement reserve deducted from NCF each year
   eventType: ExitEventType;
   eventYear: number;          // which year the event happens (1-based)
@@ -466,6 +468,10 @@ export interface YearProjection {
   cashToInvestors: number; // noi - debtService - reserves
   loanBalance: number;   // end of year balance
   event?: CapitalEvent;  // populated only in event year
+  lpDistribution?: number; // total LP cash received this year (operating + event)
+  gpDistribution?: number; // total GP cash received this year (operating + event)
+  /** Detailed waterfall breakdown for this year (operating or event cash combined) */
+  distribution?: WaterfallDistribution;
 }
 
 export interface ProjectionResult {
@@ -473,6 +479,7 @@ export interface ProjectionResult {
   lpIrr?: number;          // decimal; undefined if negative cashflows only
   gpIrr?: number;
   lpEquityMultiple?: number;
+  gpEquityMultiple?: number;
   lpCashOnCash?: number;   // avg annual distributions / lpEquity
 }
 
